@@ -233,10 +233,21 @@ Defender のほうを疑うなら `Get-MpThreatDetection`（何も出なけれ�
 
 1. `VERSION`（ルートの 1 行）を直す。zip の名前と exe のプロパティは、ここだけを見ています。
 2. `CHANGELOG.md` に、変わったことを足す。
-3. `.\build.ps1 -Release` — きれいに作り直し、テスト 7 本を通し、`dist\nashi-studio-<版>.zip` を作ります。
+3. `.\build.ps1 -Release` — きれいに作り直し、テストを通し、`dist\nashi-studio-<版>.zip` を作ります。
+   （手元で見ておくためのものです。配るのは Actions が作ったほうです）
 4. `git tag -a v<版> -m "…"` して `git push origin v<版>`。
-5. GitHub の Releases で、そのタグからリリースを作り、zip を添える
-   （`gh` があれば `gh release create v<版> dist\nashi-studio-<版>.zip -F CHANGELOG.md`）。
+5. **あとは Actions がやります。** タグを受けとると、ビルドしてテストを通し、
+   その zip を貼った Release を**下書きで**作ります。
+6. GitHub の Releases を開いて中身を見て、よければ **Publish release** を押す。
+   押すまでは誰にも見えません。
+
+> **なぜ下書きなのか。** タグを押した時点では、まだ取り下げたくなることがあるためです
+> （`v1.0.4-beta` が実際そうなりました）。公開を 1 回押す手間だけ残してあります。
+> 自動で公開したくなったら、`build.yml` の `--draft` を消してください。
+
+配られるのは、**そのタグでテストを通ったものそのもの**です。手元でビルドし直した
+別の zip を貼ることはありません。`v1.0.4-alpha` のように `-` が付いたタグは、
+自動で「試し版（pre-release）」になります。
 
 ---
 
