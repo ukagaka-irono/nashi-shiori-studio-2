@@ -101,16 +101,32 @@ node tools\check-blocks.js     # 1 秒。ビルド不要。ブロックがそろ
 ### 押したら勝手に走ります
 
 `.github/workflows/build.yml` が、`main` への push・タグ（`v*`）・プルリクのたびに
-**手元と同じ `.\build.ps1 -Test`** を windows-latest で走らせます。
+**手元と同じ `.\build.ps1 -Release`** を windows-latest で走らせます。
 打ち忘れても止まるようにするためのものなので、**赤くなったら直してから進んでください**。
 
 * ジョブは 2 つ。`そろい点検`（ビルド不要・1 分ほど）が先に赤/緑を出し、
   `ビルドとテスト`（5 分ほど）が本番と同じ手順を通します。
-* できた `nashi-studio.exe` と `nashi.dll` は、実行結果の画面から 14 日間落とせます
-  （署名していないので、手元の exe と同じく Windows に止められることがあります）。
 * ランナーには MSVC も Windows SDK も入っていて、WebView2 の SDK は
   `studio/third_party` に置いてあるので、**落としてくるものはありません**。
 * スマートアプリコントロールはランナーには無いので、手元より素直に通ります。
+
+### できたものを落とす
+
+Actions の実行ページをいちばん下まで送ると **Artifacts** があります。**30 日間**残ります。
+
+| 名前 | 中身 |
+|---|---|
+| `nashi-studio-<版>-<sha>` | 配る zip とまったく同じ（`nashi-studio.exe` / `README.md` / `CHANGELOG.md` / `LICENSE` / `docs`） |
+| `nashi-dll-<版>-<sha>` | `nashi.dll` だけ。自分でゴーストに入れる人むけ（エディタの exe にも同じものが入っています） |
+
+`LICENSE` を必ず添えるのは、同梱している WebView2 SDK が配るときに著作権表示を
+求めているためです。`build.ps1 -Release` も、`LICENSE` が無ければ**その場で止まります**。
+
+> **Actions の成果物は、GitHub にログインしていないと落とせません。**
+> ダウンロードのボタンが、ログインしていない人には出ないためです。
+> 誰にでも配りたいときは、`v` で始まるタグを押して Release にしてください。
+
+署名していないので、手元の exe と同じく Windows に止められることがあります。
 
 ---
 
