@@ -17,6 +17,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# 既定は「読むだけ」。Release を作るジョブにだけ、書く力を渡します。
+permissions:
+  contents: read
+
 jobs:
   # ビルドが要らない点検だけ、先に。1 分ほどで赤か緑か分かります。
   check:
@@ -93,3 +97,63 @@ jobs:
           name: nashi-dll-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}
           path: shiori/dist/nashi.dll
           retention-days: 30
+
+      # タグのときだけ。下の release ジョブに渡すためのもので、
+      # 人が落とすものではありません（1 日で消えます）。
+      - name: 配る zip を、次のジョブに渡す
+        if: success() && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-zip
+          path: dist/*.zip
+          retention-days: 1
+
+  # v で始まるタグを押したときだけ走ります。ここではビルドしません。
+  # 上のジョブがテストを通した zip を、そのまま貼ります。
+  # そうしておくと「配ったもの」と「テストを通したもの」が必ず同じになります。
+  release:
+    name: Release を下書きで作る
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write     # Release を作るのに要ります。このジョブにだけ与えます
+    steps:
+      - name: zip を受けとる
+        uses: actions/download-artifact@v4
+        with:
+          name: release-zip
+          path: dist
+
+      # わざと「下書き」で作ります。中身を見てから、GitHub の画面で
+      # 「Publish release」を押してください。押すまでは誰にも見えません。
+      # （v1.0.4-beta のように、あとで取り下げたくなることがあるためです）
+      - name: 下書きを作る
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}   # checkout していないので、どこの話か教える
+        run: |
+          # gh は「まだ無い」ときに 1 で終わります。それを失敗あつかいさせない
+          $ErrorActionPreference = 'Continue'
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          $tag = '${{ github.ref_name }}'
+          $zip = (Get-ChildItem dist\*.zip | Select-Object -First 1)
+          if (-not $zip) { throw '配る zip が見つかりません。' }
+          Write-Host "$tag に $($zip.Name) を貼ります"
+
+          # v1.0.4-alpha のように「-」が付いていたら、まだ試し版あつかい
+          $opt = @('--draft', '--title', $tag, '--generate-notes')
+          if ($tag -match '-') { $opt += '--prerelease' }
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "$tag はもうあるので、zip だけ入れ替えます"
+            gh release upload $tag $zip.FullName --clobber
+          } else {
+            gh release create $tag $zip.FullName @opt
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Release を作れませんでした。' }
+          Write-Host "できました。GitHub の Releases で中身を見て、公開してください。"
