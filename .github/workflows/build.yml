@@ -38,7 +38,7 @@ jobs:
       - name: 画面のファイル（読みこみと呼び先）
         run: node ui\test\modules.js
 
-  # 栞（32bit DLL）とスタジオ（64bit EXE）を作って、テスト 7 本を通す。
+  # 栞（32bit DLL）とスタジオ（64bit EXE）を作って、テストを通し、配る形にまとめる。
   build:
     name: ビルドとテスト
     runs-on: windows-latest
@@ -49,23 +49,47 @@ jobs:
         with:
           node-version: '20'
 
+      # 落とすものの名前に入れます。1.0.4-alpha-a8c8356 のようになります。
+      - name: 版と、押した番号を読む
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Content VERSION -Raw).Trim()
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "short=$('${{ github.sha }}'.Substring(0, 7))" >> $env:GITHUB_OUTPUT
+
       # MSVC も Windows SDK もランナーに入っています。WebView2 の SDK は
       # studio/third_party に置いてあるので、落としてくるものはありません。
-      - name: ビルドしてテスト
+      # -Release は「作り直す → テストする → 配る形にまとめる」まで一度にやります。
+      - name: ビルドしてテストして、配る形にまとめる
         shell: pwsh
         run: |
           # テストの結果は日本語なので、UTF-8 で読めるようにしておく
           [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-          .\build.ps1 -Test
+          .\build.ps1 -Release
 
       # 手元でビルドしなくても、ここから落として試せるように。
+      # 中身は配る zip とまったく同じです（exe / README / CHANGELOG / LICENSE / docs）。
+      # LICENSE を必ず添えるのは、同梱している WebView2 SDK が
+      # 配るときに著作権表示を求めているためです。
       # 署名はしていないので、Windows に止められることがあります（README 参照）。
-      - name: できたものを残す
+      #
+      # ※ Actions の成果物は、GitHub にログインしていないと落とせません。
+      #   ログイン無しで配りたいときは、v で始まるタグを押して Release にします。
+      - name: エディタを残す
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: nashi-studio-${{ github.sha }}
-          path: |
-            nashi-studio.exe
-            shiori/dist/nashi.dll
-          retention-days: 14
+          name: nashi-studio-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}
+          path: obj/release/nashi-studio-${{ steps.ver.outputs.version }}/
+          retention-days: 30
+
+      # 栞だけ欲しい人（自分でゴーストに入れる人）のために、別にしておきます。
+      # エディタの exe にも同じものが入っているので、ふつうは要りません。
+      - name: 栞だけも残す
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nashi-dll-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}
+          path: shiori/dist/nashi.dll
+          retention-days: 30
