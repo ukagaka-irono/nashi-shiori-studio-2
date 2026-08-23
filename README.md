@@ -35,6 +35,28 @@ AIを思いっきり使ってます。
 
 ---
 
+## 手に入れる
+
+| どこから | 要るもの | 中身 |
+|---|---|---|
+| [**Releases**](https://github.com/miyagawa-yukinterface/nashi-shiori-studio/releases) | 何も要りません | 版ごとの zip。**ふつうはこちら** |
+| [**Actions**](https://github.com/miyagawa-yukinterface/nashi-shiori-studio/actions) の実行ページ | **GitHub のログイン** | 押すたびの最新。30 日間 |
+
+Actions のほうは、実行ページをいちばん下まで送ると **Artifacts** にあります。
+
+* `nashi-studio-<版>-<sha>` … Releases の zip と同じ中身（exe / README / CHANGELOG / LICENSE / docs）
+* `nashi-dll-<版>-<sha>` … 栞だけ。自分でゴーストに入れる人むけ
+
+> Actions の成果物は、**GitHub にログインしていないと落とせません**（ボタンが出ません）。
+> ログインしたくなければ Releases のほうを使ってください。
+
+どちらも**コード署名していない** ので、Windows に止められることがあります。
+そのときは [スマートアプリコントロールでブロックされたら](#スマートアプリコントロールでブロックされたら) を見てください。
+
+自分でビルドするなら `.\build.ps1` です（[`docs/maintenance.md`](docs/maintenance.md)）。
+
+---
+
 ## つかいかた
 
 ### 1. 起動する
