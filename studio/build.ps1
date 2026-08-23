@@ -59,6 +59,52 @@ if ($needVcVars) {
     Import-VcVars $Arch
 }
 
+# ---- exe を 1 つ作る -------------------------------------------------------
+# コンパイルとリンクの中身は 3 つとも同じなので、ここにまとめます。
+# ここを通さずに cl / link を直に書くと、テスト用の exe を増やすたびに
+# 同じ 30 行がまた増えていきます。
+function Build-Exe {
+    param(
+        [Parameter(Mandatory)][string]$Label,     # 画面に出す名前
+        [Parameter(Mandatory)][string]$Out,       # できあがる exe
+        [Parameter(Mandatory)][string]$ObjDir,    # .obj の置き場
+        [Parameter(Mandatory)][string[]]$Sources,
+        [string[]]$Include = @(),                 # /I に渡すところ
+        [string[]]$Define  = @(),                 # /D に渡すもの（共通ぶんは下に書いてあります）
+        [string]$Subsystem = 'CONSOLE',
+        [string[]]$Extra   = @(),                 # .res や .lib など、obj のあとに並べるもの
+        [string[]]$Lib     = @()
+    )
+    New-Item -ItemType Directory -Force -Path $ObjDir | Out-Null
+
+    Write-Host "[studio] $Label をコンパイル中..." -ForegroundColor Cyan
+    $clArgs = @('/nologo', '/c', '/O2', '/MT', '/EHsc', '/W3', '/GS', '/std:c++17', '/utf-8',
+                '/DNDEBUG', '/DWIN32', '/DUNICODE', '/D_UNICODE', '/D_CRT_SECURE_NO_WARNINGS') +
+              ($Define  | ForEach-Object { "/D$_" }) +
+              ($Include | ForEach-Object { "/I$_" }) +
+              @("/Fo:$ObjDir\") + $Sources
+    & cl @clArgs
+    if ($LASTEXITCODE -ne 0) { throw "$Label のコンパイルに失敗しました。" }
+
+    # 前のビルドで残った .obj を混ぜないよう、今回のソースから直接 obj 名を作る
+    $objs = $Sources | ForEach-Object {
+        Join-Path $ObjDir ([System.IO.Path]::GetFileNameWithoutExtension($_) + '.obj')
+    }
+
+    Write-Host "[studio] $Label をリンク中..." -ForegroundColor Cyan
+    $linkArgs = @('/nologo', "/OUT:$Out", "/SUBSYSTEM:$Subsystem", '/OPT:REF', '/OPT:ICF') +
+                $objs + $Extra + $Lib
+    & link @linkArgs
+    if ($LASTEXITCODE -ne 0) { throw "$Label のリンクに失敗しました。" }
+
+    $kb = [math]::Round((Get-Item $Out).Length / 1KB, 1)
+    Write-Host "[studio] OK -> $Out ($kb KB)" -ForegroundColor Green
+}
+
+# どの exe でも使う Windows のライブラリ。足りないぶんは呼ぶ側で足します。
+$libsCommon = @('kernel32.lib', 'user32.lib', 'shell32.lib', 'shlwapi.lib',
+                'advapi32.lib', 'ole32.lib')
+
 # ---- 埋め込みリソースを作る ------------------------------------------------
 $dll = Join-Path $repo 'shiori\dist\nashi.dll'
 $sample = Join-Path $root 'res\sample-project.json'
@@ -110,93 +156,44 @@ if (-not (Test-Path (Join-Path $wv2 'include\WebView2.h'))) {
     throw "WebView2 SDK が見つかりません: $wv2 (studio\third_party\webview2\README.md を参照)"
 }
 
-$clArgs = @(
-    '/nologo', '/c', '/O2', '/MT', '/EHsc', '/W3', '/GS', '/std:c++17', '/utf-8',
-    '/DNDEBUG', '/DWIN32', '/D_WINDOWS', '/DUNICODE', '/D_UNICODE', '/D_CRT_SECURE_NO_WARNINGS',
-    "/I$src", "/I$repo\shiori\src", "/I$obj", "/I$wv2\include",
-    "/Fo:$obj\"
-) + $sources
-
-Write-Host "[studio] コンパイル中 ($Arch)..." -ForegroundColor Cyan
-& cl @clArgs
-if ($LASTEXITCODE -ne 0) { throw 'コンパイルに失敗しました。' }
-
-# 前のビルドで残った .obj を混ぜないよう、今回のソースから直接 obj 名を作る
-$objs = $sources | ForEach-Object { Join-Path $obj ([System.IO.Path]::GetFileNameWithoutExtension($_) + '.obj') }
-$linkArgs = @(
-    '/nologo', "/OUT:$exeOut", '/SUBSYSTEM:WINDOWS', '/OPT:REF', '/OPT:ICF'
-) + $objs + @((Join-Path $obj 'assets.res'), (Join-Path $wv2 "$Arch\WebView2LoaderStatic.lib")) +
-    @('kernel32.lib', 'user32.lib', 'gdi32.lib', 'shell32.lib', 'shlwapi.lib',
-      'comdlg32.lib', 'advapi32.lib', 'ole32.lib', 'oleaut32.lib', 'version.lib', 'ws2_32.lib')
-
-Write-Host '[studio] リンク中...' -ForegroundColor Cyan
-& link @linkArgs
-if ($LASTEXITCODE -ne 0) { throw 'リンクに失敗しました。' }
+Build-Exe -Label "なしスタジオ ($Arch)" -Out $exeOut -ObjDir $obj -Sources $sources `
+    -Include @($src, "$repo\shiori\src", $obj, "$wv2\include") `
+    -Define '_WINDOWS' -Subsystem 'WINDOWS' `
+    -Extra @((Join-Path $obj 'assets.res'), (Join-Path $wv2 "$Arch\WebView2LoaderStatic.lib")) `
+    -Lib ($libsCommon + @('gdi32.lib', 'comdlg32.lib', 'oleaut32.lib', 'version.lib', 'ws2_32.lib'))
 
 # ---- テスト用コンソール ----------------------------------------------------
 # 画面を出さずに中身を見るためのもの。
 #   export_host  … 書き出されるファイル（surfaces.txt など）
 #   preview_host … 「ためす」の結果（一致テストが 32bit の栞と見くらべます）
 if ($Test) {
-    $testObj = Join-Path $obj 'test'
-    New-Item -ItemType Directory -Force -Path $testObj | Out-Null
+    Build-Exe -Label '書き出しテスト用コンソール' `
+        -Out (Join-Path $root 'test\export_host.exe') -ObjDir (Join-Path $obj 'test') `
+        -Sources @(
+            (Join-Path $root 'test\export_host.cpp'),
+            (Join-Path $src 'exporter.cpp'),
+            (Join-Path $src 'image.cpp'),
+            (Join-Path $src 'zip.cpp'),
+            (Join-Path $src 'deflate.cpp'),
+            (Join-Path $src 'fsutil.cpp'),
+            (Join-Path $repo 'shiori\src\json.cpp'),
+            (Join-Path $repo 'shiori\src\util.cpp')
+        ) `
+        -Include @($src, "$repo\shiori\src") `
+        -Lib ($libsCommon + @('gdi32.lib', 'comdlg32.lib', 'oleaut32.lib'))
 
-    Write-Host '[studio] 書き出しテスト用コンソールをビルド中...' -ForegroundColor Cyan
-    $testSources = @(
-        (Join-Path $root 'test\export_host.cpp'),
-        (Join-Path $src 'exporter.cpp'),
-        (Join-Path $src 'image.cpp'),
-        (Join-Path $src 'zip.cpp'),
-        (Join-Path $src 'deflate.cpp'),
-        (Join-Path $src 'fsutil.cpp'),
-        (Join-Path $repo 'shiori\src\json.cpp'),
-        (Join-Path $repo 'shiori\src\util.cpp')
-    )
-    $testCl = @(
-        '/nologo', '/c', '/O2', '/MT', '/EHsc', '/W3', '/std:c++17', '/utf-8',
-        '/DNDEBUG', '/DWIN32', '/DUNICODE', '/D_UNICODE', '/D_CRT_SECURE_NO_WARNINGS',
-        "/I$src", "/I$repo\shiori\src", "/Fo:$testObj\"
-    ) + $testSources
-    & cl @testCl
-    if ($LASTEXITCODE -ne 0) { throw '書き出しテスト用コンソールのコンパイルに失敗しました。' }
-    $testObjs = $testSources | ForEach-Object {
-        Join-Path $testObj ([System.IO.Path]::GetFileNameWithoutExtension($_) + '.obj')
-    }
-    $testExe = Join-Path $root 'test\export_host.exe'
-    $testLink = @('/nologo', "/OUT:$testExe", '/SUBSYSTEM:CONSOLE') + $testObjs +
-        @('kernel32.lib', 'user32.lib', 'gdi32.lib', 'shell32.lib', 'shlwapi.lib',
-          'comdlg32.lib', 'advapi32.lib', 'ole32.lib', 'oleaut32.lib')
-    & link @testLink
-    if ($LASTEXITCODE -ne 0) { throw '書き出しテスト用コンソールのリンクに失敗しました。' }
-    Write-Host "[studio] OK -> $testExe" -ForegroundColor Green
-
-    Write-Host '[studio] プレビューテスト用コンソールをビルド中...' -ForegroundColor Cyan
-    $prevObj = Join-Path $obj 'preview'
-    New-Item -ItemType Directory -Force -Path $prevObj | Out-Null
-    $prevSources = @(
-        (Join-Path $root 'test\preview_host.cpp'),
-        (Join-Path $src 'preview.cpp'),
-        (Join-Path $repo 'shiori\src\interp.cpp'),
-        (Join-Path $repo 'shiori\src\program.cpp'),
-        (Join-Path $repo 'shiori\src\json.cpp'),
-        (Join-Path $repo 'shiori\src\util.cpp')
-    )
-    $prevCl = @(
-        '/nologo', '/c', '/O2', '/MT', '/EHsc', '/W3', '/std:c++17', '/utf-8',
-        '/DNDEBUG', '/DWIN32', '/DUNICODE', '/D_UNICODE', '/D_CRT_SECURE_NO_WARNINGS',
-        "/I$src", "/I$repo\shiori\src", "/Fo:$prevObj\"
-    ) + $prevSources
-    & cl @prevCl
-    if ($LASTEXITCODE -ne 0) { throw 'プレビューテスト用コンソールのコンパイルに失敗しました。' }
-    $prevObjs = $prevSources | ForEach-Object {
-        Join-Path $prevObj ([System.IO.Path]::GetFileNameWithoutExtension($_) + '.obj')
-    }
-    $prevExe = Join-Path $root 'test\preview_host.exe'
-    $prevLink = @('/nologo', "/OUT:$prevExe", '/SUBSYSTEM:CONSOLE') + $prevObjs +
-        @('kernel32.lib', 'user32.lib', 'shell32.lib', 'shlwapi.lib', 'advapi32.lib', 'ole32.lib')
-    & link @prevLink
-    if ($LASTEXITCODE -ne 0) { throw 'プレビューテスト用コンソールのリンクに失敗しました。' }
-    Write-Host "[studio] OK -> $prevExe" -ForegroundColor Green
+    Build-Exe -Label 'プレビューテスト用コンソール' `
+        -Out (Join-Path $root 'test\preview_host.exe') -ObjDir (Join-Path $obj 'preview') `
+        -Sources @(
+            (Join-Path $root 'test\preview_host.cpp'),
+            (Join-Path $src 'preview.cpp'),
+            (Join-Path $repo 'shiori\src\interp.cpp'),
+            (Join-Path $repo 'shiori\src\program.cpp'),
+            (Join-Path $repo 'shiori\src\json.cpp'),
+            (Join-Path $repo 'shiori\src\util.cpp')
+        ) `
+        -Include @($src, "$repo\shiori\src") `
+        -Lib $libsCommon
 }
 
 if ($SignThumbprint) {
@@ -207,6 +204,3 @@ if ($SignThumbprint) {
         -TimestampServer 'http://timestamp.digicert.com'
     Write-Host "[studio] 署名: $($result.Status)" -ForegroundColor DarkGray
 }
-
-$size = [math]::Round((Get-Item $exeOut).Length / 1KB, 1)
-Write-Host "[studio] OK -> $exeOut ($size KB)" -ForegroundColor Green
