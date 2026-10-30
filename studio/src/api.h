@@ -4,8 +4,10 @@
 #include "webreq.h"
 #include "json.h"
 #include "sstp.h"
+#include "fsutil.h"
 
 #include <string>
+#include <map>
 
 namespace nashi {
 
@@ -24,8 +26,11 @@ public:
 private:
     void HandleApi(const HttpRequest& req, HttpResponse& res);
     std::string DllBytes() const;
+    std::string DllSource() const;      // どこの nashi.dll を使うか（無ければ空）。中身は読まない
     std::wstring DefaultOutDir() const;
     SspInfo Ssp() const;
+    std::string ProjectTitle(const std::wstring& file, const FILETIME& modified,
+                             unsigned long long size);
 
     std::wstring exeDir_;
     std::wstring projectsDir_;
@@ -35,6 +40,15 @@ private:
     // 短時間に何度も探しにいかないための控え
     mutable SspInfo sspCache_;
     mutable unsigned long sspCacheTick_ = 0;
+
+    // プロジェクトの一覧に出す名前。ファイルが変わっていなければ、読みなおさない
+    // （一覧は 30 秒ごとに取りなおすので、毎回ぜんぶ読んで解析すると重い）。
+    struct TitleCache {
+        FILETIME modified;
+        unsigned long long size;
+        std::string title;
+    };
+    std::map<std::wstring, TitleCache> titles_;
 };
 
 } // namespace nashi

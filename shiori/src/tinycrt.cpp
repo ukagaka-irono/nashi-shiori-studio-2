@@ -45,9 +45,22 @@ extern "C" {
 extern "C" int _fltused = 0x9875;
 
 // リンカが PE に載せたがる「読みこみ時の設定表」。ふだんは CRT が持っています。
-// 中身は空で構いませんが、大きさだけは正しく書いておきます。
+// 大きさと、SafeSEH の表（/SAFESEH でリンカが作る「呼んでよい例外の受け口」の一覧）だけを書きます。
+// SafeSEH は、積み場所をはみ出して受け口を書きかえる攻撃を、OS がはねるためのものです
+// （Windows XP SP2 から効きます。2000 はこの欄を見ないので、そのまま読みこめます）。
+extern "C" PVOID __safe_se_handler_table[];
+extern "C" BYTE  __safe_se_handler_count;
 extern "C" IMAGE_LOAD_CONFIG_DIRECTORY32 _load_config_used = {
     sizeof(IMAGE_LOAD_CONFIG_DIRECTORY32),
+    0,                                          // TimeDateStamp
+    0, 0,                                       // MajorVersion / MinorVersion
+    0, 0, 0, 0, 0,                              // GlobalFlagsClear … DeCommitTotalFreeThreshold
+    0, 0, 0, 0, 0,                              // LockPrefixTable … ProcessAffinityMask
+    0, 0,                                       // CSDVersion / DependentLoadFlags
+    0,                                          // EditList
+    0,                                          // SecurityCookie（帯は下の NashiInitCookie で配る）
+    (DWORD)__safe_se_handler_table,
+    (DWORD)&__safe_se_handler_count,
 };
 
 // --------------------------------------------------------------- 置き場

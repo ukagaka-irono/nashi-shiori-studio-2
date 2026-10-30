@@ -62,6 +62,20 @@
     });
   }
 
+  // チェックタブ（プロジェクト全体を点検する）と、さがすタブは、ブロックを動かすたびに
+  // 走らせると重いので、手が止まったときにまとめて 1 回だけ描きなおす（遅くても 0.3 秒後）。
+  function scheduleSidePanels() {
+    if (App.sidePanelsQueued) return;
+    App.sidePanelsQueued = true;
+    const run = () => {
+      App.sidePanelsQueued = false;
+      N.Search.renderCheck();
+      N.Search.renderSearch();
+    };
+    if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 300 });
+    else setTimeout(run, 50);
+  }
+
   function renderAll() {
     const project = Model.project;
     Render.renderWorkspace($('#canvas'), project);
@@ -69,8 +83,7 @@
     $('#canvas-hint').style.display = project.scripts.length ? 'none' : '';
     renderVarList();
     renderRunTargets();
-    N.Search.renderCheck();
-    N.Search.renderSearch();
+    scheduleSidePanels();
     syncMetaFields();
     $('#btn-undo').disabled = !Model.undoStack.length;
     $('#btn-redo').disabled = !Model.redoStack.length;
@@ -541,9 +554,9 @@
     const bind = (sel, apply, onLive) => {
       const el = $(sel);
       let snap = null;
-      el.addEventListener('focus', () => { snap = Model.clone(Model.project); });
+      el.addEventListener('focus', () => { snap = Model.snapshot(); });
       el.addEventListener('change', () => {
-        if (!snap) snap = Model.clone(Model.project);
+        if (!snap) snap = Model.snapshot();
         apply(el.type === 'checkbox' ? el.checked : el.value);
         if (onLive) onLive();
         Model.pushUndo(snap);

@@ -207,6 +207,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         if (message == L"save-failed" && g_waitingSave) SaveFailed(g_hwnd, L"保存できませんでした。");
     };
 
+    // API は別のスレッドで処理する（SSP を探す・書き出す・保存するあいだも、画面が固まらない）。
+    // その場で処理するのは、すぐ終わる画像と、ウィンドウを出すファイル選びだけ。
+    g_web.isSlow = [](const HttpRequest& req) {
+        if (req.path.compare(0, 5, "/api/") != 0) return false;           // 画面のファイル
+        if (req.path == "/api/shell" || req.path == "/api/shell/file") return false;
+        if (req.path == "/api/shell/pick") return false;                  // ダイアログは UI スレッドで
+        return true;
+    };
+
     bool started = g_web.Create(
         g_hwnd,
         PathJoin(ExeDir(), L"webview-data"),

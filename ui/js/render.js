@@ -34,7 +34,7 @@
 
   // 変更を Undo に積むためのスナップショット保持
   let editSnapshot = null;
-  function beginEdit() { editSnapshot = Model.clone(Model.project); }
+  function beginEdit() { editSnapshot = Model.snapshot(); }
   function endEdit(changed) {
     if (changed && editSnapshot) Model.pushUndo(editSnapshot);
     editSnapshot = null;

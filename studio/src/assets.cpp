@@ -20,6 +20,12 @@ bool LoadEmbedded(int id, std::string& out) {
     return true;
 }
 
+bool HasEmbedded(int id) {
+    HMODULE mod = GetModuleHandleW(NULL);
+    HRSRC res = FindResourceW(mod, MAKEINTRESOURCEW(id), RT_RCDATA);
+    return res != NULL && SizeofResource(mod, res) > 0;
+}
+
 const char* StudioVersion() { return kStudioVersionGen; }
 
 bool FindWebAsset(const std::string& path, std::string& out, std::string& mime) {

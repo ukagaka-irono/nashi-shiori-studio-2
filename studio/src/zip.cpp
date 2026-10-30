@@ -20,6 +20,22 @@ void PutU32(std::string& s, unsigned v) {
     s += (char)(unsigned char)((v >> 24) & 0xFF);
 }
 
+// 中身がもう圧縮されている種類か（拡張子で見る）
+bool AlreadyCompressed(const std::string& name) {
+    static const char* kExts[] = { ".png", ".gif", ".jpg", ".jpeg", ".webp", ".apng",
+                                   ".zip", ".nar", ".ogg", ".mp3", ".m4a", ".opus" };
+    size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = name.substr(dot);
+    for (size_t i = 0; i < ext.size(); i++) {
+        if (ext[i] >= 'A' && ext[i] <= 'Z') ext[i] = (char)(ext[i] - 'A' + 'a');
+    }
+    for (size_t i = 0; i < sizeof(kExts) / sizeof(kExts[0]); i++) {
+        if (ext == kExts[i]) return true;
+    }
+    return false;
+}
+
 } // namespace
 
 std::string CreateZip(const std::vector<ZipEntry>& entries) {
@@ -38,8 +54,12 @@ std::string CreateZip(const std::vector<ZipEntry>& entries) {
             if (name[k] == '\\') name[k] = '/';
         }
         const std::string& data = entries[i].data;
-        std::string deflated = DeflateRaw((const unsigned char*)data.c_str(), data.size());
-        bool store = deflated.size() >= data.size();
+        // PNG などはもう縮んでいるので、縮めなおさない（時間とメモリを使うだけで、ほぼ縮まない）
+        std::string deflated;
+        if (!AlreadyCompressed(name)) {
+            deflated = DeflateRaw((const unsigned char*)data.c_str(), data.size());
+        }
+        bool store = deflated.empty() || deflated.size() >= data.size();
         const std::string& body = store ? data : deflated;
         unsigned method = store ? 0 : 8;
         unsigned crc = Crc32((const unsigned char*)data.c_str(), data.size());
@@ -94,7 +114,12 @@ std::string CreateZip(const std::vector<ZipEntry>& entries) {
     PutU32(end, offset);
     PutU16(end, 0);
 
-    return locals + centrals + end;
+    std::string out;
+    out.reserve(locals.size() + centrals.size() + end.size());
+    out += locals;
+    out += centrals;
+    out += end;
+    return out;
 }
 
 } // namespace nashi

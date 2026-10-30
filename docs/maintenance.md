@@ -151,6 +151,24 @@ blocks → model → player → lint → render → drag → app → shell / sea
 
 ---
 
+## スタジオの API は、別のスレッドで動きます
+
+画面からの `/api/…` は、ほとんどが **1 本の作業用スレッド**で、届いた順に処理されます
+（`studio/src/webview.cpp` の `WorkerLoop`）。SSP を探す・書き出すあいだに、ウィンドウを
+止めないためです。どれをその場（UI スレッド）で処理するかは、`studio/src/main.cpp` の
+`g_web.isSlow` が決めています。
+
+* **API を足すときは、作業用スレッドで動くものとして書いてください。**
+  `Api` の中の控え（`sspCache_`・`titles_`）は、作業用スレッドからしか触らない約束です。
+  UI スレッドで動く要求（`/api/shell`・`/api/shell/file`・`/api/shell/pick`）からは触らないこと。
+* 設定ファイル（`nashi-studio-2.json`）は両方のスレッドから読み書きするので、
+  `api.cpp` の `ReadConfig` / `WriteConfig` / `SaveConfig` を通してください（中で順番待ちをします）。
+* ダイアログを出す要求は、UI スレッドで処理するように `isSlow` で false を返してください。
+* WebView2 のもの（`ICoreWebView2…`）は、UI スレッドでしか触れません。作業用スレッドは
+  `Api::Handle` を呼ぶだけで、返事を渡すのは UI スレッド（`FinishJobs`）です。
+
+---
+
 ## 栞は、C ランタイムを使わずに組んでいます
 
 SSP は **Windows 2000 以降**で動きます。栞は SSP に読みこまれる DLL なので、そこに合わせます。

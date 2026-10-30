@@ -101,7 +101,9 @@ if ($LASTEXITCODE -ne 0) { throw 'コンパイルに失敗しました。' }
 $objs = Get-ChildItem $obj -Filter '*.obj' | ForEach-Object { $_.FullName }
 $linkArgs = @(
     '/nologo', '/DLL', "/OUT:$dllOut", "/DEF:$src\nashi.def", '/OPT:REF', '/OPT:ICF',
-    '/NODEFAULTLIB', '/ENTRY:DllMain', '/SAFESEH:NO'
+    # /SAFESEH … 例外の受け口の一覧を載せる（tinycrt.cpp の _load_config_used から指す）
+    # /DYNAMICBASE /NXCOMPAT … 読みこむ場所をずらす・データを実行させない（XP SP2 / Vista から効く）
+    '/NODEFAULTLIB', '/ENTRY:DllMain', '/SAFESEH', '/DYNAMICBASE', '/NXCOMPAT'
 ) + $objs + @($msvcrtLib, 'kernel32.lib', 'user32.lib', 'advapi32.lib')
 
 Write-Host "[nashi] リンク中..." -ForegroundColor Cyan

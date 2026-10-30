@@ -17,24 +17,33 @@ bool Value::asBool() const {
 // ---------------------------------------------------------------- Vars
 
 Value Vars::get(const std::string& name) const {
-    for (size_t i = 0; i < items_.size(); i++) {
-        if (items_[i].first == name) return items_[i].second;
-    }
-    return Value::Num(0);
+    std::map<std::string, size_t>::const_iterator it = index_.find(name);
+    if (it == index_.end()) return Value::Num(0);
+    return items_[it->second].second;
+}
+
+static bool SameValue(const Value& a, const Value& b) {
+    if (a.isNum != b.isNum) return false;
+    return a.isNum ? a.num == b.num : a.str == b.str;
 }
 
 void Vars::set(const std::string& name, const Value& v) {
-    for (size_t i = 0; i < items_.size(); i++) {
-        if (items_[i].first == name) { items_[i].second = v; return; }
+    std::map<std::string, size_t>::const_iterator it = index_.find(name);
+    if (it != index_.end()) {
+        Value& cur = items_[it->second].second;
+        if (SameValue(cur, v)) return;
+        cur = v;
+        version_++;
+        return;
     }
-    if (items_.size() < 4096) items_.push_back(std::make_pair(name, v));
+    if (items_.size() >= 4096) return;
+    index_[name] = items_.size();
+    items_.push_back(std::make_pair(name, v));
+    version_++;
 }
 
 bool Vars::exists(const std::string& name) const {
-    for (size_t i = 0; i < items_.size(); i++) {
-        if (items_[i].first == name) return true;
-    }
-    return false;
+    return index_.find(name) != index_.end();
 }
 
 static Value ValueFromJson(const JValue& v) {
@@ -100,36 +109,63 @@ bool Program::Adopt(const JValue& root) {
     if (&root != &root_) root_ = root;
     if (!root_.isObj()) {
         error_ = "ghost.json must contain an object";
+        BuildIndex();
         return false;
     }
+    BuildIndex();
     loaded_ = true;
     return true;
 }
 
+void Program::BuildIndex() {
+    events_.clear();
+    talks_.clear();
+    byName_.clear();
+    byId_.clear();
+    const JValue& scripts = root_["scripts"];
+    if (!scripts.isArr()) return;            // 配列でなければ、スクリプトは無いものとする
+    for (size_t i = 0; i < scripts.arr.size(); i++) {
+        const JValue& s = scripts.arr[i];
+        std::string id = s["id"].asStr();
+        if (!id.empty() && byId_.find(id) == byId_.end()) byId_[id] = i;
+
+        std::string kind = s["kind"].asStr("event");
+        if (kind == "function" || kind == "talk") {
+            std::string name = s["name"].asStr();
+            if (!name.empty() && byName_.find(name) == byName_.end()) byName_[name] = i;
+        }
+        if (s["disabled"].asBool(false)) continue;
+        if (kind == "event") events_[s["event"].asStr()].push_back(i);
+        else if (kind == "talk") talks_.push_back(i);
+    }
+}
+
+const JValue* Program::ScriptAt(size_t i) const {
+    const JValue& scripts = root_["scripts"];
+    if (!scripts.isArr() || i >= scripts.arr.size()) return NULL;
+    return &scripts.arr[i];
+}
+
 std::vector<const JValue*> Program::eventScripts(const std::string& eventName) const {
     std::vector<const JValue*> out;
-    const JValue& scripts = root_["scripts"];
-    for (size_t i = 0; i < scripts.size(); i++) {
-        const JValue& s = scripts.at(i);
-        if (s["kind"].asStr("event") != "event") continue;
-        if (s["disabled"].asBool(false)) continue;
-        if (s["event"].asStr() == eventName) out.push_back(&scripts.arr[i]);
+    std::map<std::string, std::vector<size_t> >::const_iterator it = events_.find(eventName);
+    if (it == events_.end()) return out;
+    for (size_t k = 0; k < it->second.size(); k++) {
+        const JValue* s = ScriptAt(it->second[k]);
+        if (s) out.push_back(s);
     }
     return out;
 }
 
 bool Program::hasEvent(const std::string& eventName) const {
-    return !eventScripts(eventName).empty();
+    return events_.find(eventName) != events_.end();
 }
 
 std::vector<const JValue*> Program::talkScripts() const {
     std::vector<const JValue*> out;
-    const JValue& scripts = root_["scripts"];
-    for (size_t i = 0; i < scripts.size(); i++) {
-        const JValue& s = scripts.at(i);
-        if (s["kind"].asStr() != "talk") continue;
-        if (s["disabled"].asBool(false)) continue;
-        out.push_back(&scripts.arr[i]);
+    for (size_t k = 0; k < talks_.size(); k++) {
+        const JValue* s = ScriptAt(talks_[k]);
+        if (s) out.push_back(s);
     }
     return out;
 }
@@ -137,36 +173,23 @@ std::vector<const JValue*> Program::talkScripts() const {
 std::vector<const JValue*> Program::talksInGroup(const std::string& group) const {
     std::vector<const JValue*> out;
     if (group.empty()) return out;
-    const JValue& scripts = root_["scripts"];
-    for (size_t i = 0; i < scripts.size(); i++) {
-        const JValue& s = scripts.at(i);
-        if (s["kind"].asStr() != "talk") continue;
-        if (s["disabled"].asBool(false)) continue;
-        if (s["group"].asStr() != group) continue;
-        out.push_back(&scripts.arr[i]);
+    for (size_t k = 0; k < talks_.size(); k++) {
+        const JValue* s = ScriptAt(talks_[k]);
+        if (s && (*s)["group"].asStr() == group) out.push_back(s);
     }
     return out;
 }
 
 const JValue* Program::functionByName(const std::string& name) const {
     if (name.empty()) return NULL;
-    const JValue& scripts = root_["scripts"];
-    for (size_t i = 0; i < scripts.size(); i++) {
-        const JValue& s = scripts.at(i);
-        const std::string kind = s["kind"].asStr();
-        if (kind != "function" && kind != "talk") continue;
-        if (s["name"].asStr() == name) return &scripts.arr[i];
-    }
-    return NULL;
+    std::map<std::string, size_t>::const_iterator it = byName_.find(name);
+    return it == byName_.end() ? NULL : ScriptAt(it->second);
 }
 
 const JValue* Program::scriptById(const std::string& id) const {
     if (id.empty()) return NULL;
-    const JValue& scripts = root_["scripts"];
-    for (size_t i = 0; i < scripts.size(); i++) {
-        if (scripts.at(i)["id"].asStr() == id) return &scripts.arr[i];
-    }
-    return NULL;
+    std::map<std::string, size_t>::const_iterator it = byId_.find(id);
+    return it == byId_.end() ? NULL : ScriptAt(it->second);
 }
 
 } // namespace nashi

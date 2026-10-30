@@ -257,8 +257,11 @@ std::string Shiori::RunOne(const JValue& script, const ShioriRequest& req) {
     ctx.sys = &sys_;
     ctx.saori = &saori_;
     ctx.refs = req.refs;
+    unsigned long before = vars_.version();
     RunScript(script, ctx);
-    dirty_ = true;
+    // 変数が変わったときだけ、保存が要る（毎秒の「ずっとくりかえす」で、
+    // 何も変わっていないのに 2 分ごとにセーブを書きなおさないように）
+    if (vars_.version() != before) dirty_ = true;
     // 出力を捨てる場合（空だったので別のブロックを試す）は、話しかけ先も覚えない
     if (!ctx.out.empty() && !ctx.commTo.empty()) commTo_ = ctx.commTo;
 

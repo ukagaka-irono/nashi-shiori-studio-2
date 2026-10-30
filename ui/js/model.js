@@ -158,15 +158,21 @@
     onChange(fn) { Model.listeners.push(fn); },
     emit() { Model.listeners.forEach((fn) => fn(Model.project)); },
 
+    /**
+     * Undo 用の控え。JSON の文字で持つ（オブジェクトのまま複製するより速く、メモリも小さい。
+     * 「変わったか」も文字どうしを比べるだけで分かる）。
+     */
+    snapshot() { return JSON.stringify(Model.project); },
+
     /** すべての変更はこれを通す（Undo 用のスナップショットを取る） */
     act(fn) {
-      const snap = clone(Model.project);
+      const snap = Model.snapshot();
       let result;
       try {
         result = fn();
       } catch (e) {
         console.error(e);
-        Model.project = snap;
+        Model.project = JSON.parse(snap);
         Model.emit();
         throw e;
       }
@@ -182,8 +188,10 @@
     /** 入力欄の編集など、すでに書き換えたあとで Undo 履歴だけ積みたいとき */
     pushUndo(snapshot) {
       if (!snapshot) return;
-      if (JSON.stringify(snapshot) === JSON.stringify(Model.project)) return;
-      Model.undoStack.push(snapshot);
+      // 控えは Model.snapshot() の文字。古い呼びかたのオブジェクトも受ける
+      const snap = typeof snapshot === 'string' ? snapshot : JSON.stringify(snapshot);
+      if (snap === Model.snapshot()) return;
+      Model.undoStack.push(snap);
       if (Model.undoStack.length > 80) Model.undoStack.shift();
       Model.redoStack = [];
       Model.dirty = true;
@@ -192,8 +200,8 @@
 
     undo() {
       if (!Model.undoStack.length) return false;
-      Model.redoStack.push(clone(Model.project));
-      Model.project = Model.undoStack.pop();
+      Model.redoStack.push(Model.snapshot());
+      Model.project = JSON.parse(Model.undoStack.pop());
       Model.dirty = true;
       Model.emit();
       return true;
@@ -201,8 +209,8 @@
 
     redo() {
       if (!Model.redoStack.length) return false;
-      Model.undoStack.push(clone(Model.project));
-      Model.project = Model.redoStack.pop();
+      Model.undoStack.push(Model.snapshot());
+      Model.project = JSON.parse(Model.redoStack.pop());
       Model.dirty = true;
       Model.emit();
       return true;

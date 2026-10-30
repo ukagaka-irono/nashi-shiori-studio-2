@@ -12,6 +12,8 @@ namespace nashi {
 
 // リソースをそのまま取り出す
 bool LoadEmbedded(int id, std::string& out);
+// 埋め込んであるか（中身は取り出さない）
+bool HasEmbedded(int id);
 
 // ルートの VERSION に書いた版（ビルドのときに埋めこむ）
 const char* StudioVersion();

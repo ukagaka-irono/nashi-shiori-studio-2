@@ -141,7 +141,7 @@
         inp.value = value;
         if (opts && opts.min != null) inp.min = String(opts.min);
         inp.addEventListener('change', () => {
-          const snap = Model.clone(Model.project);
+          const snap = Model.snapshot();
           onInput(inp.value);
           Model.pushUndo(snap);
           renderAnimList();
@@ -162,7 +162,7 @@
       }
       sel.value = a.interval;
       sel.addEventListener('change', () => {
-        const snap = Model.clone(Model.project);
+        const snap = Model.snapshot();
         a.interval = sel.value;
         Model.pushUndo(snap);
         renderAnimList();
@@ -199,7 +199,7 @@
         }
         s.value = value;
         s.addEventListener('change', () => {
-          const snap = Model.clone(Model.project);
+          const snap = Model.snapshot();
           onPick(s.value);
           Model.pushUndo(snap);
           renderAnimList();
