@@ -149,6 +149,19 @@
     {
       "id": "f_answer", "kind": "function", "name": "こたえ",
       "blocks": [{ "type": "say", "who": 0, "text": "えらばれた", "nl": 0 }]
+    },
+
+    {
+      "id": "b_choice_comma", "kind": "event", "event": "OnChoiceComma",
+      "blocks": [{ "type": "choice", "label": "はい,OnEvil", "target": "こたえ" }]
+    },
+    {
+      "id": "b_hour_old", "kind": "event", "event": "OnHourChange",
+      "blocks": [{ "type": "say", "who": 0, "text": "じほう", "nl": 0 }]
+    },
+    {
+      "id": "b_shell", "kind": "event", "event": "OnShowShell",
+      "blocks": [{ "type": "say", "who": 0, "text": { "type": "sys", "key": "shellname" }, "nl": 0 }]
     }
   ]
 }

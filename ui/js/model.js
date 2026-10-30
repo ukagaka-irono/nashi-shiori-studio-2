@@ -122,6 +122,8 @@
         }
         if (script.kind === 'event') {
           if (!script.event) script.event = 'OnBoot';
+          // SSP に OnHourChange は無い。以前の版が書いていた名前を、本物に直す。
+          if (script.event === 'OnHourChange') script.event = 'OnHourTimeSignal';
           // マウス系イベントのしぼり込み（当たった場所・相手）
           if (typeof script.area !== 'string') script.area = '';
           if (typeof script.who !== 'number') script.who = -1;

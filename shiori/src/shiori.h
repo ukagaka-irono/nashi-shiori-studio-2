@@ -20,6 +20,12 @@ struct ShioriRequest {
     std::vector<std::string> refs;                   // Reference0..N
     std::map<std::string, std::string> headers;      // everything, lower-cased keys
     bool utf8 = true;
+
+    // header value by lower-cased name ("" when absent)
+    std::string header(const char* lowerName) const {
+        std::map<std::string, std::string>::const_iterator it = headers.find(lowerName);
+        return it == headers.end() ? std::string() : it->second;
+    }
 };
 
 class Shiori {
@@ -43,6 +49,9 @@ private:
     int NoRepeatCount(size_t talkCount) const;
     void RememberTalk(const std::string& id);
     void DrainSaori();          // 待たずに呼んだ SAORI の答えを受け取る
+    void RememberOffered(const std::string& script);
+    bool TakeOffered(const std::string& key, bool consume);
+    void NoteBoot(const ShioriRequest& req, const std::string& shell);
 
     std::wstring dir_;
     Program prog_;
@@ -71,6 +80,12 @@ private:
     // ゴースト間通信（この応答を届ける相手と、話しかけ合いが続いた回数）
     std::string commTo_;
     int commChain_ = 0;
+    unsigned long commTick_ = 0;     // 最後に OnCommunicate を受けた時刻
+
+    // こちらが出した選択肢の行き先と、入力ボックスの ID。
+    // SSP から返ってきた OnChoiceSelect / OnUserInput は、ここにあるものだけ受け付ける
+    // （SSTP を送れる相手なら誰でも、同じイベントを作れてしまうため）。
+    std::vector<std::string> offered_;
 
     // なで判定（OnMouseMove を数えて OnNadeNade を作る）
     std::string strokeKey_;

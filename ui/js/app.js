@@ -43,7 +43,12 @@
     const text = await res.text();
     let data = {};
     try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-    if (!res.ok) throw new Error(data.error || ('通信エラー (' + res.status + ')'));
+    if (!res.ok) {
+      const err = new Error(data.error || ('通信エラー (' + res.status + ')'));
+      err.status = res.status;
+      err.data = data;                 // 呼んだ側が、くわしい中身（foreign など）を見られるように
+      throw err;
+    }
     return data;
   }
 
@@ -617,6 +622,8 @@
       try { loaded = await api('/api/project?name=' + encodeURIComponent(state.lastProject)); } catch { /* 新規 */ }
     }
     Model.init(loaded || sampleProject());
+    // 開いたファイルに上書き保存する（ゴーストの名前を変えても、別のファイルにはしない）
+    App.projectName = loaded ? state.lastProject : '';
     setZoom(1);
     switchTab('run');
     N.Shell.resetStage();
@@ -625,6 +632,7 @@
     $('#btn-new').addEventListener('click', () => {
       if (Model.dirty && !confirm('保存していない変更があります。新しく作りますか？')) return;
       Model.init(sampleProject());
+      App.projectName = '';
       App.sessionVars = {};
       App.toast('新しいゴーストを作りました');
     });
@@ -666,6 +674,7 @@
       try {
         const r = await api('/api/import', { method: 'POST', body: { path: p } });
         Model.init(r.project);
+        App.projectName = '';            // よそから来たものは、新しいプロジェクトとして保存する
         App.sessionVars = {};
         App.toast('読み込みました');
       } catch (e) { App.toast(e.message, true); }

@@ -102,8 +102,19 @@ bool WebView::Create(HWND parent,
                                 settings->put_AreDefaultContextMenusEnabled(FALSE);
                                 settings->put_IsStatusBarEnabled(FALSE);
                                 settings->put_IsZoomControlEnabled(FALSE);
-                                settings->put_AreDefaultScriptDialogsEnabled(TRUE);
-                                settings->put_AreDevToolsEnabled(TRUE);
+                                settings->put_AreDefaultScriptDialogsEnabled(TRUE);   // confirm() を使う
+                                // 開発者ツールは、環境変数 NASHI_STUDIO_DEVTOOLS=1 のときだけ。
+                                // ふだん開けると、画面から exe の API を好きに呼べてしまうため。
+                                wchar_t dev[8] = { 0 };
+                                DWORD devLen = GetEnvironmentVariableW(L"NASHI_STUDIO_DEVTOOLS", dev, 8);
+                                bool devtools = devLen > 0 && devLen < 8 && dev[0] == L'1';
+                                settings->put_AreDevToolsEnabled(devtools ? TRUE : FALSE);
+                                // F5 での読みなおし（保存していない変更が消える）や印刷などの
+                                // ブラウザ用のキーを切る。文字の編集（Ctrl+C / V / Z）は残る。
+                                ComPtr<ICoreWebView2Settings3> settings3;
+                                if (SUCCEEDED(settings.As(&settings3)) && settings3) {
+                                    settings3->put_AreBrowserAcceleratorKeysEnabled(devtools ? TRUE : FALSE);
+                                }
                             }
 
                             std::wstring filter = std::wstring(kVirtualOrigin) + L"/*";

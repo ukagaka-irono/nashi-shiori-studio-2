@@ -46,6 +46,9 @@ struct RunCtx {
 // Escapes plain text for SakuraScript (\\ and newlines -> \n tag).
 std::string EscapeText(const std::string& text);
 
+// Cuts text to the per-value limit (never inside a UTF-8 sequence).
+std::string CapText(const std::string& s);
+
 // Runs a stack of blocks, appending SakuraScript to ctx.out.
 void RunBlocks(const JValue& blocks, RunCtx& ctx);
 

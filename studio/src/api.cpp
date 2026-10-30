@@ -29,6 +29,24 @@ static void JsonError(HttpResponse& res, int status, const std::string& message)
     Json(res, status, o);
 }
 
+// 書き出し先に別のゴーストがあったとき。画面はこれを見て、確かめてから呼びなおす。
+static void ForeignError(HttpResponse& res, const ExportResult& r) {
+    JValue o = JValue::makeObj();
+    o.set("error", JValue::makeStr(r.error));
+    o.set("foreign", JValue::makeBool(true));
+    o.set("folder", JValue::makeStr(r.folder));
+    Json(res, 409, o);
+}
+
+// \![change,ghost,…] にそのまま入れてよい名前か（] や \ で命令を足させない）
+static bool SafeGhostNameForTag(const std::string& name) {
+    for (size_t i = 0; i < name.size(); i++) {
+        char c = name[i];
+        if (c == '[' || c == ']' || c == '\\' || c == '"' || c == ',' || c == '\r' || c == '\n') return false;
+    }
+    return !name.empty();
+}
+
 static bool ParseBody(const HttpRequest& req, JValue& out) {
     std::string err;
     if (req.body.empty()) { out = JValue::makeObj(); return true; }
@@ -243,7 +261,8 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         std::wstring path = it == req.query.end() ? std::wstring() : Utf8ToWide(it->second);
         std::string data;
         int w = 0, h = 0;
-        if (path.empty() || !ReadBinaryFile(path, data) || !PngSize(data, &w, &h)) {
+        // プロジェクトに \\host\… と書かれていても、よそへはつなぎに行かない
+        if (path.empty() || !IsLocalPath(path) || !ReadBinaryFile(path, data) || !PngSize(data, &w, &h)) {
             JsonError(res, 404, "画像が読めません");
             return;
         }
@@ -278,6 +297,18 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         if (name.empty()) { JsonError(res, 400, "名前がありません"); return; }
         EnsureDir(projectsDir_);
         std::wstring file = PathJoin(projectsDir_, Utf8ToWide(name) + L".json");
+        // 新しく作ったプロジェクトのはじめての保存では、同じ名前の別のプロジェクトを
+        // 上書きしない。「名前 (2)」のように、空いている名前を使う。
+        if (body["create"].asBool(false) && PathExists(file)) {
+            std::string base = name;
+            for (int n = 2; n < 1000 && PathExists(file); n++) {
+                char suffix[16];
+                sprintf_s(suffix, " (%d)", n);
+                name = base + suffix;
+                file = PathJoin(projectsDir_, Utf8ToWide(name) + L".json");
+            }
+            if (PathExists(file)) { JsonError(res, 409, "空いている名前が見つかりません"); return; }
+        }
         if (!WriteBinaryFile(file, body["project"].dump(2))) {
             JsonError(res, 500, "保存できませんでした");
             return;
@@ -357,7 +388,9 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         bool nar = body["mode"].asStr() == "nar";
 
         ExportResult r = nar ? ExportToNar(project, outDir, dll, includeShell)
-                             : ExportToDir(project, outDir, dll, includeShell, overwriteShell);
+                             : ExportToDir(project, outDir, dll, includeShell, overwriteShell,
+                                           body["overwriteForeign"].asBool(false));
+        if (r.foreign) { ForeignError(res, r); return; }
         if (!r.ok) { JsonError(res, 500, r.error.empty() ? "書き出しに失敗しました" : r.error); return; }
         WriteConfig(configPath_, "lastOutDir", WideToUtf8(outDir));
 
@@ -416,7 +449,11 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         std::wstring path = Utf8ToWide(body["path"].asStr());
         if (path.empty() || !PathExists(path)) { JsonError(res, 404, "見つかりません"); return; }
         if (!IsDirectory(path)) path = ParentDir(path);
-        ShellExecuteW(NULL, L"open", L"explorer.exe", (L"\"" + path + L"\"").c_str(), NULL, SW_SHOWNORMAL);
+        // explorer.exe は Windows のフォルダから呼ぶ（exe のとなりに置かれた同名のものを動かさない）
+        wchar_t winDir[MAX_PATH];
+        UINT n = GetWindowsDirectoryW(winDir, MAX_PATH);
+        std::wstring explorer = (n > 0 && n < MAX_PATH) ? PathJoin(winDir, L"explorer.exe") : L"explorer.exe";
+        ShellExecuteW(NULL, L"open", explorer.c_str(), (L"\"" + path + L"\"").c_str(), NULL, SW_SHOWNORMAL);
         JValue o = JValue::makeObj();
         o.set("ok", JValue::makeBool(true));
         Json(res, 200, o);
@@ -622,12 +659,17 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         std::string dll = DllBytes();
         ExportResult r = ExportToDir(project, ssp.ghostDir, dll,
                                      body["includeShell"].asBool(true),
-                                     body["overwriteShell"].asBool(false));
+                                     body["overwriteShell"].asBool(false),
+                                     body["overwriteForeign"].asBool(false));
+        if (r.foreign) { ForeignError(res, r); return; }
         if (!r.ok) { JsonError(res, 500, r.error.empty() ? "書き出しに失敗しました" : r.error); return; }
 
         std::string name = project["meta"]["name"].asStr();
         std::string action = "none";
-        if (ssp.sstp && body["activate"].asBool(true) && !name.empty()) {
+        if (!name.empty() && !SafeGhostNameForTag(name)) {
+            // 名前に [ ] \ " , が入っていると、切り替えの命令に別の命令を足せてしまう
+            action = "unsafe-name";
+        } else if (ssp.sstp && body["activate"].asBool(true) && !name.empty()) {
             bool already = !ssp.ghostName.empty() &&
                            (ssp.ghostName == name ||
                             ssp.ghostName == project["meta"]["sakuraName"].asStr());

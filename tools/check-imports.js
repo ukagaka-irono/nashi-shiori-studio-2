@@ -29,7 +29,7 @@ const TARGET = { major: 5, minor: 0, name: 'Windows 2000' };
 const SINCE = {
   // --- Windows 2000 (5.0) までにあるもの ---
   '5.0': [
-    'CloseHandle', 'CreateFileW', 'CreateThread', 'DeleteCriticalSection',
+    'CloseHandle', 'CreateFileW', 'CreateThread', 'DeleteCriticalSection', 'DeleteFileW',
     'DisableThreadLibraryCalls', 'EnterCriticalSection', 'ExitProcess',
     'FindClose', 'FindFirstFileExW', 'FindNextFileW', 'FlushFileBuffers',
     'FreeEnvironmentStringsW', 'FreeLibrary', 'FreeLibraryAndExitThread',
@@ -40,10 +40,10 @@ const SINCE = {
     'GetLastError', 'GetLocalTime', 'GetModuleFileNameW', 'GetModuleHandleW',
     'GetOEMCP', 'GetProcAddress', 'GetProcessHeap', 'GetStartupInfoW',
     'GetStdHandle', 'GetStringTypeW', 'GetSystemTimeAsFileTime', 'GetTickCount',
-    'GlobalAlloc', 'GlobalFree', 'HeapAlloc', 'HeapFree', 'HeapReAlloc', 'HeapSize',
+    'GlobalAlloc', 'GlobalFree', 'GlobalSize', 'HeapAlloc', 'HeapFree', 'HeapReAlloc', 'HeapSize',
     'InitializeCriticalSection', 'IsDebuggerPresent', 'IsValidCodePage',
     'LCMapStringW', 'LeaveCriticalSection', 'LoadLibraryExW', 'LoadLibraryW',
-    'MultiByteToWideChar', 'QueryPerformanceCounter', 'RaiseException', 'ReadFile',
+    'MoveFileExW', 'MultiByteToWideChar', 'QueryPerformanceCounter', 'RaiseException', 'ReadFile',
     'RtlUnwind', 'SetFilePointer', 'SetFilePointerEx', 'SetLastError',
     'OutputDebugStringA', 'OutputDebugStringW',
     'SetStdHandle', 'SetUnhandledExceptionFilter', 'Sleep', 'TerminateProcess',

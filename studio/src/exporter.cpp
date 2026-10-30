@@ -20,9 +20,34 @@ std::string SafeFolderName(const std::string& name, const char* fallback) {
             c == '"' || c == '<' || c == '>' || c == '|') continue;
         out += (char)c;
     }
+    // 長すぎるとパスの上限（260 文字）にかかるので、UTF-8 の途中でない所で切る
+    const size_t kMaxBytes = 120;
+    if (out.size() > kMaxBytes) {
+        size_t n = kMaxBytes;
+        while (n > 0 && ((unsigned char)out[n] & 0xC0) == 0x80) n--;
+        out.erase(n);
+    }
     while (!out.empty() && (out[0] == '.' || out[0] == ' ')) out.erase(0, 1);
     while (!out.empty() && (out[out.size() - 1] == '.' || out[out.size() - 1] == ' ')) out.erase(out.size() - 1);
-    return out.empty() ? std::string(fallback) : out;
+    if (out.empty()) return std::string(fallback);
+
+    // CON や NUL などは Windows が「装置」として扱うので、ファイルにもフォルダにもできない
+    std::string stem = out.substr(0, out.find('.'));
+    while (!stem.empty() && stem[stem.size() - 1] == ' ') stem.erase(stem.size() - 1);
+    for (size_t i = 0; i < stem.size(); i++) {
+        if (stem[i] >= 'a' && stem[i] <= 'z') stem[i] = (char)(stem[i] - 'a' + 'A');
+    }
+    static const char* kDevices[] = { "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$" };
+    bool device = false;
+    for (size_t i = 0; i < sizeof(kDevices) / sizeof(kDevices[0]); i++) {
+        if (stem == kDevices[i]) device = true;
+    }
+    if (stem.size() == 4 && (stem.compare(0, 3, "COM") == 0 || stem.compare(0, 3, "LPT") == 0) &&
+        stem[3] >= '0' && stem[3] <= '9') {
+        device = true;
+    }
+    if (device) out = "_" + out;
+    return out;
 }
 
 static std::string Line(const char* key, const std::string& value) {
@@ -183,6 +208,8 @@ static std::string AnimationLines(const JValue& project, int surfaceId) {
                 if (file.empty() || file.size() > 160) continue;
                 if (file.find(',') != std::string::npos) continue;      // 1 行が壊れる
                 if (file.find("..") != std::string::npos) continue;     // 外へは出さない
+                if (file.find(':') != std::string::npos) continue;      // C:\… も外
+                if (file[0] == '\\' || file[0] == '/') continue;        // \\host\… も外
                 if (file.find('\r') != std::string::npos ||
                     file.find('\n') != std::string::npos) continue;
                 sprintf_s(buf, "animation%d.pattern%d,import,%s,%d,%d,%d\r\n",
@@ -366,7 +393,8 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
         std::string path = ShellImagePath(project, list[i].id);
         std::string data;
         int w = 0, h = 0;
-        if (!path.empty() && ReadBinaryFile(Utf8ToWide(path), data) && PngSize(data, &w, &h)) {
+        if (!path.empty() && IsLocalPath(Utf8ToWide(path)) &&
+            ReadBinaryFile(Utf8ToWide(path), data) && PngSize(data, &w, &h)) {
             f.data = data;
             f.shell = false;   // 自分でえらんだ絵は、既存があっても書きこむ
             list[i].w = w;
@@ -672,6 +700,9 @@ static bool SkipInDau(const std::wstring& rel) {
     if (low == L"delete.txt") return true;              // サーバ側だけの指示書
     if (low == L"thumbs.db" || low == L"desktop.ini") return true;
     if (low.compare(0, 5, L".git\\") == 0 || low == L".git") return true;
+    // SSP が使う人ごとに作る記録（ghost\master\profile\ など）も、配るものではない
+    if (low.compare(0, 8, L"profile\\") == 0 || low.find(L"\\profile\\") != std::wstring::npos) return true;
+    if (low.size() > 4 && low.compare(low.size() - 4, 4, L".tmp") == 0) return true;
     return false;
 }
 
@@ -695,13 +726,47 @@ std::string BuildUpdatesDau(const std::wstring& root) {
 
 // -------------------------------------------------------------- 書き出し
 
+// そのフォルダにあるゴーストが、なし栞以外の栞で動いているか。
+// descript.txt の shiori の行を見る（無ければ、なし栞の書き出しとみなさない）。
+static bool HasForeignGhost(const std::wstring& root) {
+    std::string text;
+    if (!ReadBinaryFile(PathJoin(root, L"ghost\\master\\descript.txt"), text)) return false;
+    text = ToUtf8(text);
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t e = text.find('\n', pos);
+        if (e == std::string::npos) e = text.size();
+        std::string line = Trim(text.substr(pos, e - pos));
+        pos = e + 1;
+        if (line.size() < 7) continue;
+        std::string key = line.substr(0, 7);
+        for (size_t i = 0; i < key.size(); i++) {
+            if (key[i] >= 'A' && key[i] <= 'Z') key[i] = (char)(key[i] - 'A' + 'a');
+        }
+        if (key != "shiori,") continue;
+        std::string v = Trim(line.substr(7));
+        for (size_t i = 0; i < v.size(); i++) {
+            if (v[i] >= 'A' && v[i] <= 'Z') v[i] = (char)(v[i] - 'A' + 'a');
+        }
+        return v != "nashi.dll";
+    }
+    return true;                                   // 栞の書かれていないゴースト
+}
+
 ExportResult ExportToDir(const JValue& project, const std::wstring& outDir, const std::string& dll,
-                         bool includeShell, bool overwriteShell) {
+                         bool includeShell, bool overwriteShell, bool allowForeign) {
     ExportResult r;
     std::string folder;
     std::vector<OutFile> files = BuildGhostFiles(project, dll, includeShell, &folder);
     r.folder = folder;
     r.root = PathJoin(outDir, Utf8ToWide(folder));
+
+    // フォルダ名が同じ別のゴーストを、まるごと上書きしてしまわないように
+    if (!allowForeign && HasForeignGhost(r.root)) {
+        r.foreign = true;
+        r.error = "「" + folder + "」には、別の栞で動くゴーストがすでに入っています。";
+        return r;
+    }
 
     if (!EnsureDir(r.root)) {
         r.error = "フォルダを作れませんでした";
@@ -716,6 +781,12 @@ ExportResult ExportToDir(const JValue& project, const std::wstring& outDir, cons
         std::wstring dest = PathJoin(r.root, rel);
         if (files[i].shell && PathExists(dest) && !overwriteShell) {
             r.skipped.push_back(files[i].name);
+            continue;
+        }
+        // 中身が同じなら書かない（SSP が読みこんでいる nashi.dll は差しかえられないため）
+        std::string current;
+        if (PathExists(dest) && ReadBinaryFile(dest, current) && current == files[i].data) {
+            r.written.push_back(files[i].name);
             continue;
         }
         if (!WriteBinaryFile(dest, files[i].data)) {

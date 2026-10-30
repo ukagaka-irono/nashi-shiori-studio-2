@@ -19,9 +19,12 @@
 
   // ---------------------------------------------------------- 保存 / 読込
   async function saveProject(silent) {
-    const name = Model.project.meta.name || 'ゴースト';
+    // 開いたファイルがあればそこへ。新しいものは、ゴーストの名前で作る
+    // （同じ名前の別のプロジェクトがあれば、exe が「名前 (2)」のように空いた名前にする）。
+    const create = !App.projectName;
+    const name = App.projectName || Model.project.meta.name || 'ゴースト';
     try {
-      const r = await api('/api/project', { method: 'POST', body: { name, project: Model.project } });
+      const r = await api('/api/project', { method: 'POST', body: { name, create, project: Model.project } });
       App.projectName = r.saved;
       Model.dirty = false;
       updateTitle();
@@ -34,9 +37,11 @@
   }
 
   /** ウィンドウを閉じるとき、アプリ本体から呼ばれる（保存し終わったら合図を返す） */
+  // 保存できなかったときは 'save-failed' を返し、閉じるかどうかは exe が使う人に確かめる。
   App.requestSaveAndClose = async function () {
-    try { await saveProject(true); } catch (e) { /* 保存できなくても閉じる */ }
-    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage('saved');
+    let ok = false;
+    try { ok = await saveProject(true); } catch (e) { ok = false; }
+    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(ok ? 'saved' : 'save-failed');
   };
 
   function modal(title, bodyEl, buttons) {
@@ -74,7 +79,10 @@
       x.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (!confirm(`「${p.title}」を削除しますか？`)) return;
-        await api('/api/project/delete', { method: 'POST', body: { name: p.file } });
+        try {
+          await api('/api/project/delete', { method: 'POST', body: { name: p.file } });
+        } catch (err) { App.toast(err.message, true); return; }
+        if (App.projectName === p.file) App.projectName = '';   // 開いているものを消したら、次は新しく保存
         closeModal();
         openProjectDialog();
       });
@@ -130,12 +138,29 @@
   }
 
   // ------------------------------------------------------------- 書き出し
+  /**
+   * 書き出し先に別の栞のゴーストがあったら、確かめてから上書きする。
+   * send(overwriteForeign) は API を呼ぶ関数。やめたときは null を返す。
+   */
+  async function withForeignCheck(send) {
+    try {
+      return await send(false);
+    } catch (e) {
+      if (!(e.data && e.data.foreign)) throw e;
+      const ok = confirm(`${e.message}\n\n上書きすると、そのゴーストの会話と栞が、` +
+        'このプロジェクトのものに置きかわります（もとには戻せません）。\n' +
+        'ゴーストの名前（フォルダ名）を変えるのがおすすめです。それでも上書きしますか？');
+      if (!ok) return null;
+      return await send(true);
+    }
+  }
+
   async function doExport(mode) {
     const outDir = $('#export-dir').value.trim();
     const box = $('#export-result');
     box.textContent = '書き出し中…';
     try {
-      const r = await api('/api/export', {
+      const r = await withForeignCheck((overwriteForeign) => api('/api/export', {
         method: 'POST',
         body: {
           project: Model.project,
@@ -143,8 +168,10 @@
           mode,
           includeShell: $('#export-shell').checked,
           overwriteShell: $('#export-overwrite').checked,
+          overwriteForeign,
         },
-      });
+      }));
+      if (!r) { box.textContent = 'やめました。'; return; }
       box.textContent = '';
       const p = Render.div('');
       if (mode === 'nar') {
@@ -175,6 +202,6 @@
   }
 
 
-  N.Dialog = { saveProject, openProjectDialog, openSampleDialog, doExport, modal, closeModal };
+  N.Dialog = { saveProject, openProjectDialog, openSampleDialog, doExport, withForeignCheck, modal, closeModal };
 
 })(window.NASHI);

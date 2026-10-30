@@ -19,7 +19,13 @@ bool IsDirectory(const std::wstring& path);
 bool EnsureDir(const std::wstring& path);          // mkdir -p 相当
 
 bool ReadBinaryFile(const std::wstring& path, std::string& out);
+// となりに書いてから差しかえる（途中で落ちても、前の中身が残る）
 bool WriteBinaryFile(const std::wstring& path, const std::string& data);
+
+// 「C:\…」の形の、このコンピュータの中のパスか。
+// \\host\share や \\?\…、\\.\… は false（プロジェクトに書かれたパスを開くだけで、
+// よそのコンピュータへつなぎに行ってしまわないように）。
+bool IsLocalPath(const std::wstring& path);
 bool DeleteFileIfExists(const std::wstring& path);
 
 struct FileInfo {

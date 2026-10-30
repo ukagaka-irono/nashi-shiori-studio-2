@@ -216,12 +216,16 @@ SspInfo DetectSsp(const std::wstring& hint) {
     std::wstring exe = FindRunningSsp();
     info.running = !exe.empty();
 
+    // 指定された場所は、このコンピュータの中の ssp.exe だけを受け付ける
+    // （「SSP を起動」でほかのプログラムを動かしてしまわないように）。
     if (exe.empty() && !hint.empty()) {
         std::wstring h = ExpandVars(hint);
-        if (IsDirectory(h)) {
-            if (PathExists(PathJoin(h, L"ssp.exe"))) exe = PathJoin(h, L"ssp.exe");
-        } else if (PathExists(h)) {
-            exe = h;
+        if (IsLocalPath(h)) {
+            if (IsDirectory(h)) {
+                if (PathExists(PathJoin(h, L"ssp.exe"))) exe = PathJoin(h, L"ssp.exe");
+            } else if (PathExists(h) && _wcsicmp(FileNameOf(h).c_str(), L"ssp.exe") == 0) {
+                exe = h;
+            }
         }
     }
 

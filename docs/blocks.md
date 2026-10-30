@@ -37,12 +37,16 @@
 えらばれやすさに応じて 1 つだけ呼ばれます。空なら、どのまとまりにも入りません。
 
 主なイベント名: `OnFirstBoot` / `OnBoot` / `OnClose` / `OnMouseDoubleClick` /
-`OnMouseClick` / `OnNadeNade` / `OnMouseMove` / `OnMouseWheel` / `OnHourChange` /
+`OnMouseClick` / `OnNadeNade` / `OnMouseMove` / `OnMouseWheel` / `OnHourTimeSignal` /
 `OnMinuteChange` / `OnSecondChange` / `OnChoiceSelect` / `OnCommunicate` /
 `OnGhostChanged` / `OnGhostChanging` / `OnKeyPress` / `OnSurfaceRestore` /
 `OnWindowStateMinimize` / `OnWindowStateRestore` /
 `OnUpdateBegin` / `OnUpdateReady` / `OnUpdateComplete` / `OnUpdateFailure` /
 `OnSaoriDone` / `OnUserInput` / `OnUserInputCancel`。
+`OnHourTimeSignal`（1時間ごと）は、以前の版では `OnHourChange` と書き出していました。
+SSP にその名前のイベントは無いので、読みこむと自動で直します（栞も、古い `ghost.json` の
+`OnHourChange` を `OnHourTimeSignal` のときに動かします）。
+`OnGhostChanged`（他のゴーストから来たとき）のブロックが無いときは、「起動したとき」が動きます。
 一覧にないイベントは「その他（自分で書く）」で直接入力できます
 （`OnUpdate.OnDownloadBegin` のような細かい途中経過もここから書けます）。
 
@@ -89,9 +93,21 @@ SSP の通信ボックスから話しかけられた場合、相手の名前は 
 `%username` などの `%` はそのまま通るので、SSP の置換が使えます。
 
 **リンクの URL・音のファイル名・選択肢の見出しと行き先**に入れた文字からは、
-`[` `]` と改行（行き先はさらに `,`）を落としてから書き出します。
+`[` `]` `"` と改行を落としてから書き出します。さらに、
+
+* 選択肢とリンクの**見出し**の `,` は全角の `，` に置きかえます（行き先を書き足させないため）。
+* 選択肢の**行き先**からは `,` を落とします。
+* **URL**（リンク・ブラウザで開く）は `http://` か `https://` で始まるものだけを通し、
+  `,` `[` `]` などは `%2C` のような URL の書きかたに直します。
+* **音のファイル名**は、ゴーストのフォルダの中だけです（`C:\…`・`\\host\…`・`..` は出しません）。
+
 ここに「言われたこと」や「たずねた答え」のような**外から来た文字**をはめ込んでも、
 `]` でタグを閉じて別の命令を続けることはできません。
+
+栞は、自分が出した選択肢・リンクの行き先と、入力ボックスの ID を覚えておき、
+SSP から返ってきた `OnChoiceSelect` / `OnAnchorSelect` / `OnUserInput` は**覚えているものだけ**
+受け付けます（SSTP を送れるほかのプログラムが、同じイベントを作って変数を書きかえたり、
+トークを勝手に動かしたりできないようにするためです）。
 `さくらスクリプト □ をそのまま出す`（`raw`）だけは、名前のとおり**素通し**です。
 外から来た文字をそのまま入れないでください。
 
@@ -271,7 +287,8 @@ SSP の通信ボックスから話しかけられた場合、相手の名前は 
 | イベント | 0 | 1 | 2 | 3 | 4 |
 |---|---|---|---|---|---|
 | OnMouseDoubleClick | X座標 | Y座標 | ホイール | 相手(0/1) | 当たった場所 |
-| OnSecondChange | ウィンドウ | しゃべってよいか | 累計秒数 | | |
+| OnSecondChange | OSの連続起動時間(時) | 見切れていたら 1 | 重なっていたら 1 | しゃべってよいか(1=よい) | 放置されている秒数 |
+| OnGhostChanged | 前のゴーストの本体側の名前 | 切り替えスクリプト | 前のゴースト名 | 前のゴーストの場所 | （Reference7 にシェル名） |
 | OnChoiceSelect | えらばれたID | | | | |
 | OnBoot | シェル名 | | | | |
 | OnCommunicate | 相手の名前 | 言われたこと | | | |

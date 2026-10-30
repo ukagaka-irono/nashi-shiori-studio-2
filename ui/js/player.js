@@ -31,13 +31,34 @@
     let i = 0;
     let text = '';
     const flush = () => { if (text) { ops.push({ op: 'text', text }); text = ''; } };
+    // [ … ] の中身。\] と \\ は 1 文字として読む（SSP と同じ）。
     const readBracket = () => {
       if (s[i] !== '[') return null;
-      const end = s.indexOf(']', i);
-      if (end < 0) return null;
-      const body = s.slice(i + 1, end);
-      i = end + 1;
+      let j = i + 1;
+      let body = '';
+      while (j < s.length && s[j] !== ']') {
+        if (s[j] === '\\' && (s[j + 1] === ']' || s[j + 1] === '\\')) { body += s[j + 1]; j += 2; continue; }
+        body += s[j++];
+      }
+      if (j >= s.length) return null;
+      i = j + 1;
       return body;
+    };
+    // , で分ける。"…" でくくった中の , は区切りにしない（"" は " 1 つ）。
+    const splitArgs = (a) => {
+      const out = [''];
+      let quoted = false;
+      for (let k = 0; k < a.length; k++) {
+        const ch = a[k];
+        if (ch === '"') {
+          if (quoted && a[k + 1] === '"') { out[out.length - 1] += '"'; k++; continue; }
+          quoted = !quoted;
+          continue;
+        }
+        if (ch === ',' && !quoted) { out.push(''); continue; }
+        out[out.length - 1] += ch;
+      }
+      return out;
     };
 
     while (i < s.length) {
@@ -65,14 +86,10 @@
         case 'x': flush(); ops.push({ op: 'clickwait' }); break;
         case 'b': { readBracket(); break; }
         case 'q': {
-          const a = readBracket() || '';
-          const comma = a.lastIndexOf(',');
+          // \q[見出し,行き先,Reference…]。行き先のあとに続く引数は、見出しに入れない。
+          const a = splitArgs(readBracket() || '');
           flush();
-          ops.push({
-            op: 'choice',
-            label: comma >= 0 ? a.slice(0, comma) : a,
-            id: comma >= 0 ? a.slice(comma + 1) : '',
-          });
+          ops.push({ op: 'choice', label: a[0], id: a.length > 1 ? a[1] : '' });
           break;
         }
         case 'w': {
@@ -81,9 +98,15 @@
           break;
         }
         case '_': {
-          const kind = s[i]; i++;
+          let kind = s[i]; i++;
+          // \__w[…] / \__q[…] のように _ が 2 つ続くもの
+          if (kind === '_') { kind = '_' + s[i]; i++; }
           const a = readBracket();
-          if (kind === 'w') { flush(); ops.push({ op: 'wait', ms: Number(a) || 0 }); }
+          if (kind === 'w' || kind === '__w') {
+            // \__w[animation,ID] はアニメーションを待つ。プレビューでは待たない。
+            const ms = Number(a);
+            if (Number.isFinite(ms)) { flush(); ops.push({ op: 'wait', ms }); }
+          }
           else if (kind === 'a') { flush(); ops.push({ op: 'link', url: a }); }
           else if (kind === 'v') { flush(); ops.push({ op: 'sound', file: a }); }
           break;

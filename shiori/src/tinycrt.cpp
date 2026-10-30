@@ -198,9 +198,17 @@ extern "C" void __stdcall NashiThrowStub(void*, void*) {
     Die("nashi: 例外が投げられました（起きないはずです）\n");
 }
 #pragma comment(linker, "/alternatename:__CxxThrowException@8=_NashiThrowStub@8")
-extern "C" int __cdecl __CxxFrameHandler3(void*, void*, void*, void*) {
-    Die("nashi: 例外の巻きもどしが起きました（起きないはずです）\n");
-    return 0;
+
+// こちらは「片づけが要る関数」すべての SEH の受け口として呼ばれます。
+// C++ の throw は上で止めているので、ここに来るのは SAORI の中のアクセス違反のような
+// OS の例外です。以前はここで ExitProcess していたため、SSP ごと落ちていました。
+// いまは「ここでは扱わない」と返し、SSP（呼んだ側）の受け口に任せます。
+// 巻きもどしで栞の関数が途中で捨てられるので、「呼び出しの中にいる」印だけは下ろします。
+namespace nashi { void AbandonCalls(); }
+extern "C" int __cdecl __CxxFrameHandler3(void* record, void*, void*, void*) {
+    const DWORD kUnwinding = 0x2 | 0x4;          // EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND
+    if (record && (((EXCEPTION_RECORD*)record)->ExceptionFlags & kUnwinding)) nashi::AbandonCalls();
+    return 1;                                     // ExceptionContinueSearch
 }
 extern "C" void __cdecl __std_terminate() { Die("nashi: terminate\n"); }
 

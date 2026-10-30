@@ -19,14 +19,21 @@ static std::string LowerAscii(const std::string& s) {
     return t;
 }
 
-// Finds "charset" in raw bytes without decoding first (header names are ASCII).
+// Finds the Charset header in raw bytes without decoding first (header names are ASCII).
+// 行の頭にある "Charset:" だけを見ます（Reference の中身に書かれた文字にはだまされない）。
 static bool RequestIsUtf8(const std::string& raw) {
-    std::string low = LowerAscii(raw);
-    size_t p = low.find("charset:");
-    if (p == std::string::npos) return true;               // assume UTF-8
-    size_t e = low.find('\n', p);
-    std::string v = low.substr(p + 8, (e == std::string::npos ? low.size() : e) - (p + 8));
-    return v.find("utf-8") != std::string::npos || v.find("utf8") != std::string::npos;
+    size_t pos = 0;
+    while (pos < raw.size()) {
+        size_t e = raw.find('\n', pos);
+        if (e == std::string::npos) e = raw.size();
+        if (e - pos >= 8 && LowerAscii(raw.substr(pos, 8)) == "charset:") {
+            std::string v = LowerAscii(raw.substr(pos + 8, e - (pos + 8)));
+            return v.find("utf-8") != std::string::npos || v.find("utf8") != std::string::npos;
+        }
+        if (e == pos || (e == pos + 1 && raw[pos] == '\r')) break;   // 空行から先は本文
+        pos = e + 1;
+    }
+    return true;                                            // assume UTF-8
 }
 
 bool ParseRequest(const std::string& utf8, ShioriRequest& out) {
@@ -44,7 +51,8 @@ bool ParseRequest(const std::string& utf8, ShioriRequest& out) {
             size_t c = line.find(':');
             if (c != std::string::npos) {
                 std::string key = Trim(line.substr(0, c));
-                std::string val = Trim(line.substr(c + 1));
+                // 外から来た値は、長さを切って、壊れた UTF-8 を直してから使う
+                std::string val = CapText(RepairUtf8(Trim(line.substr(c + 1))));
                 std::string lk = LowerAscii(key);
                 out.headers[lk] = val;
                 if (lk == "id") {
@@ -153,7 +161,8 @@ void Shiori::Unload() {
 
 void Shiori::LoadSave() {
     std::string text;
-    if (!ReadTextFile(dir_ + L"nashi_save.json", text)) return;
+    // 自分で UTF-8 で書いたファイルなので、Shift_JIS かもしれないとは考えない
+    if (!ReadTextFile(dir_ + L"nashi_save.json", text, false)) return;
     JValue v;
     std::string err;
     if (!JsonParse(text, v, err) || !v.isObj()) return;
@@ -508,23 +517,96 @@ std::string Shiori::BuiltinDefault(const std::string& id, const ShioriRequest& r
     return std::string();
 }
 
+// [ … ] の中身を , で分けて返す（\] と \\ は 1 文字として読む）。
+// pos は [ の次。終わると ] の次を指す。
+static std::vector<std::string> ReadTagArgs(const std::string& s, size_t& pos) {
+    std::vector<std::string> args(1);
+    while (pos < s.size()) {
+        char c = s[pos];
+        if (c == '\\' && pos + 1 < s.size()) { args.back() += s[pos + 1]; pos += 2; continue; }
+        pos++;
+        if (c == ']') break;
+        if (c == ',') { args.push_back(std::string()); continue; }
+        args.back() += c;
+    }
+    return args;
+}
+
+// 出したスクリプトから、選択肢の行き先と入力ボックスの ID を拾っておく。
+// ブロックが作ったものも、「さくらスクリプトをそのまま」に書かれたものも拾えるよう、
+// 組み立てた側ではなく、できあがった文字のほうを見る。
+void Shiori::RememberOffered(const std::string& script) {
+    const size_t kKeep = 128;
+    size_t i = 0;
+    while (i < script.size()) {
+        if (script[i] != '\\') { i++; continue; }
+        if (i + 1 < script.size() && script[i + 1] == '\\') { i += 2; continue; }   // \\ は文字
+        std::string key;
+        size_t pos = std::string::npos;
+        if (script.compare(i, 3, "\\q[") == 0)        { pos = i + 3; key = "c"; }
+        else if (script.compare(i, 4, "\\_a[") == 0)  { pos = i + 4; key = "a"; }
+        else if (script.compare(i, 5, "\\__q[") == 0) { pos = i + 5; key = "a"; }
+        else if (script.compare(i, 17, "\\![open,inputbox,") == 0) { pos = i + 3; key = "i"; }
+        if (pos == std::string::npos) { i++; continue; }
+        std::vector<std::string> a = ReadTagArgs(script, pos);
+        i = pos;
+        std::string got;
+        if (key == "c" && a.size() > 1) got = "c:" + Trim(a[1]);       // \q[ラベル,行き先]
+        else if (key == "a")            got = "c:" + Trim(a[0]);       // \_a[行き先]
+        else if (key == "i" && a.size() > 2) got = "i:" + Trim(a[2]);  // \![open,inputbox,ID,…]
+        if (got.size() <= 2) continue;
+        for (size_t k = 0; k < offered_.size(); k++) {
+            if (offered_[k] == got) { offered_.erase(offered_.begin() + (long)k); break; }
+        }
+        offered_.push_back(got);
+        if (offered_.size() > kKeep) offered_.erase(offered_.begin());
+    }
+}
+
+bool Shiori::TakeOffered(const std::string& key, bool consume) {
+    for (size_t k = 0; k < offered_.size(); k++) {
+        if (offered_[k] != key) continue;
+        if (consume) offered_.erase(offered_.begin() + (long)k);
+        return true;
+    }
+    return false;
+}
+
+// 起動・ゴーストの切り替え・呼び出し。どれも「このゴーストが動きはじめた」ところ。
+void Shiori::NoteBoot(const ShioriRequest& req, const std::string& shell) {
+    (void)req;
+    sys_.bootCount++;
+    sys_.shellName = shell;
+    sys_.ghostName = prog_.meta()["name"].asStr();
+    dirty_ = true;
+}
+
+static std::string RefAt(const ShioriRequest& req, size_t i) {
+    return req.refs.size() > i ? req.refs[i] : std::string();
+}
+
 std::string Shiori::Dispatch(const ShioriRequest& req) {
     const std::string& id = req.id;
 
-    if (id == "OnBoot" || id == "OnFirstBoot") {
-        sys_.bootCount++;
-        sys_.shellName = req.refs.empty() ? std::string() : req.refs[0];
-        sys_.ghostName = prog_.meta()["name"].asStr();
-        dirty_ = true;
-    }
+    if (id == "OnBoot" || id == "OnFirstBoot") NoteBoot(req, RefAt(req, 0));
+    // ほかのゴーストから切り替わって来たとき・呼ばれたときは OnBoot が来ない。
+    // シェルの名前は Reference7 に入っている（SSP）。
+    if (id == "OnGhostChanged" || id == "OnGhostCalled") NoteBoot(req, RefAt(req, 7));
+    if (id == "OnShellChanged") sys_.shellName = RefAt(req, 0);
 
     if (id == "OnSecondChange") {
         sys_.uptimeSec++;
         secondsSinceTalk_++;
 
+        // いましゃべってよいか。SSP は Reference3 に入れてくる（1 = よい）。
+        // しゃべっている途中・選択肢を待っている途中などは 0 になる。
+        // ここで割りこむと、出ている選択肢やセリフを消してしまう。
+        bool canTalk = true;
+        if (req.refs.size() > 3 && !req.refs[3].empty()) canTalk = (req.refs[3] == "1");
+
         // 待たずに呼んだ SAORI の答えが届いていたら、まずそれを知らせる。
         // SSP は毎秒たたいてくるので、ここを受け取り口にしている。
-        while (!saoriDone_.empty()) {
+        while (canTalk && !saoriDone_.empty()) {
             SaoriDone d = saoriDone_.front();
             saoriDone_.erase(saoriDone_.begin());
             ShioriRequest ev = req;
@@ -541,7 +623,8 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
 
         // 「N 秒後によぶ」の予約。時間が来たものを 1 つだけ動かす
         // （同じ秒に 2 つ来ても、返せる返事は 1 つなので、残りは次の秒へ）。
-        for (size_t i = 0; i < timers_.size(); i++) {
+        // しゃべれないあいだは、時間が来たものも次の機会まで取っておく。
+        for (size_t i = 0; canTalk && i < timers_.size(); i++) {
             if (timers_[i].dueSec > sys_.uptimeSec) continue;
             std::string name = timers_[i].name;
             timers_.erase(timers_.begin() + (long)i);
@@ -552,9 +635,6 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
             if (!out.empty()) { secondsSinceTalk_ = 0; return out; }
             break;
         }
-
-        bool canTalk = true;
-        if (req.refs.size() > 1 && !req.refs[1].empty()) canTalk = (req.refs[1] == "1");
 
         bool found = false;
         std::string out = RunHandlers(id, req, &found);
@@ -600,28 +680,49 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
 
     // 入力ボックスの答え。「たずねる」ブロックが付けた ID なら、変数に入れる。
     // ID は "nashi:変数名" の形にしてある（interp.cpp の "ask"）。
+    // こちらが開いた箱の答えだけを、1 回だけ受け取る。
     if (id == "OnUserInput" && !req.refs.empty()) {
         const std::string& boxId = req.refs[0];
-        if (boxId.compare(0, 6, "nashi:") == 0 && boxId.size() > 6) {
+        if (boxId.compare(0, 6, "nashi:") == 0 && boxId.size() > 6 && TakeOffered("i:" + boxId, true)) {
             std::string name = boxId.substr(6);
-            std::string answer = req.refs.size() > 1 ? req.refs[1] : std::string();
-            vars_.set(name, Value::Str(answer));
+            vars_.set(name, Value::Str(RefAt(req, 1)));
             dirty_ = true;
         }
     }
 
+    // 選択肢・リンクの行き先。こちらが出したものだけを動かす。
     if (id == "OnChoiceSelect" || id == "OnAnchorSelect") {
-        std::string target = req.refs.empty() ? std::string() : req.refs[0];
-        const JValue* fn = prog_.functionByName(target);
-        if (!fn) fn = prog_.scriptById(target);
+        std::string target = RefAt(req, 0);
+        const JValue* fn = NULL;
+        if (TakeOffered("c:" + target, false)) {
+            fn = prog_.functionByName(target);
+            if (!fn) fn = prog_.scriptById(target);
+        }
         if (fn) {
             secondsSinceTalk_ = 0;
             return RunOne(*fn, req);
         }
     }
 
+    // SSP に「1時間ごと」のイベントは OnHourTimeSignal しかない。
+    // 以前のエディタは OnHourChange で書き出していたので、そちらも動かす。
+    if (id == "OnHourTimeSignal") {
+        bool hourFound = false;
+        std::string out = RunHandlers(id, req, &hourFound);
+        if (!hourFound) out = RunHandlers("OnHourChange", req, &hourFound);
+        if (!out.empty()) secondsSinceTalk_ = 0;
+        return out;
+    }
+
     bool found = false;
     std::string out = RunHandlers(id, req, &found);
+    // ほかのゴーストから切り替わって来たときに専用のブロックが無ければ、
+    // 「起動したとき」を使う（書いた人の思う「出てきたとき」はたいていそちら）。
+    if (!found && (id == "OnGhostChanged" || id == "OnGhostCalled")) {
+        out = RunHandlers("OnBoot", req, &found);
+        if (!found) out = BuiltinDefault("OnBoot", req);
+        found = true;
+    }
     if (out.empty() && !found) out = BuiltinDefault(id, req);
     if (!out.empty()) secondsSinceTalk_ = 0;
 
@@ -646,6 +747,10 @@ std::string Shiori::Request(const std::string& rawRequest) {
     if (req.id == "craftmanw") return BuildResponse(kShioriCraftman);
     if (req.id == "name")     return BuildResponse(kShioriName);
 
+    // ほかのコンピュータから SSTP で届いたもの（SecurityLevel: external）には反応しない。
+    // 変数やトークを動かせる入り口を、ネットワークの向こうに開けておかないため。
+    if (LowerAscii(req.header("securitylevel")) == "external") return BuildResponse("");
+
     MaybeReload();
     DrainSaori();
 
@@ -660,17 +765,29 @@ std::string Shiori::Request(const std::string& rawRequest) {
 
     // ゴースト同士で話しかけ合うと止まらなくなることがあるので、
     // 話しかけ返しが続いたら、しゃべるだけにして通信は打ち切る。
+    // あいだに OnSecondChange などがはさまっても数えなおさない。かわりに、
+    // 1 分だまっていたら別の会話とみなす。相手が付けてきた Age（世代数）も見る。
     if (req.id == "OnCommunicate") {
         const int kMaxCommChain = 8;
-        if (!commTo_.empty() && ++commChain_ > kMaxCommChain) commTo_.clear();
+        unsigned long now = GetTickCount();
+        if (commTick_ != 0 && now - commTick_ > 60000) commChain_ = 0;
+        commTick_ = now;
+        if (!commTo_.empty()) {
+            ++commChain_;
+            std::string age = Trim(req.header("age"));
+            if (!age.empty()) {
+                int theirs = atoi(age.c_str());
+                if (theirs >= 0 && theirs < 1000 && theirs + 1 > commChain_) commChain_ = theirs + 1;
+            }
+            if (commChain_ > kMaxCommChain) commTo_.clear();
+        }
     } else if (!commTo_.empty()) {
         commChain_ = 1;                // こちらから始めた通信
-    } else {
-        commChain_ = 0;
     }
 
     value = CloseScript(value, req.id == "OnClose" || req.id == "OnCloseAll");
     if (req.method == "NOTIFY") return BuildResponse("");
+    RememberOffered(value);
     // commChain_ は「何回目のやりとりか」なので、世代数はその 1 つ手前
     return BuildResponse(value, commTo_, commChain_ > 0 ? commChain_ - 1 : 0);
 }

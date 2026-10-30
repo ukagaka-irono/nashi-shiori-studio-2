@@ -84,6 +84,16 @@ static void FinishClose(HWND hwnd) {
     DestroyWindow(hwnd);
 }
 
+// 保存できなかった（または返事が来なかった）とき。黙って閉じると変更が消えるので確かめる。
+static void SaveFailed(HWND hwnd, const wchar_t* why) {
+    g_waitingSave = false;
+    KillTimer(hwnd, kSaveTimeoutTimer);
+    std::wstring text = std::wstring(why) + L"\n保存せずに終了しますか？（変更は消えます）";
+    int answer = MessageBoxW(hwnd, text.c_str(), L"なしスタジオ",
+                             MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (answer == IDYES) FinishClose(hwnd);
+}
+
 static void AskThenClose(HWND hwnd) {
     if (g_closing || !g_web.ready()) { FinishClose(hwnd); return; }
 
@@ -101,7 +111,7 @@ static void AskThenClose(HWND hwnd) {
             if (answer == IDNO) { FinishClose(hwnd); return; }
 
             g_waitingSave = true;
-            SetTimer(hwnd, kSaveTimeoutTimer, 5000, NULL);   // 保存が終わらなくても閉じる
+            SetTimer(hwnd, kSaveTimeoutTimer, 5000, NULL);   // 返事が来なければ、確かめる
             g_web.ExecuteScript(L"NASHI.App.requestSaveAndClose()", NULL);
         });
 }
@@ -126,7 +136,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         case WM_TIMER:
-            if (wp == kSaveTimeoutTimer && g_waitingSave) FinishClose(hwnd);
+            if (wp == kSaveTimeoutTimer && g_waitingSave) {
+                SaveFailed(hwnd, L"保存が終わりませんでした。");
+            }
             return 0;
 
         case WM_CLOSE:
@@ -145,6 +157,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 // -------------------------------------------------------------------- main
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
+    // あとから読みこむ DLL を、作業フォルダから探さない（置かれた同じ名前の DLL を読まない）。
+    // exe が輸入している DLL のほうは、リンクの /DEPENDENTLOADFLAG で System32 に限っています。
+    SetDllDirectoryW(L"");
+
     // 二重起動したときは、すでに開いているウィンドウを前に出すだけ
     HANDLE mutex = CreateMutexW(NULL, TRUE, kMutexName);
     if (mutex && GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -187,6 +203,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
 
     g_web.onMessage = [](const std::wstring& message) {
         if (message == L"saved" && g_waitingSave) FinishClose(g_hwnd);
+        if (message == L"save-failed" && g_waitingSave) SaveFailed(g_hwnd, L"保存できませんでした。");
     };
 
     bool started = g_web.Create(

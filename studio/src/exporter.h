@@ -21,6 +21,8 @@ struct ExportResult {
     std::string folder;
     std::vector<std::string> written;
     std::vector<std::string> skipped;
+    // 書き出し先に、なし栞ではない別のゴーストがすでに入っていた（何も書いていない）
+    bool foreign = false;
 };
 
 std::string SafeFolderName(const std::string& name, const char* fallback);
@@ -42,8 +44,10 @@ std::vector<OutFile> BuildGhostFiles(const JValue& project, const std::string& d
 // ネットワーク更新の照合表（updates2.dau）を、そのフォルダの中身から作る
 std::string BuildUpdatesDau(const std::wstring& root);
 
+// allowForeign = false のとき、書き出し先のフォルダに別の栞のゴーストがあれば
+// 何も書かずに foreign を立てて返す（画面で確かめてから、true で呼びなおす）。
 ExportResult ExportToDir(const JValue& project, const std::wstring& outDir, const std::string& dll,
-                         bool includeShell, bool overwriteShell);
+                         bool includeShell, bool overwriteShell, bool allowForeign = false);
 
 ExportResult ExportToNar(const JValue& project, const std::wstring& outDir, const std::string& dll,
                          bool includeShell);

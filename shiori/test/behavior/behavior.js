@@ -11,6 +11,10 @@
  *   ・「◯秒ごと」の間引き
  *   ・OnMouseMove を数えて OnNadeNade を作ること
  *   ・ゴースト間通信の届け先と、話しかけ合いの打ち切り
+ *   ・外から来た要求の受け付けかた（出していない選択肢・開いていない箱・external）
+ *   ・SSP のイベントの読みかた（しゃべれるか・1時間ごと・切り替わって来たとき）
+ *
+ * 要求には、| のうしろに見出しを足せます（例: 'OnBoot|SecurityLevel:external'）。
  *
  * ふるまいを変えたら、ここの期待値も直してください。
  */
@@ -214,8 +218,94 @@ const scenarios = [
     dir: MAIN,
     steps: [
       ['OnEmptyOut', { status: '204 No Content', value: '' }],
+      // まだ出していない選択肢の行き先は動かさない（SSTP でだれでも送れるため）
+      ['OnChoiceSelect:こたえ', { status: '204 No Content' }],
+      ['OnAnchorSelect:こたえ', { status: '204 No Content' }],
       ['OnChoiceTest', '\\q[はい,こたえ]\\e'],
       ['OnChoiceSelect:こたえ', '\\0えらばれた\\e'],
+    ],
+  },
+  {
+    name: '選択肢の見出しの , で、行き先を書き足せない',
+    dir: MAIN,
+    steps: [
+      ['OnChoiceComma', '\\q[はい，OnEvil,こたえ]\\e'],
+    ],
+  },
+  {
+    name: 'たずねる — 開いていない箱・同じ答えの 2 回目は受け取らない',
+    dir: MAIN,
+    steps: [
+      // 箱を開く前に答えが来ても、変数をいじらない
+      ['OnUserInput:nashi:こたえ,なりすまし', { status: '204 No Content' }],
+      ['OnShowAnswer', { valueOneOf: ['\\0\\e', ''] }],      // 初期値（空）のまま
+      ['OnAskTest', { value: '\\![open,inputbox,nashi:こたえ,-1,]\\e' }],
+      ['OnUserInput:nashi:こたえ,ほんもの', { status: '204 No Content' }],
+      ['OnShowAnswer', { value: '\\0ほんもの\\e' }],
+      // 1 つの箱には 1 回だけ答えられる
+      ['OnUserInput:nashi:こたえ,にどめ', { status: '204 No Content' }],
+      ['OnShowAnswer', { value: '\\0ほんもの\\e' }],
+    ],
+  },
+  {
+    name: 'ほかのコンピュータからの要求（SecurityLevel: external）には反応しない',
+    dir: MAIN,
+    steps: [
+      ['OnBoot|SecurityLevel:external', { status: '204 No Content' }],
+      ['OnBoot|SecurityLevel:local', '\\0おきた\\e'],
+    ],
+  },
+  {
+    name: '話しかけ合いは、あいだに OnSecondChange がはさまっても 8 往復で打ち切る',
+    dir: MAIN,
+    steps: (() => {
+      const out = [];
+      for (let i = 1; i <= 10; i++) {
+        out.push(['OnSecondChange:0,0,0,0', null]);
+        out.push(['OnCommunicate:みかん,ねえ', {
+          value: '\\0みかんだ\\e',
+          commTo: i <= 8 ? 'みかん' : '',
+        }]);
+      }
+      return out;
+    })(),
+  },
+  {
+    name: '相手が付けてきた Age も数に入れる（8 往復目なら返さない）',
+    dir: MAIN,
+    steps: [
+      ['OnCommunicate:みかん,ねえ|Age:3', { value: '\\0みかんだ\\e', commTo: 'みかん', age: '3' }],
+      ['OnCommunicate:みかん,ねえ|Age:8', { value: '\\0みかんだ\\e', commTo: '' }],
+    ],
+  },
+  {
+    name: 'しゃべれないとき（Reference3 が 0）は、時間が来た予約も待たせる',
+    dir: MAIN,
+    steps: [
+      ['OnLaterTest', { status: '204 No Content' }],
+      ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],
+      ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],
+      ['OnSecondChange:0,0,0,0', { value: '\\01\\e' }],   // いつもの「3 秒ごと」は動く
+      ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],
+      ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],   // 5 秒目。しゃべれないので待つ
+      ['OnSecondChange:0,0,0,1', { value: '\\0おまたせ\\e' }],
+    ],
+  },
+  {
+    name: '1時間ごと — SSP の OnHourTimeSignal で、以前の OnHourChange のブロックも動く',
+    dir: MAIN,
+    steps: [
+      ['OnHourTimeSignal:0,0,0,1', '\\0じほう\\e'],
+    ],
+  },
+  {
+    name: 'ほかのゴーストから切り替わって来たとき — 専用が無ければ「起動したとき」、シェル名も入る',
+    dir: MAIN,
+    steps: [
+      ['OnGhostChanged:みかん,,みかん,C:\\ghost\\mikan,,,,master2', '\\0おきた\\e'],
+      ['OnShowShell', '\\0master2\\e'],
+      ['OnShellChanged:master3,なしこ,C:\\shell', null],
+      ['OnShowShell', '\\0master3\\e'],
     ],
   },
 ];

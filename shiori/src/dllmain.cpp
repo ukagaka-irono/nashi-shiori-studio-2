@@ -12,6 +12,25 @@
 static nashi::Shiori* g_shiori = NULL;
 static HINSTANCE g_instance = NULL;
 
+// いま load / unload / request の中にいるか。
+// SAORI がダイアログを出してメッセージを回すと、その間に SSP がもう一度
+// request を呼んでくることがあります。そこで栞を作りなおしたり読みなおしたりすると、
+// 外側の呼び出しが消えたものを触るので、中にいる間の呼び出しは断ります。
+static bool g_busy = false;
+
+namespace {
+struct BusyScope {
+    BusyScope() { g_busy = true; }
+    ~BusyScope() { g_busy = false; }
+};
+}
+
+namespace nashi {
+// OS の例外（SAORI の中のアクセス違反など）で栞の関数が巻きもどされたとき、
+// tinycrt.cpp から呼ばれます。BusyScope の後片づけは走らないので、ここで下ろします。
+void AbandonCalls() { g_busy = false; }
+}
+
 // 栞は古い Windows でも読みこめるように、Visual Studio の C ランタイムを
 // 外して組んでいます（shiori/src/tinycrt.cpp）。ふだん CRT がやってくれる
 // 「外に置いた変数の組み立てと後片づけ」を、ここで自分で呼びます。
@@ -40,6 +59,8 @@ __declspec(dllexport) BOOL __cdecl load(HGLOBAL h, long len) {
         if (len > 0) path.assign((const char*)h, (size_t)len);
         GlobalFree(h);
     }
+    if (g_busy) return FALSE;
+    BusyScope busy;
     if (path.empty()) {
         wchar_t buf[MAX_PATH];
         DWORD n = GetModuleFileNameW(g_instance, buf, MAX_PATH);
@@ -58,6 +79,8 @@ __declspec(dllexport) BOOL __cdecl load(HGLOBAL h, long len) {
 }
 
 __declspec(dllexport) BOOL __cdecl unload() {
+    if (g_busy) return FALSE;
+    BusyScope busy;
     if (g_shiori) {
         g_shiori->Unload();
         delete g_shiori;
@@ -75,7 +98,10 @@ __declspec(dllexport) HGLOBAL __cdecl request(HGLOBAL h, long* len) {
     }
 
     std::string response;
-    if (g_shiori) {
+    if (g_busy) {
+        response = "SHIORI/3.0 204 No Content\r\nSender: nashi\r\nCharset: UTF-8\r\n\r\n";
+    } else if (g_shiori) {
+        BusyScope busy;
         response = g_shiori->Request(raw);
     } else {
         response = "SHIORI/3.0 500 Internal Server Error\r\nSender: nashi\r\nCharset: UTF-8\r\n\r\n";

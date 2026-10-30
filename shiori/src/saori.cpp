@@ -57,13 +57,22 @@ bool LooksUtf8Local(const std::string& s) {
     return true;
 }
 
-// ゴーストのフォルダから外へ出る指定は受け付けない
+// ゴーストのフォルダから外へ出る指定は受け付けない。読みこむのは .dll だけ。
 bool SafeRelative(const std::string& file) {
     if (file.empty()) return false;
     if (file.find("..") != std::string::npos) return false;
     if (file.find(':') != std::string::npos) return false;      // C:\ など
     if (file[0] == '\\' || file[0] == '/') return false;
+    if (file.size() < 5 || LowerAscii2(file.substr(file.size() - 4)) != ".dll") return false;
     return true;
+}
+
+// この栞じしん（nashi.dll）のモジュール。
+// 栞を SAORI として読ませると、load で自分を作りなおしてしまうので断る。
+HMODULE SelfModule() {
+    MEMORY_BASIC_INFORMATION mbi;
+    if (!VirtualQuery((const void*)&SelfModule, &mbi, sizeof(mbi))) return NULL;
+    return (HMODULE)mbi.AllocationBase;
 }
 
 } // namespace
@@ -125,7 +134,17 @@ Module* GetModule(Saori::Core* c, const std::string& file, std::string& err) {
     }
 
     std::wstring path = c->dir + Utf8ToWide(file);
-    HMODULE dll = LoadLibraryW(path.c_str());
+    if (c->dir.empty()) {
+        err = "ゴーストのフォルダが分からないので、SAORI を読みません: " + file;
+        return NULL;
+    }
+    // SAORI がさらに使う DLL も、SSP のフォルダやカレントではなく SAORI のとなりから探す
+    HMODULE dll = LoadLibraryExW(path.c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (dll && dll == SelfModule()) {
+        FreeLibrary(dll);
+        err = "栞（SHIORI）を SAORI として読むことはできません: " + file;
+        return NULL;
+    }
     if (!dll) {
         char buf[32];
         sprintf_s(buf, "%lu", GetLastError());
@@ -244,9 +263,20 @@ static SaoriResult ExecuteOn(Saori::Core* core, const std::string& file,
         r.error = "SAORI の中で例外が起きました: " + file;
         return r;
     }
-    if (!out || len <= 0) { r.error = "SAORI が何も返しませんでした: " + file; return r; }
+    if (out && len > 0) {
+        // 返ってきた長さは、実際に確保されている大きさまでしか信じない
+        SIZE_T real = GlobalSize(out);
+        if (real != 0 && (SIZE_T)len > real) len = (long)real;
+        if (len > (1L << 24)) len = 1L << 24;
+    }
+    if (!out || len <= 0) {
+        if (out) GlobalFree(out);
+        r.error = "SAORI が何も返しませんでした: " + file;
+        return r;
+    }
 
-    std::string resp((const char*)out, (size_t)len);
+    // 返ってきた文字も外から来たものなので、壊れた UTF-8 を直して長さを切る
+    std::string resp = RepairUtf8(std::string((const char*)out, (size_t)len));
     GlobalFree(out);
 
     // 1 行目 "SAORI/1.0 200 OK"、あとは "見出し: 中身"

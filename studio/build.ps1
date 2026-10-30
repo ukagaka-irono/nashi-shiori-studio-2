@@ -92,7 +92,11 @@ function Build-Exe {
     }
 
     Write-Host "[studio] $Label をリンク中..." -ForegroundColor Cyan
-    $linkArgs = @('/nologo', "/OUT:$Out", "/SUBSYSTEM:$Subsystem", '/OPT:REF', '/OPT:ICF') +
+    # /DEPENDENTLOADFLAG:0x800 … 輸入している DLL（version.dll など）を System32 からだけ読む。
+    #   exe はダウンロードフォルダのような誰でも書ける所に置かれるので、となりに置かれた
+    #   同じ名前の DLL を読みこまないようにします（Windows 10 1607 から効きます）。
+    $linkArgs = @('/nologo', "/OUT:$Out", "/SUBSYSTEM:$Subsystem", '/OPT:REF', '/OPT:ICF',
+                  '/DEPENDENTLOADFLAG:0x800') +
                 $objs + $Extra + $Lib
     & link @linkArgs
     if ($LASTEXITCODE -ne 0) { throw "$Label のリンクに失敗しました。" }

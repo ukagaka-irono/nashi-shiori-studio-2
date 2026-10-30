@@ -99,15 +99,64 @@ static std::string BlockType(const JValue& b) {
 // （OnCommunicate の Reference）や、使う人が入力ボックスに書いたものかも
 // しれないので、必ず通してから出します。
 // dropComma を立てると、区切りに使う , も落とします（\q の行き先など）。
+// " は引数をくくる印、末尾の \ は次の ] を文字にしてしまうので、どちらも落とします。
 static std::string TagArg(const std::string& s, bool dropComma) {
     std::string out;
     for (size_t i = 0; i < s.size(); i++) {
         char c = s[i];
-        if (c == '[' || c == ']' || c == '\r' || c == '\n') continue;
+        if (c == '[' || c == ']' || c == '\r' || c == '\n' || c == '"') continue;
         if (dropComma && c == ',') continue;
         out += c;
     }
+    while (!out.empty() && out[out.size() - 1] == '\\') out.erase(out.size() - 1);
     return out;
+}
+
+// 選択肢やリンクに出す文字。EscapeText のあとに通す。
+// , を残すと「ラベル,OnEvil」のように、行き先を書き足されてしまいます。
+static std::string TagLabel(const std::string& text) {
+    std::string out;
+    std::string e = EscapeText(text);
+    for (size_t i = 0; i < e.size(); i++) {
+        char c = e[i];
+        if (c == '[' || c == ']' || c == '"') continue;
+        if (c == ',') { out += "\xEF\xBC\x8C"; continue; }    // 全角の ，にする
+        out += c;
+    }
+    return out;
+}
+
+// http / https の URL だけを通す（file: や \\host\ を開かせない）。
+// タグを壊す文字は、URL の書きかた（%2C など）に直す。
+static std::string WebUrl(const std::string& s) {
+    std::string u = Trim(s);
+    std::string low;
+    for (size_t i = 0; i < u.size() && i < 8; i++) {
+        char c = u[i];
+        low += (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+    }
+    if (low.compare(0, 7, "http://") != 0 && low.compare(0, 8, "https://") != 0) return std::string();
+    std::string out;
+    for (size_t i = 0; i < u.size(); i++) {
+        char c = u[i];
+        if (c == '\r' || c == '\n') continue;
+        if (c == ',') out += "%2C";
+        else if (c == '[') out += "%5B";
+        else if (c == ']') out += "%5D";
+        else if (c == '"') out += "%22";
+        else if (c == '\\') out += "%5C";
+        else out += c;
+    }
+    return out;
+}
+
+// ゴーストのフォルダの中のファイル名だけを通す（C:\… や \\host\…、.. で外へ出させない）。
+static std::string LocalFile(const std::string& s) {
+    std::string f = Trim(s);
+    if (f.empty()) return f;
+    if (f.find("..") != std::string::npos || f.find(':') != std::string::npos) return std::string();
+    if (f[0] == '\\' || f[0] == '/') return std::string();
+    return f;
 }
 
 static Value SysValue(const std::string& key, RunCtx& ctx) {
@@ -421,23 +470,23 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
     }
 
     if (type == "sound") {
-        std::string f = TagArg(EvalStr(b["file"], ctx), false);
+        std::string f = TagArg(LocalFile(EvalStr(b["file"], ctx)), false);
         if (!f.empty()) Emit(ctx, "\\_v[" + f + "]");
         return;
     }
 
     if (type == "link") {
-        std::string url = TagArg(EvalStr(b["url"], ctx), false);
+        std::string url = WebUrl(EvalStr(b["url"], ctx));
         std::string label = EvalStr(b["label"], ctx);
         if (label.empty()) label = url;
         if (!url.empty()) {
-            Emit(ctx, "\\_a[" + url + "]" + TagArg(EscapeText(label), false) + "\\_a");
+            Emit(ctx, "\\_a[" + url + "]" + TagLabel(label) + "\\_a");
         }
         return;
     }
 
     if (type == "choice") {
-        std::string label = TagArg(EscapeText(EvalStr(b["label"], ctx)), false);
+        std::string label = TagLabel(EvalStr(b["label"], ctx));
         std::string target = TagArg(EvalStr(b["target"], ctx), true);
         if (label.empty()) return;
         Emit(ctx, "\\q[" + label + "," + target + "]");
@@ -481,7 +530,7 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
             return;
         }
         if (type == "open_browser") {
-            std::string url = Safe::One(EvalStr(b["url"], ctx));
+            std::string url = WebUrl(EvalStr(b["url"], ctx));
             if (url.empty()) return;
             Emit(ctx, "\\![open,browser," + url + "]");
             return;
