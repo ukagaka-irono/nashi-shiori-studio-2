@@ -13,8 +13,6 @@
 
 namespace nashi {
 
-static const char* kStudioVersion = "1.0.0";
-
 // ------------------------------------------------------------------ 補助
 
 static void Json(HttpResponse& res, int status, const JValue& v) {
@@ -59,7 +57,7 @@ void Api::Init() {
     exeDir_ = ExeDir();
     projectsDir_ = PathJoin(exeDir_, L"projects");
     outputDir_ = PathJoin(exeDir_, L"output");
-    configPath_ = PathJoin(exeDir_, L"nashi-studio.json");
+    configPath_ = PathJoin(exeDir_, L"nashi-studio-2.json");
 
     EnsureDir(projectsDir_);
 
@@ -180,7 +178,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         std::string dll = DllBytes();
         o.set("dllFound", JValue::makeBool(!dll.empty()));
         o.set("dll", JValue::makeStr(dll.empty() ? "" : "nashi.dll (exe に同梱)"));
-        o.set("version", JValue::makeStr(kStudioVersion));
+        o.set("version", JValue::makeStr(StudioVersion()));
 
         JValue list = JValue::makeArr();
         std::vector<FileInfo> files = ListFiles(projectsDir_, L"*.json");
@@ -500,7 +498,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         if (!ParseBody(req, body)) { JsonError(res, 400, "JSON が壊れています"); return; }
         std::string script = body["script"].asStr();
         if (script.empty()) { JsonError(res, 400, "スクリプトがありません"); return; }
-        SstpResult r = SstpSend(script, "なしスタジオ");
+        SstpResult r = SstpSend(script, "なしスタジオ 2");
         if (!r.ok) { JsonError(res, 502, r.error); return; }
         JValue o = JValue::makeObj();
         o.set("ok", JValue::makeBool(true));
@@ -517,7 +515,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         std::vector<std::string> refs;
         const JValue& list = body["refs"];
         for (size_t i = 0; i < list.size(); i++) refs.push_back(list.at(i).asStr());
-        SstpResult r = SstpNotify(eventName, refs, "なしスタジオ");
+        SstpResult r = SstpNotify(eventName, refs, "なしスタジオ 2");
         if (!r.ok) { JsonError(res, 502, r.error); return; }
         JValue o = JValue::makeObj();
         o.set("ok", JValue::makeBool(true));
@@ -634,7 +632,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         std::string sentence = body["sentence"].asStr();
         if (sentence.empty()) { JsonError(res, 400, "話しかける内容がありません"); return; }
         std::string sender = body["sender"].asStr();
-        if (sender.empty()) sender = "なしスタジオ";
+        if (sender.empty()) sender = "なしスタジオ 2";
         SstpResult r = SstpCommunicate(sentence, sender);
         if (!r.ok) { JsonError(res, 502, r.error); return; }
         JValue o = JValue::makeObj();
@@ -674,8 +672,8 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
                            (ssp.ghostName == name ||
                             ssp.ghostName == project["meta"]["sakuraName"].asStr());
             SstpResult sent = already
-                ? SstpSend("\\![reload,shiori]", "なしスタジオ")
-                : SstpSend("\\![change,ghost," + name + "]", "なしスタジオ");
+                ? SstpSend("\\![reload,shiori]", "なしスタジオ 2")
+                : SstpSend("\\![change,ghost," + name + "]", "なしスタジオ 2");
             if (sent.ok) action = already ? "reload" : "change";
             else action = "failed";
         }

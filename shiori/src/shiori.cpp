@@ -1,13 +1,16 @@
 #include "shiori.h"
 #include "util.h"
+#include "version_gen.h"   // NASHI_VERSION（shiori\build.ps1 が VERSION から作る）
 
 #include <cstdio>
 
 namespace nashi {
 
+// SSP に名乗る名前。ゴーストの descript.txt の shiori,nashi.dll と同じく、
+// これまでのゴーストと入れかえられるよう "nashi" のままにしています。
 const char* kShioriName     = "nashi";
-const char* kShioriVersion  = "1.0.0";
-const char* kShioriCraftman = "nashi-shiori";
+const char* kShioriVersion  = NASHI_VERSION;
+const char* kShioriCraftman = "nashi-shiori-studio-2";
 
 // ------------------------------------------------------------------ parsing
 

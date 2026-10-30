@@ -1,6 +1,6 @@
 # なしスタジオ - 単体 exe をビルドする
 #
-#   .\build.ps1              64bit の nashi-studio.exe を作る
+#   .\build.ps1              64bit の nashi-studio-2.exe を作る
 #   .\build.ps1 -Arch x86    32bit 版
 #
 [CmdletBinding()]
@@ -20,7 +20,7 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo = Split-Path -Parent $root
 $src = Join-Path $root 'src'
 $obj = Join-Path $root ('obj\' + $Arch)
-$exeOut = Join-Path $repo 'nashi-studio.exe'
+$exeOut = Join-Path $repo 'nashi-studio-2.exe'
 
 if ($Clean -and (Test-Path $obj)) { Remove-Item -Recurse -Force $obj }
 New-Item -ItemType Directory -Force -Path $obj | Out-Null
@@ -160,7 +160,7 @@ if (-not (Test-Path (Join-Path $wv2 'include\WebView2.h'))) {
     throw "WebView2 SDK が見つかりません: $wv2 (studio\third_party\webview2\README.md を参照)"
 }
 
-Build-Exe -Label "なしスタジオ ($Arch)" -Out $exeOut -ObjDir $obj -Sources $sources `
+Build-Exe -Label "なしスタジオ 2 ($Arch)" -Out $exeOut -ObjDir $obj -Sources $sources `
     -Include @($src, "$repo\shiori\src", $obj, "$wv2\include") `
     -Define '_WINDOWS' -Subsystem 'WINDOWS' `
     -Extra @((Join-Path $obj 'assets.res'), (Join-Path $wv2 "$Arch\WebView2LoaderStatic.lib")) `

@@ -20,6 +20,8 @@ bool LoadEmbedded(int id, std::string& out) {
     return true;
 }
 
+const char* StudioVersion() { return kStudioVersionGen; }
+
 bool FindWebAsset(const std::string& path, std::string& out, std::string& mime) {
     std::string want = path;
     if (want.empty() || want == "/") want = "/index.html";

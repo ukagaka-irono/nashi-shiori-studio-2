@@ -84,8 +84,8 @@ jobs:
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: nashi-studio-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}
-          path: obj/release/nashi-studio-${{ steps.ver.outputs.version }}/
+          name: nashi-studio-2-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}
+          path: obj/release/nashi-studio-2-${{ steps.ver.outputs.version }}/
           retention-days: 30
 
       # 栞だけ欲しい人（自分でゴーストに入れる人）のために、別にしておきます。

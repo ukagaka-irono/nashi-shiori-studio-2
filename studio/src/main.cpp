@@ -23,8 +23,9 @@
 
 using namespace nashi;
 
-static const wchar_t* kWindowClass = L"NashiStudioWindow";
-static const wchar_t* kMutexName = L"Local\\NashiStudioSingleInstance";
+// もとの「なしスタジオ」と同時に起動できるよう、名前を分けています。
+static const wchar_t* kWindowClass = L"NashiStudio2Window";
+static const wchar_t* kMutexName = L"Local\\NashiStudio2SingleInstance";
 static const UINT kSaveTimeoutTimer = 1;
 
 static Api g_api;
@@ -89,7 +90,7 @@ static void SaveFailed(HWND hwnd, const wchar_t* why) {
     g_waitingSave = false;
     KillTimer(hwnd, kSaveTimeoutTimer);
     std::wstring text = std::wstring(why) + L"\n保存せずに終了しますか？（変更は消えます）";
-    int answer = MessageBoxW(hwnd, text.c_str(), L"なしスタジオ",
+    int answer = MessageBoxW(hwnd, text.c_str(), L"なしスタジオ 2",
                              MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
     if (answer == IDYES) FinishClose(hwnd);
 }
@@ -105,7 +106,7 @@ static void AskThenClose(HWND hwnd) {
 
             int answer = MessageBoxW(hwnd,
                                      L"保存していない変更があります。\n保存して終了しますか？",
-                                     L"なしスタジオ",
+                                     L"なしスタジオ 2",
                                      MB_YESNOCANCEL | MB_ICONWARNING | MB_DEFBUTTON1);
             if (answer == IDCANCEL) return;
             if (answer == IDNO) { FinishClose(hwnd); return; }
@@ -192,11 +193,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
                                    16, 16, 0);
     RegisterClassExW(&wc);
 
-    g_hwnd = CreateWindowExW(0, kWindowClass, L"なしスタジオ", WS_OVERLAPPEDWINDOW,
+    g_hwnd = CreateWindowExW(0, kWindowClass, L"なしスタジオ 2", WS_OVERLAPPEDWINDOW,
                              CW_USEDEFAULT, CW_USEDEFAULT, 1440, 920,
                              NULL, NULL, hInstance, NULL);
     if (!g_hwnd) {
-        MessageBoxW(NULL, L"ウィンドウを作れませんでした。", L"なしスタジオ", MB_ICONERROR);
+        MessageBoxW(NULL, L"ウィンドウを作れませんでした。", L"なしスタジオ 2", MB_ICONERROR);
         return 1;
     }
     RestorePlacement(g_hwnd);
@@ -218,7 +219,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
             std::wstring text = message +
                 L"\n\nこのアプリは Microsoft Edge WebView2 ランタイムを使います。\n"
                 L"「OK」を押すと配布ページを開きます。";
-            if (MessageBoxW(g_hwnd, text.c_str(), L"なしスタジオ", MB_OKCANCEL | MB_ICONERROR) == IDOK) {
+            if (MessageBoxW(g_hwnd, text.c_str(), L"なしスタジオ 2", MB_OKCANCEL | MB_ICONERROR) == IDOK) {
                 ShellExecuteW(NULL, L"open",
                               L"https://developer.microsoft.com/microsoft-edge/webview2/",
                               NULL, NULL, SW_SHOWNORMAL);
@@ -227,7 +228,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
             DestroyWindow(g_hwnd);
         },
         [](const std::wstring& title) {
-            std::wstring t = title.empty() ? L"なしスタジオ" : title;
+            std::wstring t = title.empty() ? L"なしスタジオ 2" : title;
             SetWindowTextW(g_hwnd, t.c_str());
         });
 

@@ -76,6 +76,14 @@ $sources = @('dllmain.cpp', 'shiori.cpp', 'program.cpp', 'interp.cpp', 'saori.cp
            ForEach-Object { Join-Path $src $_ }
 $dllOut = Join-Path $dist 'nashi.dll'
 
+# 版の数字はルートの VERSION の 1 か所だけ。栞が SSP に名乗る版（GET version）にも使います。
+$versionFile = Join-Path (Split-Path -Parent $root) 'VERSION'
+$version = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { '0.0.0' }
+$versionH = "// このファイルは shiori\build.ps1 が VERSION から作ります。編集しないでください。`r`n" +
+            "#pragma once`r`n#define NASHI_VERSION `"$version`"`r`n"
+[System.IO.File]::WriteAllText((Join-Path $obj 'version_gen.h'), $versionH,
+                               (New-Object System.Text.UTF8Encoding($false)))
+
 # /GS- /GR- /Zc:threadSafeInit-  … どれも CRT の助けが要る仕掛けなので切ります
 # /D_USE_STD_VECTOR_ALGORITHMS=0 … 新しい STL の SIMD 版も CRT を呼ぶので使いません
 $clArgs = @(
@@ -83,7 +91,7 @@ $clArgs = @(
     '/Zc:threadSafeInit-', '/D_USE_STD_VECTOR_ALGORITHMS=0',
     '/DNDEBUG', '/D_CRT_SECURE_NO_WARNINGS', '/DWIN32', '/D_WINDOWS',
     '/D_WIN32_WINNT=0x0500', '/DWINVER=0x0500',
-    "/Fo:$obj\"
+    "/I$obj", "/Fo:$obj\"
 ) + $sources
 
 Write-Host "[nashi] コンパイル中 ($Arch)..." -ForegroundColor Cyan

@@ -13,6 +13,9 @@ namespace nashi {
 // リソースをそのまま取り出す
 bool LoadEmbedded(int id, std::string& out);
 
+// ルートの VERSION に書いた版（ビルドのときに埋めこむ）
+const char* StudioVersion();
+
 // "/index.html" のようなパスから UI ファイルを取り出す
 bool FindWebAsset(const std::string& path, std::string& out, std::string& mime);
 

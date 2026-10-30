@@ -79,7 +79,7 @@
 
   function updateTitle() {
     document.title = (Model.dirty ? '● ' : '') +
-      (Model.project.meta.name || 'なしゴースト') + ' - なしスタジオ';
+      (Model.project.meta.name || 'なしゴースト') + ' - なしスタジオ 2';
   }
 
   function switchTab(name) {

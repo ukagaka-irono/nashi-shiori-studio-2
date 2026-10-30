@@ -556,7 +556,7 @@ std::vector<OutFile> BuildGhostFiles(const JValue& project, const std::string& d
     f.data += "----\r\n";
     f.data += "このゴーストは nashi 栞 (nashi.dll) で動いています。\r\n";
     f.data += "会話の中身は ghost/master/ghost.json にブロック形式で入っています。\r\n";
-    f.data += "なしスタジオで読み込むと編集できます。\r\n";
+    f.data += "なしスタジオ 2 で読み込むと編集できます。\r\n";
     files.push_back(f);
 
     f.name = "ghost/master/descript.txt";

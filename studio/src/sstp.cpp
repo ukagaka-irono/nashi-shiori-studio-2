@@ -143,7 +143,7 @@ bool SstpAvailable() {
 SstpResult SstpSend(const std::string& scriptUtf8, const std::string& sender) {
     std::string req = "SEND SSTP/1.4\r\n";
     req += HeaderLine("Charset", "UTF-8");
-    req += HeaderLine("Sender", sender.empty() ? "なしスタジオ" : sender);
+    req += HeaderLine("Sender", sender.empty() ? "なしスタジオ 2" : sender);
     req += HeaderLine("Script", scriptUtf8);
     req += HeaderLine("Option", "nodescript");
     req += "\r\n";
@@ -153,7 +153,7 @@ SstpResult SstpSend(const std::string& scriptUtf8, const std::string& sender) {
 SstpResult SstpExecute(const std::string& command, const std::string& sender) {
     std::string req = "EXECUTE SSTP/1.4\r\n";
     req += HeaderLine("Charset", "UTF-8");
-    req += HeaderLine("Sender", sender.empty() ? "なしスタジオ" : sender);
+    req += HeaderLine("Sender", sender.empty() ? "なしスタジオ 2" : sender);
     req += HeaderLine("Command", command);
     req += "\r\n";
     return Exchange(req);
@@ -164,7 +164,7 @@ SstpResult SstpExecute(const std::string& command, const std::string& sender) {
 SstpResult SstpCommunicate(const std::string& sentence, const std::string& sender) {
     std::string req = "COMMUNICATE SSTP/1.1\r\n";
     req += HeaderLine("Charset", "UTF-8");
-    req += HeaderLine("Sender", sender.empty() ? "なしスタジオ" : sender);
+    req += HeaderLine("Sender", sender.empty() ? "なしスタジオ 2" : sender);
     req += HeaderLine("Sentence", sentence);
     req += "\r\n";
     return Exchange(req);
@@ -174,7 +174,7 @@ SstpResult SstpNotify(const std::string& eventName, const std::vector<std::strin
                       const std::string& sender) {
     std::string req = "NOTIFY SSTP/1.1\r\n";
     req += HeaderLine("Charset", "UTF-8");
-    req += HeaderLine("Sender", sender.empty() ? "なしスタジオ" : sender);
+    req += HeaderLine("Sender", sender.empty() ? "なしスタジオ 2" : sender);
     req += HeaderLine("Event", eventName);
     for (size_t i = 0; i < refs.size() && i < 32; i++) {
         char key[24];
@@ -254,7 +254,7 @@ SspInfo DetectSsp(const std::wstring& hint) {
 
     info.sstp = SstpAvailable();
     if (info.sstp) {
-        SstpResult name = SstpExecute("GetName", "なしスタジオ");
+        SstpResult name = SstpExecute("GetName", "なしスタジオ 2");
         if (name.ok && !name.body.empty()) info.ghostName = name.body;
     }
     return info;
