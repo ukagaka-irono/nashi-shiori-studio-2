@@ -182,11 +182,19 @@ struct Parser {
         }
     }
 
+    // 「12 行目 5 文字目: …」の形で残す（人が、エディタでその場所を探せるように）
     bool fail(const char* msg) {
         if (err.empty()) {
-            char buf[128];
-            sprintf_s(buf, "%s at offset %u", msg, (unsigned)i);
-            err = buf;
+            unsigned line = 1, col = 1;
+            for (size_t k = 0; k < i && k < s.size(); k++) {
+                unsigned char c = (unsigned char)s[k];
+                if (c == '\n') { line++; col = 1; }
+                // UTF-8 の 2 バイト目以降は数えない。絵文字など 4 バイトの文字は、メモ帳などと同じく 2 つに数える
+                else if ((c & 0xC0) != 0x80 && c != '\r') col += (c >= 0xF0) ? 2 : 1;
+            }
+            char buf[64];
+            sprintf_s(buf, "%u 行目 %u 文字目: ", line, col);
+            err = std::string(buf) + msg;
         }
         return false;
     }
@@ -210,7 +218,7 @@ struct Parser {
     }
 
     bool parseHex4(unsigned& out) {
-        if (i + 4 > s.size()) return fail("truncated \\u escape");
+        if (i + 4 > s.size()) return fail("\\u のあとの 16 進の数が、とちゅうで切れています");
         out = 0;
         for (int k = 0; k < 4; k++) {
             char c = s[i++];
@@ -218,14 +226,14 @@ struct Parser {
             if (c >= '0' && c <= '9') d = (unsigned)(c - '0');
             else if (c >= 'a' && c <= 'f') d = (unsigned)(c - 'a' + 10);
             else if (c >= 'A' && c <= 'F') d = (unsigned)(c - 'A' + 10);
-            else return fail("bad hex digit");
+            else return fail("\\u のあとに、16 進の数でない文字があります");
             out = out * 16 + d;
         }
         return true;
     }
 
     bool parseString(std::string& out) {
-        if (i >= s.size() || s[i] != '"') return fail("expected string");
+        if (i >= s.size() || s[i] != '"') return fail("名前（\"…\"）が来るはずのところに、ちがうものがあります");
         i++;
         out.clear();
         while (i < s.size()) {
@@ -260,16 +268,16 @@ struct Parser {
                     AppendUtf8(cp, out);
                     break;
                 }
-                default: return fail("bad escape");
+                default: return fail("\\ のあとに、使えない文字があります");
             }
         }
-        return fail("unterminated string");
+        return fail("\" で始めた文字が、\" で閉じられないまま終わっています");
     }
 
     bool parseValue(JValue& v, int depth) {
-        if (depth > 64) return fail("too deep");
+        if (depth > 64) return fail("入れ子が深すぎます");
         skipWs();
-        if (i >= s.size()) return fail("unexpected end");
+        if (i >= s.size()) return fail("とちゅうで終わっています");
         char c = s[i];
         if (c == '{') {
             i++;
@@ -282,7 +290,7 @@ struct Parser {
                 std::string key;
                 if (!parseString(key)) return false;
                 skipWs();
-                if (i >= s.size() || s[i] != ':') return fail("expected ':'");
+                if (i >= s.size() || s[i] != ':') return fail("「:」が来るはずのところに、ちがうものがあります");
                 i++;
                 JValue child;
                 if (!parseValue(child, depth + 1)) return false;
@@ -290,7 +298,7 @@ struct Parser {
                 skipWs();
                 if (i < s.size() && s[i] == ',') { i++; skipWs(); if (i < s.size() && s[i] == '}') { i++; return true; } continue; }
                 if (i < s.size() && s[i] == '}') { i++; return true; }
-                return fail("expected ',' or '}'");
+                return fail("「,」か「}」が来るはずのところに、ちがうものがあります（「,」の書きわすれ？）");
             }
         }
         if (c == '[') {
@@ -306,7 +314,7 @@ struct Parser {
                 skipWs();
                 if (i < s.size() && s[i] == ',') { i++; skipWs(); if (i < s.size() && s[i] == ']') { i++; return true; } continue; }
                 if (i < s.size() && s[i] == ']') { i++; return true; }
-                return fail("expected ',' or ']'");
+                return fail("「,」か「]」が来るはずのところに、ちがうものがあります（「,」の書きわすれ？）");
             }
         }
         if (c == '"') {
@@ -325,7 +333,7 @@ struct Parser {
             v.num = StrToNum(s.substr(start, i - start));
             return true;
         }
-        return fail("unexpected character");
+        return fail("ここには置けない文字があります");
     }
 };
 

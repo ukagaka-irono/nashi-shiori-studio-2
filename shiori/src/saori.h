@@ -25,6 +25,7 @@ struct SaoriDone {
     std::string file;     // よんだファイル
     std::string into;     // 答えを入れる変数の名前（空なら入れない）
     std::string value;    // 答え（呼べなかったときは空）
+    std::string error;    // 呼べなかったわけ（呼べたときは空）
 };
 
 // ブロックを動かすところ（interp.cpp）から見た「SAORI の呼び出し口」。

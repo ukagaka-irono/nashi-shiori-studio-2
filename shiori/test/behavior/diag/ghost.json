@@ -1,0 +1,75 @@
+{
+  "format": "nashi/1",
+  "_comment": [
+    "作者むけの知らせ（応答の ErrorLevel / ErrorDescription）を確かめるためのゴーストです。",
+    "わざと、まちがいのあるブロックを置いています。behavior.js が知らせの中身を見ます。"
+  ],
+  "meta": { "name": "しらせテスト", "sakuraName": "さくら", "keroName": "うにゅう" },
+  "settings": { "randomTalkEnabled": false },
+  "variables": [],
+  "scripts": [
+    {
+      "id": "d_boot", "kind": "event", "event": "OnBoot",
+      "blocks": [{ "type": "say", "who": 0, "text": "おきた", "nl": 0 }]
+    },
+    {
+      "id": "d_missing", "kind": "event", "event": "OnMissing",
+      "_": "無い名前を 2 回よぶ（知らせは 1 つ）。そのあとのセリフは、ふつうに出る",
+      "blocks": [
+        { "type": "call", "name": "ないよ" },
+        { "type": "call", "name": "ないよ" },
+        { "type": "say", "who": 0, "text": "つづき", "nl": 0 }
+      ]
+    },
+    {
+      "id": "d_two", "kind": "event", "event": "OnTwo",
+      "_": "知らせが 2 つ（バイト値 1 で区切って、同じ数だけ並ぶ）",
+      "blocks": [
+        { "type": "call", "name": "" },
+        { "type": "call", "name": "ないよ" }
+      ]
+    },
+    {
+      "id": "d_self", "kind": "event", "event": "OnSelf",
+      "blocks": [{ "type": "call", "name": "じぶん" }]
+    },
+    {
+      "id": "f_self", "kind": "function", "name": "じぶん",
+      "blocks": [
+        { "type": "say", "who": 0, "text": "いち", "nl": 0 },
+        { "type": "call", "name": "じぶん" }
+      ]
+    },
+    {
+      "id": "d_while", "kind": "event", "event": "OnWhile",
+      "blocks": [
+        { "type": "while", "cond": true, "body": [] },
+        { "type": "say", "who": 0, "text": "ぬけた", "nl": 0 }
+      ]
+    },
+    {
+      "id": "d_repeat", "kind": "event", "event": "OnRepeat",
+      "blocks": [{ "type": "repeat", "count": 9999, "body": [] }]
+    },
+    {
+      "id": "d_steps", "kind": "event", "event": "OnSteps",
+      "_": "5000 × 5000 回。40000 回で止まるはず",
+      "blocks": [{ "type": "repeat", "count": 5000, "body": [
+        { "type": "repeat", "count": 5000, "body": [{ "type": "set", "name": "かず", "value": 1 }] }
+      ] }]
+    },
+    {
+      "id": "d_ctrl", "kind": "event", "event": "OnCtrl",
+      "_": "名前に改行やバイト値 1 があっても、ヘッダは 1 行のまま・数がずれない",
+      "blocks": [{ "type": "call", "name": "改\n行\u0001です" }]
+    },
+    {
+      "id": "d_later", "kind": "event", "event": "OnLater",
+      "blocks": [{ "type": "later", "sec": 1, "name": "ないトーク" }]
+    },
+    {
+      "id": "d_ok", "kind": "event", "event": "OnOk",
+      "blocks": [{ "type": "say", "who": 0, "text": "ふつう", "nl": 0 }]
+    }
+  ]
+}

@@ -287,4 +287,40 @@ void Log(const std::string& msg) {
     CloseHandle(h);
 }
 
+// ----------------------------------------------------------- 作者むけの知らせ
+
+static std::vector<Problem> g_problems;       // まだ渡していない知らせ
+static std::vector<std::string> g_reported;   // この回に、もう知らせたもの
+static std::string g_place;
+
+void Report(int level, const std::string& text) {
+    std::string full = g_place.empty() ? text : g_place + ": " + text;
+    // 同じ知らせは 1 回だけ。覚えておく数にも、1 回に渡す数にも上限を付ける
+    const size_t kMaxReported = 256;
+    const size_t kMaxProblems = 8;
+    for (size_t i = 0; i < g_reported.size(); i++) {
+        if (g_reported[i] == full) return;
+    }
+    Log(full);
+    if (g_reported.size() < kMaxReported) g_reported.push_back(full);
+    if (g_problems.size() >= kMaxProblems) return;
+    Problem p;
+    p.level = level;
+    p.text = full;
+    g_problems.push_back(p);
+}
+
+void SetProblemPlace(const std::string& place) {
+    g_place = place;
+}
+
+void TakeProblems(std::vector<Problem>& out) {
+    out.swap(g_problems);
+    g_problems.clear();
+}
+
+void ResetProblems() {
+    g_reported.clear();
+}
+
 } // namespace nashi

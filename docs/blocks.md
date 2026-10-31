@@ -284,7 +284,8 @@ SSP から返ってきた `OnChoiceSelect` / `OnAnchorSelect` / `OnUserInput` �
 `file` はゴーストのフォルダからの相対パスで、`..` や絶対パスは使えません。
 **栞と同じ 32bit** の DLL である必要があります。`value` は `-1` なら `Result:`、
 `0` 以降なら `Value0:` 以降を取り出します。呼べなかったときは空文字を返し、
-理由は `nashi_debug.txt` に残ります（`nashi.dll` のとなりに空のファイルを作ると記録されます）。
+理由は SSP のエラーログに出ます（[ghost.json の「デバッグ」](ghost-json.md#デバッグ)）。
+`nashi_debug.txt` にも残ります（`nashi.dll` のとなりに空のファイルを作ると記録されます）。
 読み込んだ DLL はゴーストが終わるまで保ちます。
 プレビューでは本物の DLL を読めないので、**いつも空**が返ります。SSP に入れて確かめてください。
 

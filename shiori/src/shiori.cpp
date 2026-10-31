@@ -76,11 +76,26 @@ bool ParseRequest(const std::string& utf8, ShioriRequest& out) {
     return !out.id.empty();
 }
 
+// 作者むけの知らせを、ヘッダに置ける 1 行にする。改行・区切りのバイト値 1 などの制御文字ははずし、
+// 長すぎるものは切る（UTF-8 の文字のとちゅうでは切らない）
+static std::string HeaderSafe(const std::string& s) {
+    const size_t kMaxText = 1024;
+    std::string t;
+    for (size_t i = 0; i < s.size(); i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c < 0x20 || c == 0x7F) continue;
+        if (t.size() >= kMaxText && (c & 0xC0) != 0x80) { t += "…"; break; }
+        t += (char)c;
+    }
+    return t;
+}
+
 // commTo に相手の名前（ゴーストの \0 側の名前）を入れると、
 // Value のスクリプトがそのゴーストへの「通信」として届く（SHIORI/3.0 の Reference0）。
 static std::string BuildResponse(const std::string& value,
                                  const std::string& commTo = std::string(),
-                                 int commAge = 0) {
+                                 int commAge = 0,
+                                 const std::vector<Problem>* problems = NULL) {
     std::string body;
     if (value.empty()) {
         body = "SHIORI/3.0 204 No Content\r\n";
@@ -117,6 +132,20 @@ static std::string BuildResponse(const std::string& value,
         }
         body += "Value: " + v + "\r\n";
     }
+    // 作者むけの知らせ（SSP はエラーログに残す）。いくつもあるときは、バイト値 1 で区切って同じ数だけ並べる
+    if (problems && !problems->empty()) {
+        static const char* kLevels[] = { "info", "notice", "warning", "error" };
+        std::string levels, texts;
+        for (size_t i = 0; i < problems->size(); i++) {
+            const Problem& p = (*problems)[i];
+            int lv = (p.level >= kProblemInfo && p.level <= kProblemError) ? p.level : kProblemWarning;
+            if (i) { levels += '\x01'; texts += '\x01'; }
+            levels += kLevels[lv];
+            texts += HeaderSafe(p.text);
+        }
+        body += "ErrorLevel: " + levels + "\r\n";
+        body += "ErrorDescription: " + texts + "\r\n";
+    }
     body += "\r\n";
     return body;
 }
@@ -140,6 +169,10 @@ bool Shiori::Load(const std::wstring& moduleDir) {
     }
     SeedRandom();
     SetLogPath(dir_);
+    // 同じ DLL がもう一度 load されたとき、前の回の知らせを持ちこさない
+    std::vector<Problem> stale;
+    TakeProblems(stale);
+    ResetProblems();
     saori_.SetBaseDir(dir_);
 
     prog_.Load(dir_);
@@ -153,7 +186,8 @@ bool Shiori::Load(const std::wstring& moduleDir) {
     secondsSinceTalk_ = 0;
     lastSaveSec_ = 0;
     ready_ = true;
-    Log(prog_.loaded() ? "loaded" : ("load failed: " + prog_.error()));
+    if (prog_.loaded()) Log("loaded");
+    else Report(kProblemError, prog_.error());      // つぎの応答で SSP に渡る（起動のセリフでも言う）
     return true;
 }
 
@@ -174,7 +208,7 @@ void Shiori::LoadSave() {
         // ほかのプログラムが開いているだけ（中身はたぶん無事）。よけたり控えから読んだりせず、
         // この回は保存もしない（読めていない古い値で、無事な本体を上書きしないように）。
         saveBlocked_ = true;
-        Log("nashi_save.json を開けませんでした（ほかのプログラムが使っているかもしれません）。この回は保存しません");
+        Report(kProblemNotice, "nashi_save.json を開けませんでした（ほかのプログラムが使っているかもしれません）。この回は保存しません");
         return;
     }
     if (r == kSaveBroken) {
@@ -187,20 +221,20 @@ void Shiori::LoadSave() {
         if (!MoveFileExW(path.c_str(), aside.c_str(), MOVEFILE_WRITE_THROUGH)) {
             // よけられなかった。このまま保存すると、こわれた本体が控えにまわって、無事な控えを消してしまう
             saveBlocked_ = true;
-            Log("nashi_save.json が読めず、よけることもできませんでした。この回は保存しません");
+            Report(kProblemNotice, "nashi_save.json が読めず、よけることもできませんでした。この回は保存しません");
         } else {
-            Log(std::string("nashi_save.json が読めなかったので、nashi_save.broken-") + stamp + ".json によけました");
+            Report(kProblemNotice, std::string("nashi_save.json が読めなかったので、nashi_save.broken-") + stamp + ".json によけました");
         }
     }
     // 本体が無い・読めなかったときは、ひとつ前の控えから
     int b = LoadSaveFrom(dir_ + L"nashi_save.bak.json");
     if (b == kSaveOk) {
-        Log("nashi_save.bak.json（ひとつ前の控え）から読みました");
+        Report(kProblemInfo, "nashi_save.bak.json（ひとつ前の控え）から読みました");
         dirty_ = true;                               // つぎの保存で、本体を書きなおす
     } else if (b == kSaveLocked) {
         // 控えも開けない。初めからの値で保存すると、つぎの回に無事な控えを上書きしてしまう
         saveBlocked_ = true;
-        Log("nashi_save.bak.json も開けませんでした。この回は保存しません");
+        Report(kProblemNotice, "nashi_save.bak.json も開けませんでした。この回は保存しません");
     }
 }
 
@@ -276,7 +310,11 @@ void Shiori::MaybeReload() {
     if (stamp == progStamp_) return;
     progStamp_ = stamp;
     Program fresh;
-    if (!fresh.Load(dir_)) { Log("reload failed: " + fresh.error()); return; }
+    if (!fresh.Load(dir_)) {
+        // 書きかえたのに動きが変わらない、と迷わないように知らせる（同じ中身のあいだは、1 回だけ）
+        Report(kProblemWarning, "書きかえた ghost.json を読めなかったので、前の中身のまま動いています。" + fresh.error());
+        return;
+    }
     prog_ = fresh;
     // add variables that appeared in the new program, keep existing values
     Vars defaults;
@@ -285,6 +323,7 @@ void Shiori::MaybeReload() {
         if (!vars_.exists(defaults.at(i).first)) vars_.set(defaults.at(i).first, defaults.at(i).second);
     }
     Log("reloaded ghost.json");
+    ResetProblems();                 // 直したあとに、また起きたら知らせる
 }
 
 int Shiori::TalkInterval() const {
@@ -553,6 +592,7 @@ void Shiori::DrainSaori() {
     saori_.TakeDone(got);
     const size_t kKeep = 32;
     for (size_t i = 0; i < got.size(); i++) {
+        if (!got[i].error.empty()) Report(kProblemWarning, got[i].error);
         if (!got[i].into.empty()) {
             vars_.set(got[i].into, Value::Str(got[i].value));
             dirty_ = true;
@@ -892,7 +932,10 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
             timers_.erase(timers_.begin() + (long)i);
             const JValue* fn = prog_.functionByName(name);
             if (!fn) fn = prog_.scriptById(name);
-            if (!fn) { Log("later: そんな名前のトークはありません: " + name); break; }
+            if (!fn) {
+                Report(kProblemWarning, "「◯秒後によぶ」の「" + name + "」が、その名前のトークがないので動きませんでした");
+                break;
+            }
             std::string out = RunOne(*fn, req);
             if (!out.empty()) { secondsSinceTalk_ = 0; return out; }
             break;
@@ -1093,12 +1136,15 @@ std::string Shiori::Request(const std::string& rawRequest) {
     MaybeReload();
     DrainSaori();
 
+    // 作者むけの知らせ。前からたまっていたもの（読みこみ・保存データ・SAORI の答えなど）はそのまま、
+    // このイベントの中で起きたものには、イベントの名前を付けて SSP に渡す
     std::string value;
     commTo_.clear();
+    SetProblemPlace(req.id);
     try {
         value = Dispatch(req);
     } catch (...) {
-        Log("exception while handling " + req.id);
+        Report(kProblemError, "栞の中で思わぬことが起きたので、このイベントには答えませんでした");
         value.clear();
     }
 
@@ -1125,10 +1171,15 @@ std::string Shiori::Request(const std::string& rawRequest) {
     }
 
     value = CloseScript(value, req.id == "OnClose" || req.id == "OnCloseAll");
-    if (req.method == "NOTIFY") return BuildResponse("");
+
+    SetProblemPlace(std::string());
+    std::vector<Problem> problems;
+    TakeProblems(problems);
+
+    if (req.method == "NOTIFY") return BuildResponse("", std::string(), 0, &problems);
     RememberOffered(value);
     // commChain_ は「何回目のやりとりか」なので、世代数はその 1 つ手前
-    return BuildResponse(value, commTo_, commChain_ > 0 ? commChain_ - 1 : 0);
+    return BuildResponse(value, commTo_, commChain_ > 0 ? commChain_ - 1 : 0, &problems);
 }
 
 } // namespace nashi

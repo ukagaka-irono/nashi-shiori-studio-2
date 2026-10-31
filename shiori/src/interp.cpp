@@ -485,7 +485,7 @@ Value EvalExpr(const JValue& node, RunCtx& ctx) {
             args.push_back(EvalExpr(node[keys[i]], ctx).asStr());
         }
         SaoriResult r = ctx.saori->Execute(file, args);
-        if (!r.ok) { Log(r.error); return Value::Str(""); }
+        if (!r.ok) { Report(kProblemWarning, r.error); return Value::Str(""); }
         int want = node["value"].asInt(-1);      // -1 なら Result、0 以降なら ValueN
         if (want < 0) return Value::Str(r.result);
         if ((size_t)want < r.values.size()) return Value::Str(r.values[(size_t)want]);
@@ -516,13 +516,22 @@ static void RunBlock(const JValue& b, RunCtx& ctx);
 
 void RunBlocks(const JValue& blocks, RunCtx& ctx) {
     if (!blocks.isArr()) return;
-    if (ctx.depth > kMaxDepth) return;
+    if (ctx.depth > kMaxDepth) {
+        Report(kProblemWarning, "ブロックの入れ子が深すぎる（48 段より下）ので、その先は動かしませんでした");
+        return;
+    }
     ctx.depth++;
     for (size_t i = 0; i < blocks.size(); i++) {
         if (ctx.stopped || ctx.steps > kMaxSteps) break;
         RunBlock(blocks.at(i), ctx);
     }
     ctx.depth--;
+    // 回数の上限で止まったら知らせる（入れ子のどの段でも同じ知らせなので、1 つにまとまる）
+    if (ctx.steps > kMaxSteps) {
+        Report(kProblemWarning, "ブロックを 40000 回動かしても終わらなかったので、とちゅうで止めました"
+                                "（「◯の間くりかえす」などから出られなくなっていませんか）");
+        ctx.stopped = true;
+    }
 }
 
 void RunScript(const JValue& script, RunCtx& ctx) {
@@ -552,7 +561,7 @@ std::string CloseScript(const std::string& out, bool isCloseEvent) {
 
 static void RunBlock(const JValue& b, RunCtx& ctx) {
     if (!b.isObj()) return;
-    if (ctx.steps++ > kMaxSteps) { ctx.stopped = true; return; }
+    if (ctx.steps++ > kMaxSteps) return;                            // 止めて知らせるのは RunBlocks
     if (b["disabled"].asBool(false)) return;
 
     const std::string type = BlockType(b);
@@ -930,7 +939,10 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
 
     if (type == "repeat") {
         int n = EvalInt(b["count"], ctx, 1);
-        if (n > kMaxLoop) n = kMaxLoop;
+        if (n > kMaxLoop) {
+            Report(kProblemWarning, "「◯回くりかえす」は 5000 回までなので、5000 回で止めました");
+            n = kMaxLoop;
+        }
         for (int i = 0; i < n && !ctx.stopped; i++) {
             if (ctx.steps > kMaxSteps) break;
             RunBlocks(b["body"], ctx);
@@ -940,10 +952,16 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
 
     if (type == "while") {
         int guard = 0;
+        bool ended = false;
         while (!ctx.stopped && guard++ < kMaxLoop) {
-            if (ctx.steps > kMaxSteps) break;
-            if (!EvalExpr(b["cond"], ctx).asBool()) break;
+            if (ctx.steps > kMaxSteps) { ended = true; break; }
+            if (!EvalExpr(b["cond"], ctx).asBool()) { ended = true; break; }
             RunBlocks(b["body"], ctx);
+        }
+        // 5000 回ちょうどで終わるはずだったものは、知らせない（もう一度だけ条件を見る）
+        if (!ended && !ctx.stopped && EvalExpr(b["cond"], ctx).asBool()) {
+            Report(kProblemWarning, "「◯の間くりかえす」が 5000 回をこえても終わらなかったので、止めました"
+                                    "（条件が、いつまでも成り立ったままになっていませんか）");
         }
         return;
     }
@@ -1009,11 +1027,22 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
         if (name.empty()) name = EvalStr(b["target"], ctx);
         const JValue* fn = ctx.prog->functionByName(name);
         if (!fn) fn = ctx.prog->scriptById(name);
-        if (!fn) return;
-        for (size_t i = 0; i < ctx.stack.size(); i++) {
-            if (ctx.stack[i] == fn) return;             // already running: stop recursion
+        if (!fn) {
+            Report(kProblemWarning, name.empty() ? std::string("「よぶ」ブロックに、トークの名前が入っていません")
+                                                 : "「" + name + "」をよぼうとしましたが、その名前のトークがありません");
+            return;
         }
-        if (ctx.stack.size() > 16) return;
+        for (size_t i = 0; i < ctx.stack.size(); i++) {
+            if (ctx.stack[i] == fn) {                   // already running: stop recursion
+                Report(kProblemWarning, "「" + name + "」は、いまよんでいる途中なので、もう一度はよびませんでした"
+                                        "（自分をよんだり、よび合いがひとまわりしたりしていませんか）");
+                return;
+            }
+        }
+        if (ctx.stack.size() > 16) {
+            Report(kProblemWarning, "よぶ・よばれるが 16 段より深くなったので、「" + name + "」はよびませんでした");
+            return;
+        }
         ctx.stack.push_back(fn);
         RunBlocks((*fn)["blocks"], ctx);
         ctx.stack.pop_back();

@@ -32,6 +32,8 @@ const TALK = path.join(__dirname, 'talk');
 const TALKWAIT = path.join(__dirname, 'talkwait');
 const SAVE = path.join(__dirname, 'save');
 const AUTOWAIT = path.join(__dirname, 'autowait');
+const DIAG = path.join(__dirname, 'diag');
+const BROKEN = path.join(__dirname, 'broken');
 
 // 書いていないときのダブルクリックのメニュー（頭のひとことは 3 つのどれか）
 const MENU_TAIL = '\\n\\n\\q[なにか話して,nashi.menu.talk]\\n\\q[話す多さを変える,nashi.menu.interval]\\n\\q[なんでもない,nashi.menu.cancel]\\e';
@@ -54,8 +56,48 @@ const daysAgo = (n) => {
 // 応答 1 件に対する期待。文字列なら Value の完全一致。
 //   { value } Value / { commTo } 話しかけ先 / { status } 応答の種類
 //   { valueOneOf: [...] } どれか 1 つに当たればよい（既定の反応がランダムなもの）
+//   { errors: ['warning 内容', ...] } 作者むけの知らせ（ErrorLevel / ErrorDescription）。書かなければ「何も出ない」
 //   null なら見ない
 const scenarios = [
+  {
+    name: '作者むけの知らせ — まちがいは SSP の開発者ツールへ（イベントの名前つき・同じものは 1 つ・おさまったら出ない）',
+    dir: DIAG,
+    steps: [
+      ['OnBoot:master', '\\0おきた\\e'],
+      ['OnMissing', { value: '\\0つづき\\e',
+        errors: ['warning OnMissing: 「ないよ」をよぼうとしましたが、その名前のトークがありません'] }],
+      ['OnTwo', { status: '204 No Content', errors: [
+        'warning OnTwo: 「よぶ」ブロックに、トークの名前が入っていません',
+        'warning OnTwo: 「ないよ」をよぼうとしましたが、その名前のトークがありません'] }],
+      ['OnMissing', '\\0つづき\\e'],                             // 同じ知らせは、この回はもう出さない
+      ['OnSelf', { value: '\\0いち\\e', errors: [
+        'warning OnSelf: 「じぶん」は、いまよんでいる途中なので、もう一度はよびませんでした（自分をよんだり、よび合いがひとまわりしたりしていませんか）'] }],
+      ['OnSteps', { status: '204 No Content', errors: [
+        'warning OnSteps: ブロックを 40000 回動かしても終わらなかったので、とちゅうで止めました（「◯の間くりかえす」などから出られなくなっていませんか）'] }],
+      ['OnCtrl', { status: '204 No Content', errors: [
+        'warning OnCtrl: 「改行です」をよぼうとしましたが、その名前のトークがありません'] }],
+      ['OnWhile', { value: '\\0ぬけた\\e', errors: [
+        'warning OnWhile: 「◯の間くりかえす」が 5000 回をこえても終わらなかったので、止めました（条件が、いつまでも成り立ったままになっていませんか）'] }],
+      ['OnRepeat', { status: '204 No Content', errors: [
+        'warning OnRepeat: 「◯回くりかえす」は 5000 回までなので、5000 回で止めました'] }],
+      ['OnLater', { status: '204 No Content' }],
+      ['OnSecondChange:0,0,0,1', { status: '204 No Content', errors: [
+        'warning OnSecondChange: 「◯秒後によぶ」の「ないトーク」が、その名前のトークがないので動きませんでした'] }],
+      ['OnOk', '\\0ふつう\\e'],                                  // 知らせは、そのときの応答だけ
+    ],
+  },
+  {
+    name: 'ghost.json が読めない — 何行目の何文字目かを、起動のセリフと SSP の開発者ツールで知らせる',
+    dir: BROKEN,
+    setup: (dir) => fs.copyFileSync(path.join(dir, 'ghost.broken.txt'), path.join(dir, 'ghost.json')),
+    steps: [
+      ['OnBoot:master', { value: '\\0\\s[0]ghost.json が読み込めませんでした。\\n'
+        + 'ghost.json の 4 行目 3 文字目: 「,」か「}」が来るはずのところに、ちがうものがあります（「,」の書きわすれ？）'
+        + '\\n（エディタから書き出し直してください）\\e', errors: [
+        'error ghost.json の 4 行目 3 文字目: 「,」か「}」が来るはずのところに、ちがうものがあります（「,」の書きわすれ？）'] }],
+      ['OnSecondChange:0,0,0,1', { status: '204 No Content' }],  // 知らせるのは 1 回だけ
+    ],
+  },
   {
     name: 'ダブルクリックを書いていないゴースト（トークあり）— メニューから話す多さを変えられる',
     dir: TALK,
@@ -146,7 +188,7 @@ const scenarios = [
     dir: SAVE,
     setup: (dir) => writeIn(dir, 'nashi_save.json', '{こわれている'),
     steps: [
-      ['OnCheck', '\\00\\e'],
+      ['OnCheck', { value: '\\00\\e', errors: [/^notice nashi_save\.json が読めなかったので、nashi_save\.broken-\d{8}-\d{6}\.json によけました$/] }],
     ],
     after: (dir) => (brokenIn(dir).length === 1 ? [] : ['読めなかった本体が残っていません']),
   },
@@ -394,7 +436,8 @@ const scenarios = [
       ['OnSaoriTest', { status: '204 No Content' }],
       ['!sleep:400', null],
       // 届いた答えは OnSaoriDone として、つぎの「ずっとくりかえす」で知らせる
-      ['OnSecondChange:0,1,1', '\\0とどいた:nai.dll\\e'],
+      // 呼べなかったわけは、SSP の開発者ツールに知らせる（別のスレッドではなく、受けとったこの応答で）
+      ['OnSecondChange:0,1,1', { value: '\\0とどいた:nai.dll\\e', errors: [/^warning SAORI を読み込めません（nai\.dll \/ エラー \d+）/] }],
       // 一度きり。つぎの秒は、いつもの「3 秒ごと」に戻る
       ['OnSecondChange:0,1,2', { status: '204 No Content' }],
       ['OnSecondChange:0,1,3', { value: '\\01\\e' }],
@@ -650,6 +693,16 @@ for (const sc of scenarios) {
     const exp = typeof want === 'string' ? { value: want } : want;
     if (!exp) return;
     checked++;
+
+    // 作者むけの知らせ（ErrorLevel / ErrorDescription）。書いていない応答では、何も出ていないこと
+    const wantErrs = exp.errors || [];
+    const gotErrs = res.errors || [];
+    const errsOk = gotErrs.length === wantErrs.length
+      && wantErrs.every((w, k) => (w instanceof RegExp ? w.test(gotErrs[k]) : w === gotErrs[k]));
+    if (!errsOk) {
+      problems.push(`${spec}  作者むけの知らせ\n          出た    : ${JSON.stringify(gotErrs)}`
+        + `\n          ほしい  : ${wantErrs.map(String).join(' / ') || '（なし）'}`);
+    }
 
     if (exp.valueOneOf) {
       if (!exp.valueOneOf.includes(res.value)) {

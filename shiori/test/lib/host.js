@@ -57,6 +57,15 @@ function parse(raw) {
     else if (line.startsWith('Value: ')) cur.value = line.slice(7);
     else if (line.startsWith('Reference0: ')) cur.commTo = line.slice(12);
     else if (line.startsWith('Age: ')) cur.age = line.slice(5);
+    else if (line.startsWith('ErrorLevel: ')) cur.errorLevel = line.slice(12);
+    else if (line.startsWith('ErrorDescription: ')) cur.errorDescription = line.slice(18);
+  }
+  // 作者むけの知らせを「level 内容」の並びにする（いくつもあるときは、バイト値 1 で区切られている）
+  for (const r of out) {
+    const levels = r.errorLevel ? r.errorLevel.split('\x01') : [];
+    const texts = r.errorDescription ? r.errorDescription.split('\x01') : [];
+    r.errors = levels.map((lv, i) => `${lv} ${texts[i] === undefined ? '（内容なし）' : texts[i]}`);
+    if (texts.length !== levels.length) r.errors.push(`（数がちがう: ErrorLevel ${levels.length} / ErrorDescription ${texts.length}）`);
   }
   return out;
 }
