@@ -24,6 +24,24 @@
       : typeof v === 'boolean' ? (v ? '1' : '0')
         : typeof v === 'number' ? fmtNum(v) : String(v));
 
+  // \![…] のうち、プレビューで「こうなります」と見せたいもの。ほかは何も出さない。
+  const INPUT_KINDS = {
+    inputbox: '文字', dateinput: '日付', timeinput: '時刻', sliderinput: '数', passwordinput: 'パスワード',
+  };
+  function describeCommand(a) {
+    if (a[0] === 'sound') {
+      if (a[1] === 'stop') return '♪ 音を止める';
+      if (a[1] === 'loop') return `♪ ${a[2] || ''} をくりかえし鳴らす`;
+      if (a[1] === 'play') return `♪ ${a[2] || ''} を鳴らす`;
+      return '';
+    }
+    if (a[0] === 'set' && a[1] === 'alpha') return `濃さ ${a[2]}％`;
+    if (a[0] === 'move') return 'キャラが動く';
+    if (a[0] === 'open' && INPUT_KINDS[a[1]]) return `（${INPUT_KINDS[a[1]]}の入力欄が開く）`;
+    if (a[0] === 'open' && a[1] === 'browser') return `（ブラウザで ${a[2] || ''} を開く）`;
+    return '';
+  }
+
   // ------------------------------------------------------- SakuraScript 解析
   /** プレビュー再生のために、さくらスクリプトを操作の列に分解する */
   function parseSakura(s) {
@@ -111,7 +129,20 @@
           else if (kind === 'v') { flush(); ops.push({ op: 'sound', file: a }); }
           break;
         }
-        case '!': { readBracket(); break; }
+        case 'f': {
+          // 文字の飾り。\f[bold,1] / \f[color,#d03030] / \f[height,150%] / \f[default]
+          const a = splitArgs(readBracket() || '');
+          flush();
+          ops.push({ op: 'style', name: a[0], value: a.length > 1 ? a.slice(1).join(',') : '' });
+          break;
+        }
+        case '!': {
+          // 画面のプレビューでは再現しないものを、吹き出しに小さく書いておく
+          const a = splitArgs(readBracket() || '');
+          const note = describeCommand(a);
+          if (note) { flush(); ops.push({ op: 'note', text: note }); }
+          break;
+        }
         default: {
           if (s[i] === '[') readBracket();
           break;

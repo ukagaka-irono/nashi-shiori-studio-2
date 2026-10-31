@@ -3,6 +3,7 @@
 #include "version_gen.h"   // NASHI_VERSION（shiori\build.ps1 が VERSION から作る）
 
 #include <cstdio>
+#include <cstring>
 
 namespace nashi {
 
@@ -552,14 +553,21 @@ void Shiori::RememberOffered(const std::string& script) {
         if (script.compare(i, 3, "\\q[") == 0)        { pos = i + 3; key = "c"; }
         else if (script.compare(i, 4, "\\_a[") == 0)  { pos = i + 4; key = "a"; }
         else if (script.compare(i, 5, "\\__q[") == 0) { pos = i + 5; key = "a"; }
-        else if (script.compare(i, 17, "\\![open,inputbox,") == 0) { pos = i + 3; key = "i"; }
+        else if (script.compare(i, 8, "\\![open,") == 0) {
+            // 入力ボックスのなかま（文字・日付・時刻・スライダー・パスワード）
+            static const char* kBoxes[] = { "inputbox,", "dateinput,", "timeinput,",
+                                            "sliderinput,", "passwordinput," };
+            for (size_t k = 0; k < sizeof(kBoxes) / sizeof(kBoxes[0]); k++) {
+                if (script.compare(i + 8, strlen(kBoxes[k]), kBoxes[k]) == 0) { pos = i + 3; key = "i"; break; }
+            }
+        }
         if (pos == std::string::npos) { i++; continue; }
         std::vector<std::string> a = ReadTagArgs(script, pos);
         i = pos;
         std::string got;
         if (key == "c" && a.size() > 1) got = "c:" + Trim(a[1]);       // \q[ラベル,行き先]
         else if (key == "a")            got = "c:" + Trim(a[0]);       // \_a[行き先]
-        else if (key == "i" && a.size() > 2) got = "i:" + Trim(a[2]);  // \![open,inputbox,ID,…]
+        else if (key == "i" && a.size() > 2) got = "i:" + Trim(a[2]);  // \![open,〇〇input,ID,…]
         if (got.size() <= 2) continue;
         for (size_t k = 0; k < offered_.size(); k++) {
             if (offered_[k] == got) { offered_.erase(offered_.begin() + (long)k); break; }
@@ -599,6 +607,20 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
     // シェルの名前は Reference7 に入っている（SSP）。
     if (id == "OnGhostChanged" || id == "OnGhostCalled") NoteBoot(req, RefAt(req, 7));
     if (id == "OnShellChanged") sys_.shellName = RefAt(req, 0);
+
+    // SSP が起動のとき（と、変わったとき）に知らせてくるもの。情報ブロックで読める。
+    if (id == "OnNotifyUserInfo") {
+        sys_.userName = RefAt(req, 0);
+        // 誕生日は「2003,5,5」の形
+        std::string bd = RefAt(req, 2);
+        size_t c1 = bd.find(','), c2 = c1 == std::string::npos ? c1 : bd.find(',', c1 + 1);
+        if (c2 != std::string::npos) {
+            int m = atoi(bd.c_str() + c1 + 1), d = atoi(bd.c_str() + c2 + 1);
+            sys_.birthMonth = (m >= 1 && m <= 12) ? m : 0;
+            sys_.birthDay = (d >= 1 && d <= 31) ? d : 0;
+        }
+    }
+    if (id == "basewareversion") sys_.baseware = RefAt(req, 0);
 
     if (id == "OnSecondChange") {
         sys_.uptimeSec++;

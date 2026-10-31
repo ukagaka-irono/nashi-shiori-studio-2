@@ -431,6 +431,10 @@ button, input, select, textarea { font-family: inherit; }
 }
 .balloon-choice:hover { background: #e2ecf8; }
 .balloon-wait { color: #b7c3d2; }
+.balloon-note {
+  display: inline-block; margin: 2px 3px 0 0; padding: 0 6px; border-radius: 6px;
+  background: #f4f6f9; border: 1px dashed #cfd8e3; color: #7a8a9c; font-size: 10.5px;
+}
 
 .script-out { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .script-out-head {

@@ -308,6 +308,49 @@ const scenarios = [
       ['OnShowShell', '\\0master3\\e'],
     ],
   },
+  {
+    name: '文字の飾り・音・濃さ・移動のタグ',
+    dir: MAIN,
+    steps: [
+      ['OnStyleTest', '\\f[bold,1]\\f[color,#2f62c8]\\f[height,150%]\\0だいじ\\f[default]\\e'],
+      ['OnBgmTest', '\\![sound,loop,music\\bgm.mp3,--volume=40]\\1\\![set,alpha,30,--time=500]'
+        + '\\0\\![move,--X=100,--Y=200,--time=1000,--base=screen]\\![sound,stop]\\e'],
+    ],
+  },
+  {
+    name: 'イベントを起こす選択肢 — On を補い、情報は Reference0 で届く',
+    dir: MAIN,
+    steps: [
+      ['OnChoiceEventTest', '\\q[春,OnLikeSeason,花見]\\e'],
+      // SSP はえらばれると、OnChoiceSelect ではなく OnLikeSeason を直接起こす
+      ['OnLikeSeason:花見', '\\0花見\\e'],
+    ],
+  },
+  {
+    name: 'スライダーでたずねる — 答えは「たずねる」と同じく変数に入る',
+    dir: MAIN,
+    steps: [
+      ['OnSliderTest', '\\![open,sliderinput,nashi:こたえ,-1,1,1,10]\\e'],
+      ['OnUserInput:nashi:こたえ,7', { status: '204 No Content' }],
+      ['OnShowAnswer', '\\07\\e'],
+    ],
+  },
+  {
+    name: 'SSP が知らせてくるユーザーの情報と版を、情報ブロックで読める',
+    dir: MAIN,
+    steps: [
+      ['OnNotifyUserInfo:ゆき|Reference2:2000,5,5', null],
+      ['basewareversion:2.9.26', null],
+      ['OnShowUser', '\\0ゆき/5/5/2.9.26\\e'],
+    ],
+  },
+  {
+    name: 'ファイルを落とされたとき — 1 つ目のファイルを読める',
+    dir: MAIN,
+    steps: [
+      ['OnFileDrop2:C:\\a.txt,0', '\\0C:\\\\a.txt\\e'],
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------- 実行

@@ -42,6 +42,10 @@ PreviewResult RunPreview(const PreviewRequest& req) {
     sys.ghostName = req.ghostName;
     sys.shellName = req.shellName;
     sys.lastTalk = req.lastTalk;
+    sys.userName = req.userName;
+    sys.birthMonth = req.birthMonth;
+    sys.birthDay = req.birthDay;
+    sys.baseware = req.baseware;
 
     RunCtx ctx;
     ctx.prog = &prog;

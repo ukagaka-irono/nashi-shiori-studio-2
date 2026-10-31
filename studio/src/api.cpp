@@ -380,6 +380,10 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         pr.ghostName = sys.has("ghostName") ? sys["ghostName"].asStr()
                                             : pr.project["meta"]["name"].asStr();
         pr.shellName = sys.has("shellName") ? sys["shellName"].asStr() : "master";
+        pr.userName = sys["userName"].asStr();
+        pr.birthMonth = sys["birthMonth"].asInt(0);
+        pr.birthDay = sys["birthDay"].asInt(0);
+        pr.baseware = sys["baseware"].asStr();
 
         PreviewResult r = RunPreview(pr);
         if (!r.ok) { JsonError(res, 400, r.error); return; }

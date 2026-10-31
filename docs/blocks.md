@@ -42,7 +42,16 @@
 `OnGhostChanged` / `OnGhostChanging` / `OnKeyPress` / `OnSurfaceRestore` /
 `OnWindowStateMinimize` / `OnWindowStateRestore` /
 `OnUpdateBegin` / `OnUpdateReady` / `OnUpdateComplete` / `OnUpdateFailure` /
-`OnSaoriDone` / `OnUserInput` / `OnUserInputCancel`。
+`OnSaoriDone` / `OnUserInput` / `OnUserInputCancel` /
+`OnMouseEnter` / `OnMouseLeave` / `OnMouseHover`（この 3 つも「どこを・だれを」でしぼり込めます） /
+`OnChoiceTimeout` / `OnOtherGhostBooted` / `OnOtherGhostClosed` /
+`OnVanishSelecting` / `OnVanishSelected` / `OnVanishCancel` /
+`OnFileDrop2` / `OnURLDropped` / `OnShellChanged` / `OnDressupChanged` / `OnBalloonChange` /
+`OnInstallComplete` / `OnScreenSaverEnd` / `OnSessionUnlock` / `OnSysResume` / `OnBatteryLow` /
+`OnDisplayChange` / `OnRecycleBinEmpty` / `OnDarkTheme`。
+
+栞は、SSP が起動のときに知らせてくる `OnNotifyUserInfo`（ユーザーの呼び名・誕生日）と
+`basewareversion`（SSP の版）を覚えておき、情報ブロックで読めるようにします。
 `OnHourTimeSignal`（1時間ごと）は、以前の版では `OnHourChange` と書き出していました。
 SSP にその名前のイベントは無いので、読みこむと自動で直します（栞も、古い `ghost.json` の
 `OnHourChange` を `OnHourTimeSignal` のときに動かします）。
@@ -85,6 +94,11 @@ SSP の通信ボックスから話しかけられた場合、相手の名前は 
 | クリックされるまで待つ | `{"type":"click_wait"}` | `\x` |
 | バルーンの文字を消す | `{"type":"clear"}` | `\c` |
 | 選択肢「L」→ T を出す | `{"type":"choice","label":"L","target":"T"}` | `\q[L,T]` |
+| 選択肢「L」→ イベント E を起こす（情報 A） | `{"type":"choice_event","label":"L","event":"OnE","a":"A"}` | `\q[L,OnE,A]`（E が On で始まらなければ On を付ける。A は起きたイベントの `Reference0`） |
+| 文字を 太字 にする／をやめる | `{"type":"font_style","style":"bold","on":1}` | `\f[bold,1]`（style は bold / italic / underline / strike） |
+| 文字の色を ◯ にする | `{"type":"font_color","color":"#d03030"}` | `\f[color,#d03030]`（#RRGGBB / #RGB / default だけ） |
+| 文字の大きさを N ％にする | `{"type":"font_size","size":150}` | `\f[height,150%]`（20〜400） |
+| 文字の飾りをもとにもどす | `{"type":"font_default"}` | `\f[default]` |
 | リンク「L」→ URL を出す | `{"type":"link","label":"L","url":"…"}` | `\_a[…]L\_a` |
 | ◯が T に □ と話しかける | `{"type":"communicate","who":0,"to":"T","text":"…"}` | `\0…`（＋応答に `Reference0: T`） |
 | さくらスクリプト □ をそのまま出す | `{"type":"raw","text":"…"}` | そのまま |
@@ -126,6 +140,10 @@ SSP から返ってきた `OnChoiceSelect` / `OnAnchorSelect` / `OnUserInput` �
 | うごき N を再生する | `{"type":"anim","id":0}` | `\i[0]` |
 | バルーンを N 番にする | `{"type":"balloon","id":0}` | `\b[0]` |
 | 音 F を鳴らす | `{"type":"sound","file":"a.wav"}` | `\_v[a.wav]` |
+| 音 F をくりかえし鳴らす／1 回鳴らす（音量 V ％） | `{"type":"bgm","file":"bgm.mp3","mode":"loop","volume":100}` | `\![sound,loop,bgm.mp3]`（100 以外なら `,--volume=V`。ファイルはゴーストのフォルダの中だけ） |
+| 鳴っている音をぜんぶ止める | `{"type":"sound_stop"}` | `\![sound,stop]` |
+| ◯の濃さを N ％にする（M ミリ秒かけて） | `{"type":"alpha","who":0,"alpha":50,"ms":500}` | `\0\![set,alpha,50,--time=500]`（0 で見えない・100 でもとどおり） |
+| ◯を画面の 横 X 縦 Y へ動かす（M ミリ秒かけて） | `{"type":"move","who":0,"x":100,"y":100,"ms":1000}` | `\0\![move,--X=100,--Y=100,--time=1000,--base=screen]` |
 
 **うごき**（`anim`）は SERIKO のアニメーションを再生します。中身はブロックではなく、
 エディタの「ゴースト」タブで作って `shell/master/surfaces.txt` に書き出されます。
@@ -180,6 +198,7 @@ SSP から返ってきた `OnChoiceSelect` / `OnAnchorSelect` / `OnUserInput` �
 | ◯ のトークをどれかよぶ | `{"type":"call_group","group":"まとまりの名前"}` |
 | ランダムトークの間隔を N 秒にする | `{"type":"talk_interval","sec":180}` |
 | たずねて、答えを V に入れる | `{"type":"ask","into":"V","initial":""}` → `\![open,inputbox,nashi:V,-1,…]` |
+| 日付／時刻／数／パスワードをたずねて、答えを V に入れる | `{"type":"ask_kind","kind":"dateinput","into":"V","min":0,"max":100}` → `\![open,dateinput,nashi:V,-1]`（kind は dateinput / timeinput / sliderinput / passwordinput。スライダーは `,現在値,最小,最大` が付く。答えは日付なら「年,月,日」、時刻なら「時,分,秒」） |
 | N 秒後に ◯ をよぶ | `{"type":"later","sec":30,"name":"トーク名"}` |
 | イベント E を自分で起こす | `{"type":"raise","event":"E","a":""}` → `\![raise,E,…]` |
 | ◯ に交代する | `{"type":"change_ghost","name":"…"}` → `\![change,ghost,…]` |
@@ -280,7 +299,11 @@ SSP から返ってきた `OnChoiceSelect` / `OnAnchorSelect` / `OnUserInput` �
 | いまの季節 | `{"type":"sys","key":"season"}` | `春`(3-5) / `夏`(6-8) / `秋`(9-11) / `冬`(12-2) |
 | いまの曜日（名前） | `{"type":"sys","key":"weekdayname"}` | `日` 〜 `土` |
 | 前に出したトーク | `{"type":"sys","key":"lasttalk"}` | そのトークの id |
-| イベントの情報 N | `{"type":"ref","index":0}` | SSP の `ReferenceN` |
+| ユーザーの呼び名 | `{"type":"sys","key":"username"}` | SSP の設定（`OnNotifyUserInfo` の `Reference0`）。ためすときは「ユーザー」 |
+| ユーザーの誕生月 / 誕生日(日) | `{"type":"sys","key":"birthmonth"}` / `birthday` | 分からなければ 0。ためすときは今日 |
+| SSP の版 | `{"type":"sys","key":"baseware"}` | `basewareversion` で届いた版。ためすときは 2.9 |
+| 落とされたファイル(1つ目) | `{"type":"sys","key":"droppedfile"}` | `OnFileDrop2` の `Reference0` の 1 つ目 |
+| イベントの情報 N | `{"type":"ref","index":0}` | SSP の `ReferenceN`（0〜7） |
 
 `ReferenceN` の内容はイベントごとに違います。よく使うもの:
 

@@ -424,6 +424,8 @@
     const ops = Player.parseSakura(script);
     let who = 0;
     let target = balloonOf(0);
+    // いまの文字の飾り（\f[…]）。空ならふつうの文字
+    let style = {};
 
     for (const op of ops) {
       if (token !== App.playToken) return;
@@ -436,9 +438,23 @@
         case 'surface':
           setSurface(who, op.id);
           break;
+        case 'style':
+          style = applyStyle(style, op.name, op.value);
+          break;
+        case 'note': {
+          target.classList.remove('is-empty');
+          target.querySelector('.balloon-text').appendChild(Render.el('span', 'balloon-note', op.text));
+          break;
+        }
         case 'text': {
           target.classList.remove('is-empty');
-          const box = target.querySelector('.balloon-text');
+          let box = target.querySelector('.balloon-text');
+          if (Object.keys(style).length) {
+            const span = Render.el('span');
+            Object.assign(span.style, style);
+            box.appendChild(span);
+            box = span;
+          }
           for (const ch of Array.from(op.text)) {
             if (token !== App.playToken) return;
             box.appendChild(document.createTextNode(ch));
@@ -466,10 +482,13 @@
         case 'choice': {
           const chip = Render.el('span', 'balloon-choice', op.label);
           chip.addEventListener('click', () => {
-            const fn = Model.project.scripts.find(
-              (s) => (s.kind === 'function' || s.kind === 'talk') && s.name === op.id
-            );
+            // 行き先が On で始まるときは、SSP と同じく、そのイベントのブロックを動かす
+            const isEvent = /^On/.test(op.id);
+            const fn = Model.project.scripts.find((s) => (isEvent
+              ? s.kind === 'event' && s.event === op.id
+              : (s.kind === 'function' || s.kind === 'talk') && s.name === op.id));
             if (fn) App.runScript(fn);
+            else if (isEvent) App.toast(`「${op.id}」のブロックがありません`, true);
             else App.toast(`「${op.id}」というトークが見つかりません`, true);
           });
           target.querySelector('.balloon-text').appendChild(chip);
@@ -482,6 +501,35 @@
           break;
       }
     }
+  }
+
+  // \f[…] を、吹き出しの文字の見た目（CSS）に直す。
+  // 大きさの ％ は、ふだんの大きさに対して。default は飾りを全部はずす。
+  function applyStyle(cur, name, value) {
+    const on = value === '1' || value === 'true';
+    const next = Object.assign({}, cur);
+    const set = (key, v) => { if (v) next[key] = v; else delete next[key]; };
+    switch (name) {
+      case 'default': return {};
+      case 'bold': set('fontWeight', on ? 'bold' : ''); break;
+      case 'italic': set('fontStyle', on ? 'italic' : ''); break;
+      case 'underline':
+      case 'strike': {
+        const lines = new Set(String(next.textDecoration || '').split(' ').filter(Boolean));
+        const word = name === 'underline' ? 'underline' : 'line-through';
+        if (on) lines.add(word); else lines.delete(word);
+        set('textDecoration', [...lines].join(' '));
+        break;
+      }
+      case 'color': set('color', value === 'default' ? '' : value); break;
+      case 'height': {
+        const m = /^(\d+)%$/.exec(value);
+        set('fontSize', value === 'default' ? '' : (m ? `${m[1]}%` : (Number(value) ? `${Number(value)}px` : '')));
+        break;
+      }
+      default: break;
+    }
+    return next;
   }
 
   function waitForStageClick() {

@@ -306,6 +306,16 @@
       // 相手の名前・言われたこと。空欄なら、ためすとき用の仮の値を入れる。
       return [script.from || 'ほかのゴースト', script.contains || 'こんにちは'];
     }
+    // よく使うイベントは、それらしい仮の値を入れておく
+    const samples = {
+      OnFileDrop2: ['C:\\Users\\user\\Desktop\\memo.txt', '0', 'text/plain'],
+      OnURLDropped: ['C:\\Users\\user\\Downloads\\page.html', 'https://example.com/', '0'],
+      OnKeyPress: ['a', '65', '0', '0', ''],
+      OnBatteryLow: ['15', '-1', 'offline', 'low'],
+      OnShellChanged: ['master', Model.project.meta.name || '', ''],
+      OnDarkTheme: ['1', '1'],
+    };
+    if (samples[script.event]) return samples[script.event];
     if (!N.MOUSE_EVENTS[script.event]) return [];
     const who = script.who >= 0 ? script.who : 0;
     return ['0', '0', '0', String(who), script.area || 'Head'];
@@ -325,7 +335,11 @@
         scriptId: script.id,
         refs: refsFor(script),
         vars: App.sessionVars,
-        sys: { ghostName: meta.name || '', shellName: 'master' },
+        // SSP が知らせてくる情報は、ためすときは仮の値（誕生日は今日にしておく）
+        sys: {
+          ghostName: meta.name || '', shellName: 'master', userName: 'ユーザー',
+          birthMonth: new Date().getMonth() + 1, birthDay: new Date().getDate(), baseware: '2.9',
+        },
       },
     });
   }

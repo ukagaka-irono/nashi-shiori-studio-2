@@ -25,18 +25,40 @@ window.NASHI = window.NASHI || {};
     ['クリックされたとき', 'OnMouseClick'],
     ['なでられたとき', 'OnNadeNade'],
     ['マウスが動いたとき', 'OnMouseMove'],
+    ['マウスが乗ったとき', 'OnMouseEnter'],
+    ['マウスが離れたとき', 'OnMouseLeave'],
+    ['マウスが止まっているとき', 'OnMouseHover'],
     ['ホイールを回されたとき', 'OnMouseWheel'],
     ['1時間ごと', 'OnHourTimeSignal'],
     ['1分ごと', 'OnMinuteChange'],
     ['ずっとくりかえす', 'OnSecondChange'],
     ['選択肢がえらばれたとき', 'OnChoiceSelect'],
+    ['選択肢が時間切れになったとき', 'OnChoiceTimeout'],
     ['話しかけられたとき', 'OnCommunicate'],
     ['他のゴーストから来たとき', 'OnGhostChanged'],
     ['他のゴーストへ行くとき', 'OnGhostChanging'],
+    ['ほかのゴーストが起動したとき', 'OnOtherGhostBooted'],
+    ['ほかのゴーストが終了したとき', 'OnOtherGhostClosed'],
+    ['消すように言われたとき', 'OnVanishSelecting'],
+    ['消すことが決まったとき', 'OnVanishSelected'],
+    ['消すのをやめてもらえたとき', 'OnVanishCancel'],
     ['キーが押されたとき', 'OnKeyPress'],
+    ['ファイルを落とされたとき', 'OnFileDrop2'],
+    ['URL を落とされたとき', 'OnURLDropped'],
+    ['シェルを着がえたとき', 'OnShellChanged'],
+    ['着せ替えたとき', 'OnDressupChanged'],
+    ['バルーンが変わったとき', 'OnBalloonChange'],
+    ['何かをインストールしたとき', 'OnInstallComplete'],
     ['サーフェスがもどったとき', 'OnSurfaceRestore'],
     ['最小化されたとき', 'OnWindowStateMinimize'],
     ['最小化からもどったとき', 'OnWindowStateRestore'],
+    ['スクリーンセーバーが終わったとき', 'OnScreenSaverEnd'],
+    ['画面のロックを解いたとき', 'OnSessionUnlock'],
+    ['スリープからもどったとき', 'OnSysResume'],
+    ['バッテリーが少なくなったとき', 'OnBatteryLow'],
+    ['画面の大きさが変わったとき', 'OnDisplayChange'],
+    ['ゴミ箱を空にしたとき', 'OnRecycleBinEmpty'],
+    ['ダークテーマが切りかわったとき', 'OnDarkTheme'],
     ['更新をはじめたとき', 'OnUpdateBegin'],
     ['更新するものが見つかったとき', 'OnUpdateReady'],
     ['更新がおわったとき', 'OnUpdateComplete'],
@@ -51,6 +73,7 @@ window.NASHI = window.NASHI || {};
   N.MOUSE_EVENTS = {
     OnMouseClick: 1, OnMouseDoubleClick: 1, OnMouseMove: 1,
     OnMouseWheel: 1, OnNadeNade: 1,
+    OnMouseEnter: 1, OnMouseLeave: 1, OnMouseHover: 1,
   };
 
   // 当たり判定の名前。仮シェルはこの名前で書き出しています。
@@ -73,7 +96,25 @@ window.NASHI = window.NASHI || {};
     OnMinuteChange: ['OSの連続起動時間(時)', '見切れていたら1', '重なっていたら1', 'しゃべってよいか(1=よい)', '放置されている秒数'],
     OnHourTimeSignal: ['OSの連続起動時間(時)', '見切れていたら1', '重なっていたら1', '(いつも1)', '放置されている秒数'],
     OnChoiceSelect: ['えらばれたID'],
-    OnKeyPress: ['押されたキー'],
+    OnChoiceTimeout: ['時間切れになったスクリプト'],
+    OnKeyPress: ['押されたキー(文字)', '押されたキー(仮想キーコード)', '押しっぱなしの回数', 'キャラの番号', '一緒に押したキー(shift など)'],
+    OnMouseEnter: ['X座標', 'Y座標', '', '相手(0=本体/1=相方)', '当たった場所'],
+    OnMouseLeave: ['X座標', 'Y座標', '', '相手(0=本体/1=相方)', '当たった場所'],
+    OnMouseHover: ['X座標', 'Y座標', '', '相手(0=本体/1=相方)', '当たった場所'],
+    OnOtherGhostBooted: ['起動したゴーストの本体側の名前', '起動したときのスクリプト', 'ゴースト名', '', '', '', '', 'シェル名'],
+    OnOtherGhostClosed: ['終了したゴーストの本体側の名前', '最後のスクリプト', 'ゴースト名', '', '', '', '', 'シェル名'],
+    OnFileDrop2: ['落とされたファイル(いくつもあるときは区切り文字 1 でつながる)', '落とされたキャラの番号', 'ファイルの種類(MIME)'],
+    OnURLDropped: ['落としてきたファイルの場所', 'URL', '落とされたキャラの番号'],
+    OnShellChanged: ['新しいシェル名', 'ゴースト名', 'シェルの場所'],
+    OnDressupChanged: ['キャラの番号', 'パーツの名前', '1=つけた / 0=はずした', 'カテゴリ名', 'script / user'],
+    OnBalloonChange: ['新しいバルーン名', 'バルーンの場所'],
+    OnInstallComplete: ['種類(ghost/shell/balloon…)', '名前', '名前2'],
+    OnScreenSaverEnd: ['スクリーンセーバー名', '場所', '始まるまでの秒数'],
+    OnSysResume: ['normal / auto / critical'],
+    OnBatteryLow: ['残り(％)', '残り時間(不明なら -1)', 'offline / online / backup', '状態(low,charging など)'],
+    OnDisplayChange: ['色の深さ(bpp)', '幅', '高さ'],
+    OnRecycleBinEmpty: ['残ったファイル数', '残った大きさ', '減った数', '減った大きさ', '1=空にできた', '空にしたゴースト'],
+    OnDarkTheme: ['アプリの設定(1=ダーク)', 'Windows の設定(1=ダーク)'],
     OnGhostChanged: ['前のゴーストの本体側の名前', '前のゴーストの切り替えスクリプト', '前のゴースト名', '前のゴーストの場所', '', '', '', 'シェル名'],
     OnCommunicate: ['相手の名前(通信ボックスなら user)', '言われたこと'],
     OnUpdateBegin: ['ゴースト名', 'フォルダの場所', '', '種類(ghost/shell/balloon…)'],
@@ -232,6 +273,46 @@ window.NASHI = window.NASHI || {};
       target: { kind: 'funcname', def: '' },
     },
   });
+  // えらぶと、トークではなくイベントを起こす選択肢（\q[見出し,OnX,情報]）。
+  // 情報は、起きたイベントの「イベントの情報 0番目」に入る。
+  def({
+    type: 'choice_event', cat: 'talk', shape: 'stack',
+    spec: '選択肢「%label」→ イベント %event を起こす（情報 %a）',
+    args: {
+      label: { kind: 'input', mode: 'text', def: 'はい', long: true },
+      event: { kind: 'input', mode: 'text', def: 'OnAnswer', long: true },
+      a: { kind: 'input', mode: 'text', def: '', long: true },
+    },
+  });
+  // 文字の飾り（\f[…]）。このあとのセリフに効く。「もとにもどす」で全部はずれる。
+  def({
+    type: 'font_style', cat: 'talk', shape: 'stack',
+    spec: '文字を %style %on',
+    args: {
+      style: {
+        kind: 'dropdown', def: 'bold',
+        options: [['太字', 'bold'], ['斜め', 'italic'], ['下線つき', 'underline'], ['取り消し線つき', 'strike']],
+      },
+      on: { kind: 'dropdown', def: 1, options: [['にする', 1], ['をやめる', 0]] },
+    },
+  });
+  def({
+    type: 'font_color', cat: 'talk', shape: 'stack',
+    spec: '文字の色を %color にする',
+    args: {
+      color: {
+        kind: 'dropdown', def: '#d03030',
+        options: [['赤', '#d03030'], ['青', '#2f62c8'], ['緑', '#2f8a3a'], ['オレンジ', '#e07a10'],
+          ['ピンク', '#e0508a'], ['むらさき', '#7a4ac0'], ['灰色', '#808080'], ['もとの色', 'default']],
+      },
+    },
+  });
+  def({
+    type: 'font_size', cat: 'talk', shape: 'stack',
+    spec: '文字の大きさを %size ％にする',
+    args: { size: { kind: 'input', mode: 'number', def: 150 } },
+  });
+  def({ type: 'font_default', cat: 'talk', shape: 'stack', spec: '文字の飾りをもとにもどす' });
   def({
     type: 'link', cat: 'talk', shape: 'stack',
     spec: 'リンク「%label」→ %url を出す',
@@ -285,6 +366,36 @@ window.NASHI = window.NASHI || {};
     type: 'sound', cat: 'looks', shape: 'stack',
     spec: '音 %file を鳴らす',
     args: { file: { kind: 'input', mode: 'text', def: 'sound.wav', long: true } },
+  });
+  // BGM など。セリフを待たずに鳴り、くりかえしは「音を止める」まで続く（\![sound,…]）。
+  def({
+    type: 'bgm', cat: 'looks', shape: 'stack',
+    spec: '音 %file を %mode（音量 %volume ％）',
+    args: {
+      file: { kind: 'input', mode: 'text', def: 'bgm.mp3', long: true },
+      mode: { kind: 'dropdown', def: 'loop', options: [['くりかえし鳴らす', 'loop'], ['1 回鳴らす', 'play']] },
+      volume: { kind: 'input', mode: 'number', def: 100 },
+    },
+  });
+  def({ type: 'sound_stop', cat: 'looks', shape: 'stack', spec: '鳴っている音をぜんぶ止める' });
+  def({
+    type: 'alpha', cat: 'looks', shape: 'stack',
+    spec: '%who の濃さを %alpha ％にする（%ms ミリ秒かけて）',
+    args: {
+      who: { kind: 'dropdown', options: WHO, def: 0 },
+      alpha: { kind: 'input', mode: 'number', def: 50 },
+      ms: { kind: 'input', mode: 'number', def: 500 },
+    },
+  });
+  def({
+    type: 'move', cat: 'looks', shape: 'stack',
+    spec: '%who を画面の 横 %x 縦 %y へ動かす（%ms ミリ秒かけて）',
+    args: {
+      who: { kind: 'dropdown', options: WHO, def: 0 },
+      x: { kind: 'input', mode: 'number', def: 100 },
+      y: { kind: 'input', mode: 'number', def: 100 },
+      ms: { kind: 'input', mode: 'number', def: 1000 },
+    },
   });
 
   // ================================================================ 制御
@@ -346,6 +457,22 @@ window.NASHI = window.NASHI || {};
     args: {
       into: { kind: 'varname', def: '' },
       initial: { kind: 'input', mode: 'text', def: '', long: true },
+    },
+  });
+  // 文字のかわりに、日付・時刻・数（スライダー）・パスワードをたずねる。
+  // 答えの形: 日付は「年,月,日」、時刻は「時,分,秒」、スライダーは数。
+  def({
+    type: 'ask_kind', cat: 'control', shape: 'stack',
+    spec: '%kind をたずねて、答えを %into に入れる（スライダーは %min 〜 %max）',
+    args: {
+      kind: {
+        kind: 'dropdown', def: 'dateinput',
+        options: [['日付', 'dateinput'], ['時刻', 'timeinput'], ['数（スライダー）', 'sliderinput'],
+          ['パスワード', 'passwordinput']],
+      },
+      into: { kind: 'varname', def: '' },
+      min: { kind: 'input', mode: 'number', def: 0 },
+      max: { kind: 'input', mode: 'number', def: 100 },
     },
   });
   def({
@@ -536,6 +663,9 @@ window.NASHI = window.NASHI || {};
           ['前に出したトーク', 'lasttalk'],
           ['ゴースト名', 'ghostname'], ['シェル名', 'shellname'],
           ['話しかけてきた相手', 'commfrom'], ['言われたこと', 'commtext'],
+          ['ユーザーの呼び名', 'username'], ['ユーザーの誕生月', 'birthmonth'],
+          ['ユーザーの誕生日(日)', 'birthday'], ['SSP の版', 'baseware'],
+          ['落とされたファイル(1つ目)', 'droppedfile'],
         ],
       },
     },
@@ -546,7 +676,8 @@ window.NASHI = window.NASHI || {};
     args: {
       index: {
         kind: 'dropdown', def: 0,
-        options: [['0番目', 0], ['1番目', 1], ['2番目', 2], ['3番目', 3], ['4番目', 4], ['5番目', 5]],
+        options: [['0番目', 0], ['1番目', 1], ['2番目', 2], ['3番目', 3], ['4番目', 4], ['5番目', 5],
+          ['6番目', 6], ['7番目', 7]],
       },
     },
   });
@@ -557,10 +688,11 @@ window.NASHI = window.NASHI || {};
       { note: 'ゴーストの動きは、ここからはじまります。キャンバスにドラッグしてください。' },
       '@event', '@event.touch', '@event.every', '@event.comm', '@talk', '@function',
     ],
-    talk: ['say', 'newline', 'click_wait', 'clear', 'choice', 'link', 'communicate', 'raw'],
-    looks: ['surface', 'chara', 'anim', 'balloon', 'sound'],
+    talk: ['say', 'newline', 'click_wait', 'clear', 'choice', 'choice_event', 'link',
+      'font_style', 'font_color', 'font_size', 'font_default', 'communicate', 'raw'],
+    looks: ['surface', 'chara', 'anim', 'balloon', 'sound', 'bgm', 'sound_stop', 'alpha', 'move'],
     control: ['wait', 'if', 'if_else', 'repeat', 'while', 'random_one', 'call',
-      'call_group', 'talk_interval', 'ask', 'later', 'raise', 'update', 'saori_call',
+      'call_group', 'talk_interval', 'ask', 'ask_kind', 'later', 'raise', 'update', 'saori_call',
       'open_browser', 'end', 'close', 'change_ghost'],
     variables: [{ button: 'add-var', label: '＋ 変数をつくる' }, '@vars', 'set', 'change'],
     operators: ['arith#+', 'arith#-', 'arith#*', 'arith#/', 'arith#%',

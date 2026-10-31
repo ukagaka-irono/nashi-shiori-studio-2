@@ -17,6 +17,12 @@ struct SysInfo {
     std::string shellName;
     std::string lastTalk;   // id of the talk played last
     std::vector<std::string> recentTalks;  // newest first; kept to avoid repeats
+
+    // SSP が起動のときに知らせてくるもの（OnNotifyUserInfo / basewareversion）
+    std::string userName;   // ユーザーの呼び名
+    int birthMonth = 0;     // 誕生日（分からなければ 0）
+    int birthDay = 0;
+    std::string baseware;   // SSP の版（例: 2.9.26）
 };
 
 // 「N 秒後によぶ」の予約。栞がためておき、時間が来たら動かします。

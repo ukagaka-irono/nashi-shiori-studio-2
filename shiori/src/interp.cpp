@@ -159,6 +159,8 @@ static std::string LocalFile(const std::string& s) {
     return f;
 }
 
+static std::string FirstDroppedFile(const RunCtx& ctx);
+
 static Value SysValue(const std::string& key, RunCtx& ctx) {
     SYSTEMTIME st;
     GetLocalTime(&st);
@@ -194,6 +196,7 @@ static Value SysValue(const std::string& key, RunCtx& ctx) {
     // ゴースト間通信。OnCommunicate の Reference0 が相手の名前、Reference1 が言われたこと。
     if (key == "commfrom") return Value::Str(ctx.refs.size() > 0 ? ctx.refs[0] : std::string());
     if (key == "commtext") return Value::Str(ctx.refs.size() > 1 ? ctx.refs[1] : std::string());
+    if (key == "droppedfile") return Value::Str(FirstDroppedFile(ctx));
     if (!ctx.sys) return Value::Num(0);
     if (key == "uptime")    return Value::Num((double)ctx.sys->uptimeSec);
     if (key == "uptimemin") return Value::Num((double)(ctx.sys->uptimeSec / 60));
@@ -202,7 +205,19 @@ static Value SysValue(const std::string& key, RunCtx& ctx) {
     if (key == "ghostname") return Value::Str(ctx.sys->ghostName);
     if (key == "shellname") return Value::Str(ctx.sys->shellName);
     if (key == "lasttalk")  return Value::Str(ctx.sys->lastTalk);
+    if (key == "username")   return Value::Str(ctx.sys->userName);
+    if (key == "birthmonth") return Value::Num(ctx.sys->birthMonth);
+    if (key == "birthday")   return Value::Num(ctx.sys->birthDay);
+    if (key == "baseware")   return Value::Str(ctx.sys->baseware);
     return Value::Num(0);
+}
+
+// OnFileDrop2 の Reference0 は、ファイルが「区切り文字 1」でつながっている。その 1 つ目。
+static std::string FirstDroppedFile(const RunCtx& ctx) {
+    if (ctx.refs.empty()) return std::string();
+    const std::string& all = ctx.refs[0];
+    size_t cut = all.find('\x01');
+    return cut == std::string::npos ? all : all.substr(0, cut);
 }
 
 Value EvalExpr(const JValue& node, RunCtx& ctx) {
@@ -475,6 +490,91 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
         return;
     }
 
+    // BGM など（\![sound,loop,…] / \![sound,play,…]）。セリフを待たずに鳴る。
+    if (type == "bgm") {
+        std::string f = TagArg(LocalFile(EvalStr(b["file"], ctx)), true);
+        if (f.empty()) return;
+        std::string mode = b["mode"].asStr("loop") == "play" ? "play" : "loop";
+        int vol = EvalInt(b["volume"], ctx, 100);
+        if (vol < 0) vol = 0;
+        if (vol > 100) vol = 100;
+        std::string line = "\\![sound," + mode + "," + f;
+        if (vol != 100) {
+            char buf[32];
+            sprintf_s(buf, ",--volume=%d", vol);
+            line += buf;
+        }
+        Emit(ctx, line + "]");
+        return;
+    }
+    if (type == "sound_stop") { Emit(ctx, "\\![sound,stop]"); return; }
+
+    // キャラの濃さ（\![set,alpha,…]）。0 で見えなくなり、100 でもとどおり。
+    if (type == "alpha") {
+        int who = EvalInt(b["who"], ctx, 0);
+        EmitScope(ctx, who);
+        int a = EvalInt(b["alpha"], ctx, 100);
+        if (a < 0) a = 0;
+        if (a > 100) a = 100;
+        int ms = EvalInt(b["ms"], ctx, 0);
+        if (ms < 0) ms = 0;
+        if (ms > 60000) ms = 60000;
+        char buf[64];
+        if (ms > 0) sprintf_s(buf, "\\![set,alpha,%d,--time=%d]", a, ms);
+        else sprintf_s(buf, "\\![set,alpha,%d]", a);
+        Emit(ctx, buf);
+        return;
+    }
+
+    // キャラを画面の決まった場所へ動かす（\![move,…]）。座標は画面の左上から。
+    if (type == "move") {
+        int who = EvalInt(b["who"], ctx, 0);
+        EmitScope(ctx, who);
+        int x = EvalInt(b["x"], ctx, 0), y = EvalInt(b["y"], ctx, 0);
+        if (x < -20000) x = -20000; if (x > 20000) x = 20000;
+        if (y < -20000) y = -20000; if (y > 20000) y = 20000;
+        int ms = EvalInt(b["ms"], ctx, 0);
+        if (ms < 0) ms = 0;
+        if (ms > 60000) ms = 60000;
+        char buf[96];
+        sprintf_s(buf, "\\![move,--X=%d,--Y=%d,--time=%d,--base=screen]", x, y, ms);
+        Emit(ctx, buf);
+        return;
+    }
+
+    // 文字の飾り（\f[…]）
+    if (type == "font_style") {
+        std::string style = b["style"].asStr("bold");
+        if (style != "bold" && style != "italic" && style != "underline" && style != "strike") return;
+        Emit(ctx, "\\f[" + style + (EvalInt(b["on"], ctx, 1) ? ",1]" : ",0]"));
+        return;
+    }
+    if (type == "font_color") {
+        // #RRGGBB / #RGB / default だけを通す（ほかの文字はタグを壊すかもしれない）
+        std::string c = Trim(EvalStr(b["color"], ctx));
+        bool ok = c == "default";
+        if (!ok && (c.size() == 4 || c.size() == 7) && c[0] == '#') {
+            ok = true;
+            for (size_t i = 1; i < c.size(); i++) {
+                char h = c[i];
+                if (!((h >= '0' && h <= '9') || (h >= 'a' && h <= 'f') || (h >= 'A' && h <= 'F'))) ok = false;
+            }
+        }
+        if (ok) Emit(ctx, "\\f[color," + c + "]");
+        return;
+    }
+    if (type == "font_size") {
+        // ふだんの大きさに対する ％（\f[height,150%]）
+        int pct = EvalInt(b["size"], ctx, 100);
+        if (pct < 20) pct = 20;
+        if (pct > 400) pct = 400;
+        char buf[32];
+        sprintf_s(buf, "\\f[height,%d%%]", pct);
+        Emit(ctx, buf);
+        return;
+    }
+    if (type == "font_default") { Emit(ctx, "\\f[default]"); return; }
+
     if (type == "link") {
         std::string url = WebUrl(EvalStr(b["url"], ctx));
         std::string label = EvalStr(b["label"], ctx);
@@ -493,6 +593,18 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
         return;
     }
 
+    // えらぶとイベントを起こす選択肢。SSP は、行き先が On で始まると
+    // OnChoiceSelect ではなく、そのイベントを直接起こす（情報は Reference0 に入る）。
+    if (type == "choice_event") {
+        std::string label = TagLabel(EvalStr(b["label"], ctx));
+        std::string ev = Trim(TagArg(EvalStr(b["event"], ctx), true));
+        if (label.empty() || ev.empty()) return;
+        if (ev.compare(0, 2, "On") != 0) ev = "On" + ev;
+        std::string a = Trim(TagArg(EvalStr(b["a"], ctx), true));
+        Emit(ctx, "\\q[" + label + "," + ev + (a.empty() ? "" : "," + a) + "]");
+        return;
+    }
+
     // 他のゴーストに話しかける。
     // 画面には普通のセリフとして出て、同時に相手の OnCommunicate に届く。
     // 届け先はレスポンスの Reference0 で指定するので、ここでは覚えておくだけ。
@@ -507,6 +619,28 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
 
     // さくらスクリプトの中に置ける文字にする（1 行・カンマと括弧なし）
     // \![…] は「,」で区切って「]」で終わるので、そのまま入れると命令が壊れます。
+    // 日付・時刻・数（スライダー）・パスワードをたずねる。答えは OnUserInput で、
+    // 「たずねる」と同じ ID（nashi:変数名）で返ってくるので、栞がそのまま変数に入れる。
+    if (type == "ask_kind") {
+        std::string into = Trim(TagArg(b["into"].asStr(), true));
+        if (into.empty()) return;
+        std::string kind = b["kind"].asStr("dateinput");
+        if (kind != "dateinput" && kind != "timeinput" && kind != "sliderinput" &&
+            kind != "passwordinput") {
+            return;
+        }
+        std::string line = "\\![open," + kind + ",nashi:" + into + ",-1";
+        if (kind == "sliderinput") {
+            int lo = EvalInt(b["min"], ctx, 0), hi = EvalInt(b["max"], ctx, 100);
+            if (hi < lo) { int t = lo; lo = hi; hi = t; }
+            char buf[64];
+            sprintf_s(buf, ",%d,%d,%d", lo, lo, hi);       // 現在値, 最小, 最大
+            line += buf;
+        }
+        Emit(ctx, line + "]");
+        return;
+    }
+
     if (type == "ask" || type == "change_ghost" || type == "open_browser" || type == "raise") {
         // 命令を壊す文字（, [ ] 改行）を落としてから使う
         struct Safe {

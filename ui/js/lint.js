@@ -192,6 +192,34 @@
                 'カンマや角かっこが入っていると、SSP への命令が壊れます。名前を変えてください。', s, b);
             }
             break;
+          case 'ask_kind':
+            if (isEmptyText(b.into)) {
+              issue(out, 'error', `${title}に、答えの入れ先が空の「たずねる」ブロックがあります`,
+                '入れる変数を決めてください。決めないと、たずねても答えを使えません。', s, b);
+            } else if (varNames.indexOf(b.into) < 0) {
+              issue(out, 'error', `変数「${b.into}」がありません（${title}）`,
+                '変数タブで作るか、別の変数にえらび直してください。', s, b);
+            }
+            break;
+          case 'choice_event':
+            if (isEmptyText(b.event)) {
+              issue(out, 'error', `${title}の選択肢に、起こすイベントがありません`,
+                'えらんでも何も起きません。OnAnswer のようなイベント名を入れてください。', s, b);
+            } else if (typeof b.event === 'string' && !project.scripts.some((x) => x.kind === 'event'
+              && x.event === (/^On/.test(b.event.trim()) ? b.event.trim() : 'On' + b.event.trim()))) {
+              issue(out, 'warn', `選択肢で起こす「${b.event}」のブロックがありません（${title}）`,
+                '「その他（自分で書く）」で、同じ名前のイベントのブロックを作ってください。', s, b);
+            }
+            if (isEmptyText(b.label)) {
+              issue(out, 'warn', `${title}に、文字のない選択肢があります`, '', s, b);
+            }
+            break;
+          case 'bgm':
+            if (isEmptyText(b.file)) {
+              issue(out, 'warn', `${title}に、ファイル名が空の「音を鳴らす」ブロックがあります`,
+                'ゴーストのフォルダに置いた音のファイル名を入れてください。', s, b);
+            }
+            break;
           case 'call_group':
             if (isEmptyText(b.group)) {
               issue(out, 'error', `${title}の「どれかよぶ」で、まとまりの名前が空です`,
