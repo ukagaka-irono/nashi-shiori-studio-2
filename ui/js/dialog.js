@@ -114,23 +114,40 @@
       list.appendChild(row);
     }
     modal('プロジェクトを開く', list, [
-      { label: 'お手本から始める', run: () => setTimeout(openSampleDialog, 0) },
+      { label: 'あたらしく作る', run: () => setTimeout(openSampleDialog, 0) },
       { label: '閉じる' },
     ]);
   }
 
-  /** お手本ゴースト（exe に入っている見本）をひらく */
-  async function openSampleDialog() {
-    let index;
+  /**
+   * あたらしく作る: 空から、またはお手本ゴースト（exe に入っている見本）から。
+   * 「新規」ボタンと、はじめて起動したとき（first = true）に出す。
+   */
+  async function openSampleDialog(first) {
+    let index = [];
     try {
       index = await (await fetch('samples/index.json')).json();
     } catch (e) {
       App.toast('お手本を読めませんでした', true);
-      return;
     }
     const list = Render.div('');
-    list.appendChild(Render.div('hint',
-      'えらぶと、いまのプロジェクトを置きかえて開きます（保存していないものは消えます）。'));
+    list.appendChild(Render.div('hint', first
+      ? 'なしスタジオ 2 へようこそ。お手本をえらぶと、動くゴーストを見ながら、まねて作れます。'
+      : 'えらぶと、いまのプロジェクトを置きかえて開きます（保存していないものは消えます）。'));
+
+    const empty = Render.div('proj-row');
+    empty.appendChild(Render.div('t', '空からはじめる'));
+    empty.appendChild(Render.div('d', '何もないキャンバスから、自分で組みます。'));
+    empty.addEventListener('click', () => {
+      if (Model.dirty && !confirm('保存していない変更があります。新しく作りますか？')) return;
+      Model.init(Model.newProject());
+      App.projectName = '';
+      App.sessionVars = {};
+      closeModal();
+      App.toast('新しいゴーストを作りました');
+    });
+    list.appendChild(empty);
+
     for (const s of index) {
       const row = Render.div('proj-row');
       row.appendChild(Render.div('t', s.title));
@@ -148,7 +165,10 @@
       });
       list.appendChild(row);
     }
-    modal('お手本からはじめる', list, [{ label: '閉じる' }]);
+    const buttons = first
+      ? [{ label: 'プロジェクトを開く', run: () => setTimeout(openProjectDialog, 0) }, { label: '閉じる' }]
+      : [{ label: '閉じる' }];
+    modal('あたらしく作る', list, buttons);
   }
 
   // ------------------------------------------------------------- 書き出し

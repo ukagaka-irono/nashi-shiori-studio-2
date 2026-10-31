@@ -452,6 +452,10 @@
         container.appendChild(div('palette-note', entry.note));
         continue;
       }
+      if (typeof entry === 'object' && entry.heading) {
+        container.appendChild(div('palette-group-title', entry.heading));
+        continue;
+      }
       if (typeof entry === 'object' && entry.button) {
         const b = el('button', 'btn small', entry.label);
         b.style.marginBottom = '10px';

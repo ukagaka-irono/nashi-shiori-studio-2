@@ -526,6 +526,53 @@
     App.toast('はりつけました');
   };
 
+  // ------------------------------------------------------- パレットの幅
+  // 右のふちをドラッグで広げる・せばめる。幅はこのパソコンに覚えておく（読めなくても困らない）。
+  const PALETTE_W = { def: 252, min: 200, max: 560, key: 'nashi.paletteWidth' };
+  function setPaletteWidth(w) {
+    w = Math.max(PALETTE_W.min, Math.min(PALETTE_W.max, Math.round(w)));
+    document.documentElement.style.setProperty('--palette-w', w + 'px');
+    $('#palette-resize').setAttribute('aria-valuenow', String(w));   // 読み上げにもいまの幅を伝える
+    return w;
+  }
+  function setupPaletteResize() {
+    try {
+      const saved = Number(localStorage.getItem(PALETTE_W.key));
+      if (saved) setPaletteWidth(saved);
+    } catch { /* 覚えておけない環境では、いつもの幅 */ }
+    const save = (w) => { try { localStorage.setItem(PALETTE_W.key, String(w)); } catch { /* なし */ } };
+    const handle = $('#palette-resize');
+    handle.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const left = $('#palette').getBoundingClientRect().left;
+      handle.setPointerCapture(e.pointerId);
+      handle.classList.add('is-dragging');
+      const move = (ev) => setPaletteWidth(ev.clientX - left);
+      const up = (ev) => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', up);
+        handle.classList.remove('is-dragging');
+        save(setPaletteWidth(ev.clientX - left));
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up);
+    });
+    handle.addEventListener('dblclick', () => save(setPaletteWidth(PALETTE_W.def)));
+    // キーボードでも: ← → で 20px ずつ、Home でもとの幅
+    handle.addEventListener('keydown', (e) => {
+      const now = $('#palette').offsetWidth;
+      let w = null;
+      if (e.key === 'ArrowLeft') w = now - 20;
+      else if (e.key === 'ArrowRight') w = now + 20;
+      else if (e.key === 'Home') w = PALETTE_W.def;
+      if (w == null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      save(setPaletteWidth(w));
+    });
+  }
+
   function setupContextMenu() {
     document.addEventListener('contextmenu', (e) => {
       const hat = e.target.closest('#canvas .blk.hat');
@@ -684,6 +731,7 @@
     renderCategories();
     bindMeta();
     setupContextMenu();
+    setupPaletteResize();
 
     N.Drag.init({
       workspace: $('#workspace'),
@@ -720,7 +768,7 @@
         lostLast = state.lastProject;   // 消えた・動いた。黙ってお手本にすると、作ったものが消えたように見える
       }
     }
-    Model.init(loaded || sampleProject());
+    Model.init(loaded || Model.newProject());
     // 開いたファイルに上書き保存する（ゴーストの名前を変えても、別のファイルにはしない）
     App.projectName = loaded ? state.lastProject : '';
     if (lostLast) {
@@ -731,18 +779,22 @@
     N.Shell.resetStage();
 
     // ---- ボタン類
-    $('#btn-new').addEventListener('click', () => {
-      if (Model.dirty && !confirm('保存していない変更があります。新しく作りますか？')) return;
-      Model.init(sampleProject());
-      App.projectName = '';
-      App.sessionVars = {};
-      App.toast('新しいゴーストを作りました');
-    });
+    $('#btn-new').addEventListener('click', () => N.Dialog.openSampleDialog(false));
     $('#btn-open').addEventListener('click', N.Dialog.openProjectDialog);
     $('#btn-save').addEventListener('click', () => N.Dialog.saveProject(false));
     $('#btn-undo').addEventListener('click', () => Model.undo());
     $('#btn-redo').addEventListener('click', () => Model.redo());
-    $('#btn-export').addEventListener('click', () => { switchTab('export'); N.Dialog.doExport('dir'); });
+    // いちばん大きいボタン: SSP に入れて動かす。SSP が見つからなければ、書き出しタブで場所をたずねる
+    // （フォルダや .nar への書き出しも、そのタブからできる）
+    $('#btn-export').addEventListener('click', async () => {
+      switchTab('export');
+      const ssp = await N.Ssp.refreshSsp();
+      if (ssp && ssp.ghostDir) { N.Ssp.installToSsp(); return; }
+      $('#ssp-path').focus();
+      App.toast(ssp && ssp.exe
+        ? 'SSP の ghost フォルダが見つかりません。ssp.exe の場所を確かめてください'
+        : 'SSP が見つかりません。ssp.exe の場所を入れてください', true);
+    });
     $('#btn-export-dir').addEventListener('click', () => N.Dialog.doExport('dir'));
     $('#btn-export-nar').addEventListener('click', () => N.Dialog.doExport('nar'));
     $('#btn-add-var').addEventListener('click', () => App.promptNewVariable());
@@ -905,59 +957,9 @@
     });
 
     setInterval(() => { if (Model.dirty) N.Dialog.saveProject(true); }, 60000);
-  }
 
-  // ------------------------------------------------------------ サンプル
-  function sampleProject() {
-    const p = Model.newProject();
-    p.meta.name = 'なしゴースト';
-    p.variables = [{ name: '好感度', value: 0 }];
-    p.scripts = [
-      {
-        id: 'sample_boot', kind: 'event', event: 'OnFirstBoot', x: 60, y: 40,
-        blocks: [
-          { type: 'surface', who: 0, id: 0 },
-          { type: 'say', who: 0, text: 'はじめまして。', nl: 1 },
-          { type: 'say', who: 1, text: 'よろしくね。', nl: 1 },
-        ],
-      },
-      {
-        id: 'sample_boot2', kind: 'event', event: 'OnBoot', x: 60, y: 260,
-        blocks: [
-          { type: 'change', name: '好感度', value: 1 },
-          { type: 'say', who: 0, text: 'おかえりなさい。', nl: 1 },
-        ],
-      },
-      {
-        id: 'sample_click', kind: 'event', event: 'OnMouseDoubleClick', x: 60, y: 440,
-        blocks: [
-          {
-            type: 'random_one',
-            branches: [
-              [{ type: 'say', who: 0, text: 'なあに？', nl: 1 }],
-              [{ type: 'say', who: 0, text: 'どうしたの？', nl: 1 }],
-            ],
-          },
-        ],
-      },
-      {
-        id: 'sample_nade', kind: 'event', event: 'OnNadeNade', area: 'Head', who: 0,
-        x: 60, y: 620,
-        blocks: [
-          { type: 'change', name: '好感度', value: 3 },
-          { type: 'surface', who: 0, id: 1 },
-          { type: 'say', who: 0, text: 'えへへ、くすぐったい。', nl: 1 },
-        ],
-      },
-      {
-        id: 'sample_talk', kind: 'talk', name: '天気の話', weight: 1, x: 480, y: 40,
-        blocks: [
-          { type: 'say', who: 0, text: 'いい天気だね。', nl: 1 },
-          { type: 'say', who: 1, text: 'そうだね。', nl: 1 },
-        ],
-      },
-    ];
-    return p;
+    // 開くものが無かったとき（はじめての起動など）は、はじめかたをえらんでもらう
+    if (!loaded) N.Dialog.openSampleDialog(true);
   }
 
   // ---------------------------------------------------- 分けた画面ファイルへ渡すもの
