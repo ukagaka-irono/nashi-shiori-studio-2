@@ -9,8 +9,9 @@
 
   const Lint = {};
 
-  function issue(list, level, message, hint, script, block) {
-    list.push({ level, message, hint: hint || '', script: script || null, block: block || null });
+  // fix … チェックタブからその場で直せるとき（{ add: 'var' | 'talk', name } / { remove: 'var', name }）
+  function issue(list, level, message, hint, script, block, fix) {
+    list.push({ level, message, hint: hint || '', script: script || null, block: block || null, fix: fix || null });
   }
 
   /** スクリプトの中のブロックを、入れ子もふくめて順に見る */
@@ -157,6 +158,15 @@
             '新しい版のなしスタジオ 2 で作られたファイルかもしれません。', s, b);
           return;
         }
+        // 数の欄に、数でない文字が書いてある（栞はそこを決まった値として動かすので、気づきにくい）
+        const def = N.getDef(b);
+        for (const arg in def.args || {}) {
+          const v = b[arg];
+          if (def.args[arg].mode === 'number' && typeof v === 'string' && v.trim() !== '' && isNaN(Number(v))) {
+            issue(out, 'warn', `${title}の数の欄に「${v}」と書いてあります`,
+              '数でないと、ちがう値として動きます。数だけを書くか、変数のブロックをはめこんでください。', s, b);
+          }
+        }
         switch (b.type) {
           case 'say':
             if (isEmptyText(b.text)) {
@@ -186,7 +196,7 @@
                 '入れる変数を決めてください。決めないと、たずねても答えを使えません。', s, b);
             } else if (varNames.indexOf(b.into) < 0) {
               issue(out, 'error', `変数「${b.into}」がありません（${title}）`,
-                '変数タブで作るか、別の変数にえらび直してください。', s, b);
+                '下のボタンで作るか、別の変数にえらび直してください。', s, b, { add: 'var', name: b.into });
             } else if (/[,[\]]/.test(b.into)) {
               issue(out, 'error', `変数「${b.into}」の名前は「たずねる」には使えません`,
                 'カンマや角かっこが入っていると、SSP への命令が壊れます。名前を変えてください。', s, b);
@@ -198,7 +208,7 @@
                 '入れる変数を決めてください。決めないと、たずねても答えを使えません。', s, b);
             } else if (varNames.indexOf(b.into) < 0) {
               issue(out, 'error', `変数「${b.into}」がありません（${title}）`,
-                '変数タブで作るか、別の変数にえらび直してください。', s, b);
+                '下のボタンで作るか、別の変数にえらび直してください。', s, b, { add: 'var', name: b.into });
             }
             break;
           case 'dressup': {
@@ -222,7 +232,7 @@
                 '入れる変数を決めてください。決めないと、たずねても答えを使えません。', s, b);
             } else if (varNames.indexOf(b.into) < 0) {
               issue(out, 'error', `変数「${b.into}」がありません（${title}）`,
-                '変数タブで作るか、別の変数にえらび直してください。', s, b);
+                '下のボタンで作るか、別の変数にえらび直してください。', s, b, { add: 'var', name: b.into });
             }
             break;
           case 'choice_event':
@@ -238,6 +248,16 @@
               issue(out, 'warn', `${title}に、文字のない選択肢があります`, '', s, b);
             }
             break;
+          case 'anim': {
+            // 番号をそのまま書いたときだけ見る（変数などをはめこんだときは、動かすまでわからない）
+            const id = typeof b.id === 'number' ? b.id : (typeof b.id === 'string' && b.id.trim() !== '' ? Number(b.id) : NaN);
+            if (Number.isFinite(id) && !(project.animations || []).some((a) => Number(a.id) === id)) {
+              issue(out, 'warn', `「うごき ${id}」がありません（${title}）`,
+                'ゴーストタブの「うごき」で作るか、▾ でえらび直してください。手で直したシェルにあるうごきなら、そのままで動きます。', s, b);
+            }
+            break;
+          }
+          case 'sound':
           case 'bgm':
             if (isEmptyText(b.file)) {
               issue(out, 'warn', `${title}に、ファイル名が空の「音を鳴らす」ブロックがあります`,
@@ -258,7 +278,7 @@
               issue(out, 'error', `${title}の「◯秒後によぶ」で、行き先がえらばれていません`, '', s, b);
             } else if (typeof b.name === 'string' && callable.indexOf(b.name) < 0) {
               issue(out, 'error', `「${b.name}」というトークがありません（${title}）`,
-                '名前を変えたときは、よび出し側も直してください。', s, b);
+                '下のボタンでトークを作るか、行き先をえらび直してください。', s, b, { add: 'talk', name: b.name });
             }
             break;
           case 'raise':
@@ -289,7 +309,7 @@
                 + '（「SAORI の答えがとどいたとき」でも受け取れます）', s, b);
             } else if (varNames.indexOf(b.into) < 0) {
               issue(out, 'error', `変数「${b.into}」がありません（${title}）`,
-                '変数タブで作るか、別の変数にえらび直してください。', s, b);
+                '下のボタンで作るか、別の変数にえらび直してください。', s, b, { add: 'var', name: b.into });
             }
             break;
           case 'update':
@@ -306,7 +326,7 @@
                 '変数タブで変数を作ってから、えらんでください。', s, b);
             } else if (varNames.indexOf(b.name) < 0) {
               issue(out, 'error', `変数「${b.name}」がありません（${title}）`,
-                '変数タブで作るか、別の変数にえらび直してください。', s, b);
+                '下のボタンで作るか、別の変数にえらび直してください。', s, b, { add: 'var', name: b.name });
             }
             break;
           case 'call':
@@ -314,7 +334,7 @@
               issue(out, 'error', `${title}の「よぶ」ブロックで、行き先がえらばれていません`, '', s, b);
             } else if (callable.indexOf(b.name) < 0) {
               issue(out, 'error', `「${b.name}」というトークがありません（${title}）`,
-                '名前を変えたときは、よび出し側も直してください。', s, b);
+                '下のボタンでトークを作るか、行き先をえらび直してください。', s, b, { add: 'talk', name: b.name });
             }
             break;
           case 'choice':
@@ -322,7 +342,8 @@
               issue(out, 'error', `${title}の選択肢に、行き先がありません`,
                 'えらんでも何も起きません。行き先のトークをえらんでください。', s, b);
             } else if (callable.indexOf(b.target) < 0) {
-              issue(out, 'error', `選択肢の行き先「${b.target}」がありません（${title}）`, '', s, b);
+              issue(out, 'error', `選択肢の行き先「${b.target}」がありません（${title}）`,
+                '下のボタンでトークを作るか、行き先をえらび直してください。', s, b, { add: 'talk', name: b.target });
             }
             if (isEmptyText(b.label)) {
               issue(out, 'warn', `${title}に、文字のない選択肢があります`, '', s, b);
@@ -345,6 +366,30 @@
       });
     }
 
+    // ---- どこからもよばれない「◯がよばれたとき」
+    // （ランダムトークはひとりでに動くので見ない。よぶのは「よぶ」「◯秒後によぶ」「選択肢」の行き先）
+    const called = {};
+    let rawText = '';      // さくらスクリプトをそのまま書いたところ（\q[…,名前] などで、よんでいるかもしれない）
+    for (const s of project.scripts || []) {
+      walk(s, (b) => {
+        const d = N.getDef(b);
+        for (const arg in (d && d.args) || {}) {
+          if (d.args[arg].kind === 'funcname' && b[arg]) called[b[arg]] = true;
+        }
+        if (b.type === 'raw' && typeof b.text === 'string') rawText += '\n' + b.text;
+      });
+    }
+    for (const s of project.scripts || []) {
+      // さくらスクリプトでは、[ , ] で区切られた 1 つの引数として名前が書いてあるときだけ「よんでいる」とみる
+      // （名前が「あ」のように短いと、ほかの文字に入っているだけで見のがしてしまうので）
+      const asArg = new RegExp('[\\[,]' + String(s.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\],]');
+      if (s.kind === 'function' && !s.disabled && String(s.name || '').trim() && !called[s.name] &&
+          !asArg.test(rawText)) {
+        issue(out, 'warn', `${nameOf(s)}は、どこからもよばれていません`,
+          '「◯ をよぶ」「◯ 秒後に ◯ をよぶ」ブロックや、選択肢の行き先にするか、いらなければ削除してください。', s);
+      }
+    }
+
     // ---- 設定まわり
     const st = project.settings || {};
     if (st.randomTalkEnabled !== false) {
@@ -361,15 +406,17 @@
     const used = {};
     for (const s of project.scripts || []) {
       walk(s, (b) => {
-        if ((b.type === 'var' || b.type === 'set' || b.type === 'change') && b.name) used[b.name] = true;
-        if (b.type === 'saori_call' && b.into) used[b.into] = true;
-        if (b.type === 'ask' && b.into) used[b.into] = true;
+        // 「変数名」の欄（入れる・変える・中身・たずねて入れる先 など）を、どのブロックでも同じに数える
+        const d = N.getDef(b);
+        for (const arg in (d && d.args) || {}) {
+          if (d.args[arg].kind === 'varname' && b[arg]) used[b[arg]] = true;
+        }
       });
     }
     for (const name of varNames) {
       if (!used[name]) {
         issue(out, 'warn', `変数「${name}」はどこでも使われていません`,
-          'いらなければ変数タブで削除できます。');
+          'いらなければ、下のボタンか変数タブで削除できます。', null, null, { remove: 'var', name });
       }
     }
 

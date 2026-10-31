@@ -212,6 +212,69 @@ check('どこでも使われていない変数は言う',
   issuesOf(withScript([{ type: 'say', who: 0, text: 'やあ' }]), 'どこでも使われていません'),
   ['warn']);
 
+// --- 見落としていたまちがい
+check('数の欄に、数でない文字',
+  issuesOf(withScript([{ type: 'wait', ms: 'すこし' }]), '数の欄に「すこし」'), ['warn']);
+check('数の欄に数・変数のブロックなら言わない',
+  issuesOf(withScript([{ type: 'wait', ms: '500' }, { type: 'wait', ms: { type: 'var', name: 'こたえ' } }]), '数の欄に'), []);
+check('鳴らす音のファイルが空（1 回鳴らす）',
+  issuesOf(withScript([{ type: 'sound', file: '' }]), 'ファイル名が空'), ['warn']);
+check('まだ作っていない「うごき」',
+  issuesOf(withScript([{ type: 'anim', id: 5 }]), '「うごき 5」がありません'), ['warn']);
+check('作った「うごき」なら言わない',
+  issuesOf(withScript([{ type: 'anim', id: 5 }], { animations: [{ id: 5, base: 0, patterns: [] }] }), '「うごき 5」がありません'), []);
+check('どこからもよばれない「◯がよばれたとき」',
+  issuesOf(withScript([], { scripts: [{ id: 'f', kind: 'function', name: 'ひとり', blocks: [{ type: 'say', who: 0, text: 'x' }] }] }),
+    'どこからもよばれていません'), ['warn']);
+check('◯秒後によぶ・選択肢の行き先も「よばれている」に数える',
+  issuesOf(withScript([{ type: 'later', sec: 5, name: 'あと' }, { type: 'choice', label: 'はい', target: 'えらぶ' }], {
+    scripts: [
+      { id: 's1', kind: 'event', event: 'OnBoot', blocks: [{ type: 'later', sec: 5, name: 'あと' }, { type: 'choice', label: 'はい', target: 'えらぶ' }] },
+      { id: 'a', kind: 'function', name: 'あと', blocks: [{ type: 'say', who: 0, text: 'x' }] },
+      { id: 'b', kind: 'function', name: 'えらぶ', blocks: [{ type: 'say', who: 0, text: 'y' }] },
+    ],
+  }), 'どこからもよばれていません'), []);
+check('さくらスクリプトの中で名前を書いていれば、よばれていることにする',
+  issuesOf(withScript([], { scripts: [
+    { id: 's1', kind: 'event', event: 'OnBoot', blocks: [{ type: 'raw', text: '\\q[はい,こたえる]' }] },
+    { id: 'f', kind: 'function', name: 'こたえる', blocks: [{ type: 'say', who: 0, text: 'x' }] },
+  ] }), 'どこからもよばれていません'), []);
+check('さくらスクリプトの文字に名前がまじっているだけなら、よばれていない',
+  issuesOf(withScript([], { scripts: [
+    { id: 's1', kind: 'event', event: 'OnBoot', blocks: [{ type: 'raw', text: '\\_w[500]あいうえお' }] },
+    { id: 'f', kind: 'function', name: 'あ', blocks: [{ type: 'say', who: 0, text: 'x' }] },
+  ] }), 'どこからもよばれていません'), ['warn']);
+check('日付・SSP の情報をたずねる先も「使っている」に数える',
+  issuesOf(withScript([{ type: 'ask_kind', kind: 'dateinput', into: 'こたえ', min: 0, max: 100 }]), 'どこでも使われていません'), []);
+
+// --- チェックタブからその場で直す
+{
+  Model.project = Model.normalize(withScript([{ type: 'set', name: 'ないよ', value: 1 }, { type: 'call', name: 'ないトーク' }]));
+  const fixes = Lint.run(Model.project).filter((i) => i.fix).map((i) => i.fix);
+  check('無い変数・無いトークには「作る」、使っていない変数には「削除する」',
+    fixes.map((f) => (f.add ? 'add-' + f.add : 'remove-' + f.remove) + ':' + f.name).sort(),
+    ['add-talk:ないトーク', 'add-var:ないよ', 'remove-var:こたえ']);
+}
+
+// ============================================== 変数の名前を変えたとき
+section('変数の名前を変えたとき (model.renameVariable)');
+{
+  Model.project = Model.normalize(withScript([
+    { type: 'set', name: 'こたえ', value: 1 },
+    { type: 'ask', into: 'こたえ', initial: '' },
+    { type: 'ask_kind', kind: 'dateinput', into: 'こたえ', min: 0, max: 100 },
+    { type: 'property_get', prop: 'baseware.version', into: 'こたえ' },
+    { type: 'say', who: 0, text: { type: 'var', name: 'こたえ' }, nl: 1 },
+    { type: 'say', who: 0, text: 'こたえ', nl: 1 },
+  ]));
+  check('使っている数（入れる・たずねる 3 つ・中身）', Model.countVariableUses('こたえ'), 5);
+  Model.renameVariable('こたえ', '名前');
+  const bs = Model.project.scripts[0].blocks;
+  check('たずねて入れる先も、いっしょに付けかえる',
+    [bs[0].name, bs[1].into, bs[2].into, bs[3].into, bs[4].text.name], ['名前', '名前', '名前', '名前', '名前']);
+  check('セリフの文字はそのまま', bs[5].text, 'こたえ');
+}
+
 // ============================================== トークの名前を変えたとき
 section('トークの名前を変えたとき (model.renameTalkRefs)');
 {

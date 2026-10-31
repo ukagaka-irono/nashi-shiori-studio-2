@@ -44,8 +44,44 @@
       } else {
         item.style.cursor = 'default';
       }
-      list.appendChild(item);
+      const fix = fixButton(it.fix);
+      if (!fix) { list.appendChild(item); continue; }
+      // その場で直せるものは、項目の下にボタンを出す（ボタンの中にボタンは入れられないので並べる）
+      const row = Render.div('check-row');
+      row.appendChild(item);
+      row.appendChild(fix);
+      list.appendChild(row);
     }
+  }
+
+  /** チェックの項目を、その場で直すボタン（無い変数・トークを作る、使っていない変数を消す） */
+  function fixButton(fix) {
+    if (!fix || !fix.name) return null;
+    let label = '';
+    let run = null;
+    if (fix.add === 'var') {
+      label = `変数「${fix.name}」を作る`;
+      run = () => {
+        let made = null;
+        Model.act(() => { made = Model.addVariable(fix.name, 0); return made ? undefined : false; });
+        if (made) App.toast(`変数「${fix.name}」を作りました`);
+        else App.toast('その名前の変数は作れません。変数タブで名前を確かめてください', true);
+      };
+    } else if (fix.add === 'talk') {
+      label = `トーク「${fix.name}」を作る`;
+      run = () => App.createFunctionNamed(fix.name);
+    } else if (fix.remove === 'var') {
+      label = `変数「${fix.name}」を削除する`;
+      run = () => {
+        if (!confirm(`変数「${fix.name}」を削除しますか？`)) return;   // 変数タブの ✕ と同じく確かめる
+        Model.act(() => Model.removeVariable(fix.name));
+        App.toast(`変数「${fix.name}」を削除しました`);
+      };
+    }
+    if (!run) return null;
+    const b = Render.el('button', 'btn small check-fix', label);
+    b.addEventListener('click', run);
+    return b;
   }
 
   // --------------------------------------------------------------- さがす
@@ -157,6 +193,9 @@
     const view = ws.getBoundingClientRect();
     ws.scrollLeft += box.left - view.left - Math.max(40, (view.width - box.width) / 2);
     ws.scrollTop += box.top - view.top - Math.max(40, (view.height - box.height) / 2);
+
+    // ブロックはえらんだ状態にする（そのまま Delete や Ctrl+C が効くように）
+    if (target && Array.isArray(target._stack)) N.Drag.select(target);
 
     const flashEl = target || scriptEl;
     flashEl.classList.remove('flash');

@@ -416,9 +416,13 @@
         minus.title = 'えらび先をへらす';
         minus.addEventListener('pointerdown', (e) => e.stopPropagation());
         minus.addEventListener('click', () => {
-          Model.act(() => {
-            if (block[def.dynamic].length > 1) block[def.dynamic].pop();
-          });
+          const branches = block[def.dynamic];
+          if (branches.length <= 1) return;
+          // いちばん下のえらび先に、ブロックが入っていれば、いっしょに消えることを確かめる
+          const last = branches[branches.length - 1];
+          if (Array.isArray(last) && last.length &&
+              !confirm('いちばん下のえらび先に入っているブロックも、いっしょに消えます。消しますか？')) return;
+          Model.act(() => { branches.pop(); });
         });
         const plus = el('button', 'blk-btn', '＋');
         plus.title = 'えらび先をふやす';

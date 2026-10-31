@@ -214,7 +214,12 @@
       const del = Render.el('button', 'del', '✕');
       del.title = '削除';
       del.addEventListener('click', () => {
-        if (!confirm(`変数「${v.name}」を削除しますか？`)) return;
+        // 使っているブロックがあれば、その数も見せる（消すと、そのブロックはチェックタブで ⛔ になる）
+        const uses = Model.countVariableUses(v.name);
+        const msg = uses
+          ? `変数「${v.name}」は ${uses} か所で使っています。削除すると、そこはうまく動きません。削除しますか？`
+          : `変数「${v.name}」を削除しますか？`;
+        if (!confirm(msg)) return;
         Model.act(() => Model.removeVariable(v.name));
       });
       row.appendChild(del);
@@ -246,6 +251,13 @@
     Model.act(() => Model.addScript('function', { name: trimmed, x: at.x, y: at.y }));
     App.toast(`「${trimmed}」を作りました。ブロックをつなげてください`);
     return trimmed;
+  };
+
+  /** チェックタブから「トーク『◯』を作る」。見えているあたりに置く */
+  App.createFunctionNamed = function (name) {
+    const at = viewCenter();
+    Model.act(() => Model.addScript('function', { name, x: at.x, y: at.y }));
+    App.toast(`「${name}」を作りました。ブロックをつなげてください`);
   };
 
   function viewCenter() {

@@ -354,6 +354,9 @@ button, input, select, textarea { font-family: inherit; }
 .check-item .msg { font-size: 12.5px; line-height: 1.5; }
 .check-item .why { display: block; margin-top: 2px; color: #7c8b9e; font-size: 11.5px; }
 .check-ok { padding: 14px 10px; text-align: center; color: #4f8a5a; font-size: 12.5px; }
+/* その場で直せる項目: 項目の下、右よせにボタン */
+.check-row { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.check-row .check-item { align-self: stretch; }
 
 /* ブロックは clip-path で切り抜いてあるので、box-shadow ではなく
    大きさと明るさを変えて光らせる（影だけだと目立たない） */

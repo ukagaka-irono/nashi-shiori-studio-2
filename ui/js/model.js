@@ -352,12 +352,28 @@
       const v = Model.project.variables.find((x) => x.name === oldName);
       if (!v) return false;
       v.name = newName;
+      Model.forEachVarRef((b, arg) => { if (b[arg] === oldName) b[arg] = newName; });
+      return true;
+    },
+
+    /**
+     * 変数の名前が入る欄（「変数名」の欄: 入れる・変える・中身・たずねて入れる先 など）をすべて訪ねる。
+     * fn(block, argName)。名前の付けかえ・使っている数・チェックが、同じ欄を見るように 1 か所にまとめる。
+     */
+    forEachVarRef(fn) {
       Model.walkBlocks((b) => {
-        if ((b.type === 'var' || b.type === 'set' || b.type === 'change') && b.name === oldName) {
-          b.name = newName;
+        const d = N.getDef(b);
+        for (const arg in (d && d.args) || {}) {
+          if (d.args[arg].kind === 'varname' && typeof b[arg] === 'string') fn(b, arg);
         }
       });
-      return true;
+    },
+
+    /** その変数を使っている欄の数 */
+    countVariableUses(name) {
+      let n = 0;
+      Model.forEachVarRef((b, arg) => { if (b[arg] === name) n++; });
+      return n;
     },
 
     /**
