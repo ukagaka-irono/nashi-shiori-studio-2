@@ -420,6 +420,19 @@
         { "type": "ask_kind", "kind": "nosuch", "into": "こたえ" },
         { "type": "say", "who": 0, "text": "きいた", "nl": 0 }
       ]
+    },
+    {
+      "id": "p33", "kind": "event", "event": "OnP33",
+      "_": "SSP の情報。名前から ] , % \\ を落とし、入れ先や名前が空なら何も出さない",
+      "blocks": [
+        { "type": "property_get", "prop": "baseware.version", "into": "こたえ" },
+        { "type": "property_get", "prop": "ghostlist(なしこ).path]\\![open,file,x", "into": "こたえ" },
+        { "type": "property_get", "prop": "", "into": "こたえ" },
+        { "type": "property_get", "prop": "baseware.name", "into": "" },
+        { "type": "say", "who": 0, "nl": 0,
+          "text": { "type": "join", "a": "SSP ", "b": { "type": "property", "prop": "baseware.version" } } },
+        { "type": "say", "who": 0, "nl": 0, "text": { "type": "property", "prop": "a]%b" } }
+      ]
     }
   ]
 }

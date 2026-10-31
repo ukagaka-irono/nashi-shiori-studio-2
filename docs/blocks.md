@@ -50,6 +50,11 @@
 `OnInstallComplete` / `OnScreenSaverEnd` / `OnSessionUnlock` / `OnSysResume` / `OnBatteryLow` /
 `OnDisplayChange` / `OnRecycleBinEmpty` / `OnDarkTheme`。
 
+**SSP の情報（プロパティシステム）**: `property_get` は SSP に `\![get,property,イベント名,プロパティ名]` を送ります。
+イベント名は `OnNashiProp_` のあとに入れ先の変数名（UTF-8）を 16 進で書いたもので、SSP はそのイベントの
+`Reference0` に答えを入れて返してきます。栞は、自分がたずねたぶんだけを 1 回だけ受けとって変数に入れます。
+プロパティ名は UKADOC の「プロパティシステム」のとおりです（エディタでは、よく使うものを一覧からえらべます）。
+
 栞は、SSP が起動のときに知らせてくる `OnNotifyUserInfo`（ユーザーの呼び名・誕生日）と
 `basewareversion`（SSP の版）を覚えておき、情報ブロックで読めるようにします。
 `OnHourTimeSignal`（1時間ごと）は、以前の版では `OnHourChange` と書き出していました。
@@ -199,6 +204,7 @@ SSP から返ってきた `OnChoiceSelect` / `OnAnchorSelect` / `OnUserInput` �
 | ランダムトークの間隔を N 秒にする | `{"type":"talk_interval","sec":180}` |
 | たずねて、答えを V に入れる | `{"type":"ask","into":"V","initial":""}` → `\![open,inputbox,nashi:V,-1,…]` |
 | 日付／時刻／数／パスワードをたずねて、答えを V に入れる | `{"type":"ask_kind","kind":"dateinput","into":"V","min":0,"max":100}` → `\![open,dateinput,nashi:V,-1]`（kind は dateinput / timeinput / sliderinput / passwordinput。スライダーは `,現在値,最小,最大` が付く。答えは日付なら「年,月,日」、時刻なら「時,分,秒」） |
+| SSP に P をたずねて、答えを V に入れる | `{"type":"property_get","prop":"baseware.version","into":"V"}` → `\![get,property,OnNashiProp_…,baseware.version]`（答えは**このトークのあと**に届き、栞が V に入れる。同じトークの中ではまだ前の値） |
 | N 秒後に ◯ をよぶ | `{"type":"later","sec":30,"name":"トーク名"}` |
 | イベント E を自分で起こす | `{"type":"raise","event":"E","a":""}` → `\![raise,E,…]` |
 | ◯ に交代する | `{"type":"change_ghost","name":"…"}` → `\![change,ghost,…]` |
@@ -303,6 +309,7 @@ SSP から返ってきた `OnChoiceSelect` / `OnAnchorSelect` / `OnUserInput` �
 | ユーザーの誕生月 / 誕生日(日) | `{"type":"sys","key":"birthmonth"}` / `birthday` | 分からなければ 0。ためすときは今日 |
 | SSP の版 | `{"type":"sys","key":"baseware"}` | `basewareversion` で届いた版。ためすときは 2.9 |
 | 落とされたファイル(1つ目) | `{"type":"sys","key":"droppedfile"}` | `OnFileDrop2` の `Reference0` の 1 つ目 |
+| SSP の P（セリフの中だけ） | `{"type":"property","prop":"baseware.version"}` | `%property[baseware.version]`。SSP が表示するときに置きかえるので、くらべたり計算したりには使えない（それには `property_get`）。ためすときは〈baseware.version〉と出る |
 | イベントの情報 N | `{"type":"ref","index":0}` | SSP の `ReferenceN`（0〜7） |
 
 `ReferenceN` の内容はイベントごとに違います。よく使うもの:

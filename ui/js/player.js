@@ -36,6 +36,7 @@
       return '';
     }
     if (a[0] === 'set' && a[1] === 'alpha') return `濃さ ${a[2]}％`;
+    if (a[0] === 'get' && a[1] === 'property') return `（SSP に ${a[3] || ''} をたずねる）`;
     if (a[0] === 'move') return 'キャラが動く';
     if (a[0] === 'open' && INPUT_KINDS[a[1]]) return `（${INPUT_KINDS[a[1]]}の入力欄が開く）`;
     if (a[0] === 'open' && a[1] === 'browser') return `（ブラウザで ${a[2] || ''} を開く）`;
@@ -48,7 +49,12 @@
     const ops = [];
     let i = 0;
     let text = '';
-    const flush = () => { if (text) { ops.push({ op: 'text', text }); text = ''; } };
+    // %property[…] は SSP が出すときに置きかえる。ためすときは、何が入るかを〈 〉で見せる。
+    const flush = () => {
+      if (!text) return;
+      ops.push({ op: 'text', text: text.replace(/%property\[([^\]]*)\]/g, '〈$1〉') });
+      text = '';
+    };
     // [ … ] の中身。\] と \\ は 1 文字として読む（SSP と同じ）。
     const readBracket = () => {
       if (s[i] !== '[') return null;

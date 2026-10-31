@@ -553,6 +553,7 @@ void Shiori::RememberOffered(const std::string& script) {
         if (script.compare(i, 3, "\\q[") == 0)        { pos = i + 3; key = "c"; }
         else if (script.compare(i, 4, "\\_a[") == 0)  { pos = i + 4; key = "a"; }
         else if (script.compare(i, 5, "\\__q[") == 0) { pos = i + 5; key = "a"; }
+        else if (script.compare(i, 16, "\\![get,property,") == 0) { pos = i + 3; key = "g"; }
         else if (script.compare(i, 8, "\\![open,") == 0) {
             // 入力ボックスのなかま（文字・日付・時刻・スライダー・パスワード）
             static const char* kBoxes[] = { "inputbox,", "dateinput,", "timeinput,",
@@ -568,6 +569,7 @@ void Shiori::RememberOffered(const std::string& script) {
         if (key == "c" && a.size() > 1) got = "c:" + Trim(a[1]);       // \q[ラベル,行き先]
         else if (key == "a")            got = "c:" + Trim(a[0]);       // \_a[行き先]
         else if (key == "i" && a.size() > 2) got = "i:" + Trim(a[2]);  // \![open,〇〇input,ID,…]
+        else if (key == "g" && a.size() > 2) got = "e:" + Trim(a[2]);  // \![get,property,イベント,…]
         if (got.size() <= 2) continue;
         for (size_t k = 0; k < offered_.size(); k++) {
             if (offered_[k] == got) { offered_.erase(offered_.begin() + (long)k); break; }
@@ -715,6 +717,18 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
             std::string name = boxId.substr(6);
             vars_.set(name, Value::Str(RefAt(req, 1)));
             dirty_ = true;
+        }
+    }
+
+    // 「SSP に ◯ をたずねる」の答え。こちらがたずねたぶんだけを、1 回だけ変数に入れる。
+    {
+        std::string var;
+        if (VarFromPropertyEvent(id, var)) {
+            if (!var.empty() && TakeOffered("e:" + id, true)) {
+                vars_.set(var, Value::Str(RefAt(req, 0)));
+                dirty_ = true;
+            }
+            return std::string();
         }
     }
 

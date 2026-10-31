@@ -161,6 +161,51 @@ static std::string LocalFile(const std::string& s) {
 
 static std::string FirstDroppedFile(const RunCtx& ctx);
 
+// SSP のプロパティ名として通す文字だけにする。ghostlist(なしこ).path のように
+// かっこや日本語は入るが、タグや %property[…] を閉じてしまう文字は落とす。
+static std::string PropName(const std::string& s) {
+    std::string out;
+    for (size_t i = 0; i < s.size(); i++) {
+        char c = s[i];
+        if (c == '[' || c == ']' || c == ',' || c == '"' || c == '\\' || c == '%' ||
+            c == '\r' || c == '\n') {
+            continue;
+        }
+        out += c;
+    }
+    return Trim(out);
+}
+
+std::string PropertyEventFor(const std::string& var) {
+    static const char* kHex = "0123456789ABCDEF";
+    std::string ev = "OnNashiProp_";
+    for (size_t i = 0; i < var.size(); i++) {
+        unsigned char c = (unsigned char)var[i];
+        ev += kHex[c >> 4];
+        ev += kHex[c & 15];
+    }
+    return ev;
+}
+
+bool VarFromPropertyEvent(const std::string& ev, std::string& var) {
+    const std::string head = "OnNashiProp_";
+    if (ev.compare(0, head.size(), head) != 0) return false;
+    std::string hex = ev.substr(head.size());
+    if (hex.empty() || hex.size() % 2 != 0) return false;
+    var.clear();
+    for (size_t i = 0; i < hex.size(); i += 2) {
+        int v = 0;
+        for (int k = 0; k < 2; k++) {
+            char c = hex[i + (size_t)k];
+            int d = (c >= '0' && c <= '9') ? c - '0' : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : -1;
+            if (d < 0) return false;
+            v = v * 16 + d;
+        }
+        var += (char)v;
+    }
+    return true;
+}
+
 static Value SysValue(const std::string& key, RunCtx& ctx) {
     SYSTEMTIME st;
     GetLocalTime(&st);
@@ -250,6 +295,13 @@ Value EvalExpr(const JValue& node, RunCtx& ctx) {
     }
 
     if (type == "sys") return SysValue(node["key"].asStr(), ctx);
+
+    // SSP が表示するときに置きかえる %property[…]。セリフの中でだけ意味がある。
+    if (type == "property") {
+        std::string p = PropName(node["prop"].asStr());
+        if (p.empty()) return Value::Str("");
+        return Value::Str("%property[" + p + "]");
+    }
 
     if (type == "random") {
         int lo = (int)std::floor(EvalExpr(node["min"], ctx).asNum());
@@ -619,6 +671,16 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
 
     // さくらスクリプトの中に置ける文字にする（1 行・カンマと括弧なし）
     // \![…] は「,」で区切って「]」で終わるので、そのまま入れると命令が壊れます。
+    // SSP のプロパティをたずねる。答えは、ここで決めたイベント（OnNashiProp_ + 変数名の 16 進）の
+    // Reference0 で届く。栞が受けとって変数に入れる（shiori.cpp）。
+    if (type == "property_get") {
+        std::string into = Trim(TagArg(b["into"].asStr(), true));
+        std::string p = PropName(EvalStr(b["prop"], ctx));
+        if (into.empty() || p.empty()) return;
+        Emit(ctx, "\\![get,property," + PropertyEventFor(into) + "," + p + "]");
+        return;
+    }
+
     // 日付・時刻・数（スライダー）・パスワードをたずねる。答えは OnUserInput で、
     // 「たずねる」と同じ ID（nashi:変数名）で返ってくるので、栞がそのまま変数に入れる。
     if (type == "ask_kind") {

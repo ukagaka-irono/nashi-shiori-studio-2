@@ -69,6 +69,22 @@ window.NASHI = window.NASHI || {};
     ['その他（自分で書く）', '__custom__'],
   ];
 
+  // SSP にたずねられる情報（プロパティシステム）。よく使うものだけ。ほかは自分で書ける。
+  // 名前は UKADOC の「プロパティシステム」の一覧どおり。
+  N.PROPERTIES = [
+    ['SSP の版', 'baseware.version'],
+    ['入っているゴーストの数', 'ghostlist.count'],
+    ['いまのシェルの名前', 'currentghost.shelllist.current.name'],
+    ['さくらの表情の番号', 'currentghost.scope(0).surface.num'],
+    ['バッテリーの残り(％)', 'system.power.battery.percent'],
+    ['電源(AC / バッテリー)', 'system.power.source'],
+    ['Windows のテーマ(dark / light)', 'system.theme.os.mode'],
+    ['CPU の使用率(％)', 'system.cpu.load'],
+    ['メモリの使用率(％)', 'system.memory.load'],
+    ['OS の名前', 'system.os.name'],
+    ['その他（自分で書く）', '__custom__'],
+  ];
+
   // マウス系＝「どこを・だれを」でしぼり込めるイベント
   N.MOUSE_EVENTS = {
     OnMouseClick: 1, OnMouseDoubleClick: 1, OnMouseMove: 1,
@@ -475,6 +491,16 @@ window.NASHI = window.NASHI || {};
       max: { kind: 'input', mode: 'number', def: 100 },
     },
   });
+  // SSP のいまの様子をたずねて、答えを変数に入れる（\![get,property,…]）。
+  // 答えはこのトークのあとに届くので、同じトークの中ではまだ使えない（「たずねる」と同じ）。
+  def({
+    type: 'property_get', cat: 'control', shape: 'stack',
+    spec: 'SSP に %prop をたずねて、答えを %into に入れる',
+    args: {
+      prop: { kind: 'propname', def: 'baseware.version' },
+      into: { kind: 'varname', def: '' },
+    },
+  });
   def({
     type: 'later', cat: 'control', shape: 'stack',
     spec: '%sec 秒後に %name をよぶ',
@@ -670,6 +696,13 @@ window.NASHI = window.NASHI || {};
       },
     },
   });
+  // セリフの中に、SSP の情報をそのまま出す（%property[…]）。SSP が表示するときに置きかえるので、
+  // くらべたり計算したりはできない。それには「SSP に ◯ をたずねて…」を使う。
+  def({
+    type: 'property', cat: 'info', shape: 'reporter',
+    spec: 'SSP の %prop （セリフの中だけ）',
+    args: { prop: { kind: 'propname', def: 'baseware.version' } },
+  });
   def({
     type: 'ref', cat: 'info', shape: 'reporter',
     spec: 'イベントの情報 %index',
@@ -692,7 +725,7 @@ window.NASHI = window.NASHI || {};
       'font_style', 'font_color', 'font_size', 'font_default', 'communicate', 'raw'],
     looks: ['surface', 'chara', 'anim', 'balloon', 'sound', 'bgm', 'sound_stop', 'alpha', 'move'],
     control: ['wait', 'if', 'if_else', 'repeat', 'while', 'random_one', 'call',
-      'call_group', 'talk_interval', 'ask', 'ask_kind', 'later', 'raise', 'update', 'saori_call',
+      'call_group', 'talk_interval', 'ask', 'ask_kind', 'property_get', 'later', 'raise', 'update', 'saori_call',
       'open_browser', 'end', 'close', 'change_ghost'],
     variables: [{ button: 'add-var', label: '＋ 変数をつくる' }, '@vars', 'set', 'change'],
     operators: ['arith#+', 'arith#-', 'arith#*', 'arith#/', 'arith#%',
@@ -701,7 +734,7 @@ window.NASHI = window.NASHI || {};
       'join', 'contains', 'length', 'round', 'saori'],
     info: [
       { note: 'イベントの情報＝ダブルクリックの座標など、イベントごとの追加データです。' },
-      'sys', 'ref',
+      'sys', 'property', 'ref',
     ],
   };
 

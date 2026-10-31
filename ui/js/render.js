@@ -111,10 +111,13 @@
           Model.act(() => { owner[name] = v; });
         });
 
-      case 'eventname': {
+      // 一覧からえらぶか、「その他（自分で書く）」で自分で書く欄（イベント名・プロパティ名）
+      case 'eventname':
+      case 'propname': {
+        const list = argDef.kind === 'propname' ? N.PROPERTIES : N.EVENTS;
         const wrap = el('span', 'field-wrap');
-        const isKnown = N.EVENTS.some(([, v]) => v === owner[name]);
-        const sel = buildSelect(N.EVENTS, isKnown ? owner[name] : '__custom__', (v) => {
+        const isKnown = list.some(([, v]) => v === owner[name]);
+        const sel = buildSelect(list, isKnown ? owner[name] : '__custom__', (v) => {
           Model.act(() => { owner[name] = v === '__custom__' ? (isKnown ? '' : owner[name]) : v; });
         });
         wrap.appendChild(sel);

@@ -201,6 +201,19 @@
                 '変数タブで作るか、別の変数にえらび直してください。', s, b);
             }
             break;
+          case 'property_get':
+            if (isEmptyText(b.prop)) {
+              issue(out, 'error', `${title}に、たずねる中身が空の「SSP にたずねる」ブロックがあります`,
+                '一覧からえらぶか、プロパティの名前を書いてください。', s, b);
+            }
+            if (isEmptyText(b.into)) {
+              issue(out, 'error', `${title}に、答えの入れ先が空の「SSP にたずねる」ブロックがあります`,
+                '入れる変数を決めてください。決めないと、たずねても答えを使えません。', s, b);
+            } else if (varNames.indexOf(b.into) < 0) {
+              issue(out, 'error', `変数「${b.into}」がありません（${title}）`,
+                '変数タブで作るか、別の変数にえらび直してください。', s, b);
+            }
+            break;
           case 'choice_event':
             if (isEmptyText(b.event)) {
               issue(out, 'error', `${title}の選択肢に、起こすイベントがありません`,
