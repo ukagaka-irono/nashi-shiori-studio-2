@@ -38,7 +38,6 @@
     if (a[0] === 'set' && a[1] === 'alpha') return `濃さ ${a[2]}％`;
     if (a[0] === 'get' && a[1] === 'property') return `（SSP に ${a[3] || ''} をたずねる）`;
     if (a[0] === 'move') return 'キャラが動く';
-    if (a[0] === 'open' && INPUT_KINDS[a[1]]) return `（${INPUT_KINDS[a[1]]}の入力欄が開く）`;
     if (a[0] === 'open' && a[1] === 'browser') return `（ブラウザで ${a[2] || ''} を開く）`;
     return '';
   }
@@ -110,10 +109,11 @@
         case 'x': flush(); ops.push({ op: 'clickwait' }); break;
         case 'b': { readBracket(); break; }
         case 'q': {
-          // \q[見出し,行き先,Reference…]。行き先のあとに続く引数は、見出しに入れない。
+          // \q[見出し,行き先,Reference…]。行き先のあとに続く引数は、見出しに入れず、
+          // えらんだときにそのイベントへ「イベントの情報」として渡す（SSP と同じ）。
           const a = splitArgs(readBracket() || '');
           flush();
-          ops.push({ op: 'choice', label: a[0], id: a.length > 1 ? a[1] : '' });
+          ops.push({ op: 'choice', label: a[0], id: a.length > 1 ? a[1] : '', refs: a.slice(2) });
           break;
         }
         case 'w': {
@@ -151,6 +151,18 @@
             ops.push({ op: 'bind', category: a[1] || '', part: a[2] || '', value: a.length > 3 ? a[3] : '' });
             break;
           }
+          // 入力欄は、ためすの吹き出しの中に本当に出して、答えを入れられるようにする。
+          // \![open,inputbox,ID,秒,はじめの文字] / \![open,sliderinput,ID,秒,今の値,最小,最大] など
+          if (a[0] === 'open' && INPUT_KINDS[a[1]]) {
+            flush();
+            ops.push({
+              op: 'input', kind: a[1], id: a[2] || '',
+              initial: a[1] === 'inputbox' ? (a[4] || '') : (a[1] === 'sliderinput' ? (a[4] || '') : ''),
+              min: a[1] === 'sliderinput' ? Number(a[5]) : NaN,
+              max: a[1] === 'sliderinput' ? Number(a[6]) : NaN,
+            });
+            break;
+          }
           const note = describeCommand(a);
           if (note) { flush(); ops.push({ op: 'note', text: note }); }
           break;
@@ -165,6 +177,6 @@
     return ops;
   }
 
-  N.Player = { parseSakura, toStr };
+  N.Player = { parseSakura, toStr, INPUT_KINDS };
 
 })(window.NASHI);

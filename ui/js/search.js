@@ -44,8 +44,44 @@
       } else {
         item.style.cursor = 'default';
       }
-      list.appendChild(item);
+      const fix = fixButton(it.fix);
+      if (!fix) { list.appendChild(item); continue; }
+      // その場で直せるものは、項目の下にボタンを出す（ボタンの中にボタンは入れられないので並べる）
+      const row = Render.div('check-row');
+      row.appendChild(item);
+      row.appendChild(fix);
+      list.appendChild(row);
     }
+  }
+
+  /** チェックの項目を、その場で直すボタン（無い変数・トークを作る、使っていない変数を消す） */
+  function fixButton(fix) {
+    if (!fix || !fix.name) return null;
+    let label = '';
+    let run = null;
+    if (fix.add === 'var') {
+      label = `変数「${fix.name}」を作る`;
+      run = () => {
+        let made = null;
+        Model.act(() => { made = Model.addVariable(fix.name, 0); return made ? undefined : false; });
+        if (made) App.toast(`変数「${fix.name}」を作りました`);
+        else App.toast('その名前の変数は作れません。変数タブで名前を確かめてください', true);
+      };
+    } else if (fix.add === 'talk') {
+      label = `トーク「${fix.name}」を作る`;
+      run = () => App.createFunctionNamed(fix.name);
+    } else if (fix.remove === 'var') {
+      label = `変数「${fix.name}」を削除する`;
+      run = () => {
+        if (!confirm(`変数「${fix.name}」を削除しますか？`)) return;   // 変数タブの ✕ と同じく確かめる
+        Model.act(() => Model.removeVariable(fix.name));
+        App.toast(`変数「${fix.name}」を削除しました`);
+      };
+    }
+    if (!run) return null;
+    const b = Render.el('button', 'btn small check-fix', label);
+    b.addEventListener('click', run);
+    return b;
   }
 
   // --------------------------------------------------------------- さがす
@@ -105,14 +141,31 @@
     const q = ($('#search-input').value || '').trim().toLowerCase();
     list.textContent = '';
     if (!q) {
-      list.appendChild(Render.div('hint', 'さがす言葉を入れてください。'));
+      // 言葉が無いときは、キャンバスにあるかたまりの一覧（上から順）。クリックでその場所へ
+      const scripts = Model.project.scripts.filter((s) => s.kind !== 'note')
+        .slice().sort((a, b) => (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0));
+      if (!scripts.length) {
+        list.appendChild(Render.div('hint', 'キャンバスにまだ何もありません。'));
+        return;
+      }
+      list.appendChild(Render.div('palette-group-title', `かたまりの一覧（${scripts.length} つ）`));
+      for (const s of scripts) {
+        const item = Render.el('button', 'check-item');
+        item.appendChild(Render.el('span', 'mark', '📄'));
+        item.appendChild(Render.div('msg', Model.scriptTitle(s)));
+        item.title = 'クリックでその場所へ移動します';
+        item.addEventListener('click', () => jumpTo({ script: s, block: null }));
+        list.appendChild(item);
+      }
       return;
     }
 
     const hits = [];
     for (const s of Model.project.scripts) {
       const title = Model.scriptTitle(s);
-      if (title.toLowerCase().includes(q)) hits.push({ script: s, block: null, text: title });
+      // メモ（付箋）は、見出しに出ない 2 行目より先の文字も探す
+      const noteText = s.kind === 'note' ? String(s.text || '').toLowerCase() : '';
+      if (title.toLowerCase().includes(q) || noteText.includes(q)) hits.push({ script: s, block: null, text: title });
       walkBlocks(s, (b) => {
         if (hits.length > 200) return;
         const text = blockSummary(b);
@@ -157,6 +210,9 @@
     const view = ws.getBoundingClientRect();
     ws.scrollLeft += box.left - view.left - Math.max(40, (view.width - box.width) / 2);
     ws.scrollTop += box.top - view.top - Math.max(40, (view.height - box.height) / 2);
+
+    // ブロックはえらんだ状態にする（そのまま Delete や Ctrl+C が効くように）
+    if (target && Array.isArray(target._stack)) N.Drag.select(target);
 
     const flashEl = target || scriptEl;
     flashEl.classList.remove('flash');

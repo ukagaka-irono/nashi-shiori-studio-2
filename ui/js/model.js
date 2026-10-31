@@ -167,6 +167,8 @@
         script.blocks = Array.isArray(script.blocks) ? script.blocks : [];
         if (typeof script.x !== 'number') script.x = 60;
         if (typeof script.y !== 'number') { script.y = y; y += 180; }
+        // 付箋（メモ）。ゴーストの動きには入らない（書き出す ghost.json にも入らない）
+        if (script.kind === 'note' && typeof script.text !== 'string') script.text = '';
         if (script.kind === 'talk' && script.weight == null) script.weight = 1;
         if (script.kind === 'talk' && typeof script.group !== 'string') script.group = '';
         if ((script.kind === 'talk' || script.kind === 'function') && !script.name) {
@@ -325,6 +327,10 @@
         return 'ランダムトーク「' + (s.name || '') + '」' + (g ? `（${g}）` : '');
       }
       if (s.kind === 'function') return '「' + (s.name || '') + '」';
+      if (s.kind === 'note') {
+        const first = String(s.text || '').split('\n')[0].trim();
+        return 'メモ' + (first ? '「' + (first.length > 20 ? first.slice(0, 20) + '…' : first) + '」' : '');
+      }
       return 'ブロックのかたまり';
     },
 
@@ -352,12 +358,28 @@
       const v = Model.project.variables.find((x) => x.name === oldName);
       if (!v) return false;
       v.name = newName;
+      Model.forEachVarRef((b, arg) => { if (b[arg] === oldName) b[arg] = newName; });
+      return true;
+    },
+
+    /**
+     * 変数の名前が入る欄（「変数名」の欄: 入れる・変える・中身・たずねて入れる先 など）をすべて訪ねる。
+     * fn(block, argName)。名前の付けかえ・使っている数・チェックが、同じ欄を見るように 1 か所にまとめる。
+     */
+    forEachVarRef(fn) {
       Model.walkBlocks((b) => {
-        if ((b.type === 'var' || b.type === 'set' || b.type === 'change') && b.name === oldName) {
-          b.name = newName;
+        const d = N.getDef(b);
+        for (const arg in (d && d.args) || {}) {
+          if (d.args[arg].kind === 'varname' && typeof b[arg] === 'string') fn(b, arg);
         }
       });
-      return true;
+    },
+
+    /** その変数を使っている欄の数 */
+    countVariableUses(name) {
+      let n = 0;
+      Model.forEachVarRef((b, arg) => { if (b[arg] === name) n++; });
+      return n;
     },
 
     /**

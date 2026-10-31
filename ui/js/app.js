@@ -112,7 +112,7 @@
     Render.renderWorkspace($('#canvas'), project);
     restoreCanvasFocus($('#canvas'), focus);
     N.Drag.reselect($('#canvas'));
-    Render.renderPalette($('#palette-blocks'), App.category, project);
+    Render.renderPalette($('#palette-blocks'), App.category, project, $('#palette-search').value);
     $('#canvas-hint').style.display = project.scripts.length ? 'none' : '';
     renderVarList();
     renderRunTargets();
@@ -160,6 +160,7 @@
       b.appendChild(Render.el('span', null, cat.name));
       b.addEventListener('click', () => {
         App.category = cat.id;
+        $('#palette-search').value = '';         // カテゴリをえらんだら、さがすのはやめる
         renderCategories();
         Render.renderPalette($('#palette-blocks'), App.category, Model.project);
       });
@@ -213,7 +214,12 @@
       const del = Render.el('button', 'del', '✕');
       del.title = '削除';
       del.addEventListener('click', () => {
-        if (!confirm(`変数「${v.name}」を削除しますか？`)) return;
+        // 使っているブロックがあれば、その数も見せる（消すと、そのブロックはチェックタブで ⛔ になる）
+        const uses = Model.countVariableUses(v.name);
+        const msg = uses
+          ? `変数「${v.name}」は ${uses} か所で使っています。削除すると、そこはうまく動きません。削除しますか？`
+          : `変数「${v.name}」を削除しますか？`;
+        if (!confirm(msg)) return;
         Model.act(() => Model.removeVariable(v.name));
       });
       row.appendChild(del);
@@ -247,6 +253,26 @@
     return trimmed;
   };
 
+  /** チェックタブから「トーク『◯』を作る」。見えているあたりに置く */
+  App.createFunctionNamed = function (name) {
+    const at = viewCenter();
+    Model.act(() => Model.addScript('function', { name, x: at.x, y: at.y }));
+    App.toast(`「${name}」を作りました。ブロックをつなげてください`);
+  };
+
+  /** 付箋（メモ）を置く。at が無ければ、見えているあたり */
+  App.addNote = function (at) {
+    const p = at || viewCenter();
+    let note = null;
+    Model.act(() => { note = Model.addScript('note', { text: '', x: Math.round(p.x), y: Math.round(p.y) }); });
+    App.toast('メモを置きました');
+    // 置いたらすぐ書けるように、中にカーソルを置く
+    setTimeout(() => {
+      const el = [...document.querySelectorAll('#canvas > .script.note')].find((e) => e._script === note);
+      if (el) el.querySelector('.note-text').focus();
+    }, 50);
+  };
+
   function viewCenter() {
     const ws = $('#workspace');
     return {
@@ -274,24 +300,32 @@
   };
 
   App.deleteScript = function (script) {
-    const count = (script.blocks || []).length;
+    // 中身があれば確かめる（ブロック、またはメモの文字）
+    const count = (script.blocks || []).length || (script.kind === 'note' && String(script.text || '').trim() ? 1 : 0);
     if (count && !confirm(`「${Model.scriptTitle(script)}」を削除しますか？`)) return;
     Model.act(() => Model.removeScript(script));
     App.toast('削除しました');
   };
 
+  // かたまりを、種類ごとに上から並べなおす。大きさは描いた実物で測る（セリフが長いと 420px より広いので）
   function tidy() {
+    const size = new Map();
+    for (const el of document.querySelectorAll('#canvas > .script')) {
+      if (el._script) size.set(el._script, { w: el.offsetWidth, h: el.offsetHeight });
+    }
     Model.act(() => {
       let x = 60, y = 40, colW = 0;
-      const order = { event: 0, talk: 1, function: 2, loose: 3 };
+      const order = { event: 0, talk: 1, function: 2, loose: 3, note: 4 };
       const sorted = Model.project.scripts.slice().sort(
         (a, b) => (order[a.kind] || 0) - (order[b.kind] || 0)
       );
       for (const s of sorted) {
+        const sz = size.get(s) || { w: 420, h: estimateHeight(s) };
+        // この列に入りきらなければ、となりの列へ（列の幅は、その列でいちばん広いかたまり）
+        if (y > 40 && y + sz.h > 2400) { y = 40; x += colW + 60; colW = 0; }
         s.x = x; s.y = y;
-        y += estimateHeight(s) + 40;
-        colW = Math.max(colW, 420);
-        if (y > 2400) { y = 40; x += colW + 60; colW = 0; }
+        y += sz.h + 40;
+        colW = Math.max(colW, sz.w);
       }
       Model.project.scripts = sorted;
     });
@@ -319,7 +353,7 @@
     const prev = sel.value;
     sel.textContent = '';
     for (const s of Model.project.scripts) {
-      if (s.kind === 'loose') continue;
+      if (s.kind === 'loose' || s.kind === 'note') continue;
       const o = Render.el('option', null, Model.scriptTitle(s));
       o.value = s.id;
       sel.appendChild(o);
@@ -362,14 +396,15 @@
    * 動かすのは栞そのもの（studio/src/preview.cpp → shiori/src/interp.cpp）です。
    * 画面側で同じ規則をもう一度書くと、片方だけ直したときに静かにズレるためです。
    */
-  async function runPreview(script) {
+  // refs … イベントの情報を、画面から渡したいとき（選択肢の情報・入力欄の答え）。無ければ仮の値
+  async function runPreview(script, refs) {
     const meta = Model.project.meta || {};
     return api('/api/preview', {
       method: 'POST',
       body: {
         project: Model.project,
         scriptId: script.id,
-        refs: refsFor(script),
+        refs: refs || refsFor(script),
         vars: App.sessionVars,
         // SSP が知らせてくる情報は、ためすときは仮の値（誕生日は今日にしておく）
         sys: {
@@ -380,13 +415,13 @@
     });
   }
 
-  App.runScript = async function (script) {
+  App.runScript = async function (script, refs) {
     if (!script) return;
     $('#run-target').value = script.id;
     switchTab('run');
     let res;
     try {
-      res = await runPreview(script);
+      res = await runPreview(script, refs);
     } catch (e) {
       $('#script-preview').textContent = '（ためせませんでした: ' + e.message + '）';
       App.toast(e.message, true);
@@ -399,6 +434,24 @@
     $('#script-preview').textContent = preview;
     renderRunVars();
     N.Shell.playSakura(res.script);
+  };
+
+  /**
+   * ためすの入力欄に答えたとき。SSP で動かしたときと同じ順に、
+   *   ① 「たずねる」が付けた ID（nashi:変数名）なら、その変数に入れる（栞の shiori.cpp と同じ）
+   *   ② 「答えが返ってきたとき」（OnUserInput）のかたまりがあれば、ID と答えを情報にして動かす
+   */
+  // shown … 知らせに出す答え（パスワードは伏せる）
+  App.answerInput = function (id, answer, shown) {
+    const name = /^nashi:/.test(id) ? id.slice(6) : '';
+    if (name) {
+      App.sessionVars = Object.assign({}, App.sessionVars, { [name]: answer });
+      renderRunVars();
+    }
+    const handler = Model.project.scripts.find((s) => s.kind === 'event' && s.event === 'OnUserInput' && !s.disabled);
+    if (handler) { App.runScript(handler, [id, answer]); return; }
+    App.toast(name ? `変数「${name}」に「${shown == null ? answer : shown}」を入れました`
+      : '「答えが返ってきたとき」のかたまりがありません', !name);
   };
 
   function renderRunVars() {
@@ -490,11 +543,18 @@
   }
 
   // ---------------------------------------------------------- 右クリック
+  let menuReturnTo = null;    // キーボードで開いたとき、閉じたらもどる欄
   App.closeContextMenu = function () {
-    $('#ctx-menu').classList.remove('open');
+    const menu = $('#ctx-menu');
+    const hadFocus = menu.contains(document.activeElement);
+    menu.classList.remove('open');
+    if (hadFocus && menuReturnTo && menuReturnTo.isConnected) menuReturnTo.focus();
+    menuReturnTo = null;
   };
 
-  function openContextMenu(x, y, items) {
+  // opts.focusFrom … キーボードで開いたときの欄。いちばん上の項目にフォーカスを移し、
+  //                  ↑ ↓ で動いて Enter でえらぶ。Esc で閉じて、その欄にもどる。
+  function openContextMenu(x, y, items, opts) {
     const menu = $('#ctx-menu');
     menu.textContent = '';
     for (const item of items) {
@@ -504,9 +564,13 @@
       menu.appendChild(b);
     }
     menu.style.left = Math.min(x, window.innerWidth - 170) + 'px';
-    menu.style.top = Math.min(y, window.innerHeight - menu.childElementCount * 34 - 20) + 'px';
+    // 長い一覧（▾ でえらぶものなど）は、画面からはみ出さないよう上を 8px でとめる（中はスクロール）
+    menu.style.top = Math.max(8, Math.min(y, window.innerHeight - menu.childElementCount * 34 - 20)) + 'px';
     menu.classList.add('open');
+    menuReturnTo = (opts && opts.focusFrom) || null;
+    if (menuReturnTo) { const first = menu.querySelector('.ctx-item'); if (first) first.focus(); }
   }
+  App.openMenu = openContextMenu;
 
   /**
    * コピーしたブロックを、キャンバスの空いた場所に新しいかたまりとして置く。
@@ -578,22 +642,25 @@
       const hat = e.target.closest('#canvas .blk.hat');
       const blk = e.target.closest('#canvas .blk');
       const scriptEl = e.target.closest('#canvas .script');
-      if (!scriptEl && e.target.closest('#canvas') && App.clipboard) {
-        // 空いた場所: コピーしたブロックがあれば、そこへはりつけられる
+      if (!scriptEl && e.target.closest('#canvas')) {
+        // 空いた場所: メモを置ける。コピーしたブロックがあれば、そこへはりつけられる
         e.preventDefault();
         const at = N.Drag.toCanvas(e.clientX, e.clientY);
-        openContextMenu(e.clientX, e.clientY, [
-          { label: 'ここにはりつける', run: () => App.pasteOnCanvas(at) },
-        ]);
+        const items = [{ label: 'ここにメモを置く', run: () => App.addNote(at) }];
+        if (App.clipboard) items.push({ label: 'ここにはりつける', run: () => App.pasteOnCanvas(at) });
+        openContextMenu(e.clientX, e.clientY, items);
         return;
       }
       if (!scriptEl) { App.closeContextMenu(); return; }
+      // メモの中では、ふつうの文字の右クリック（コピー・はりつけ）のまま
+      if (e.target.closest('.note-text')) { App.closeContextMenu(); return; }
       e.preventDefault();
 
-      if (hat || !blk) {
+      const isNote = scriptEl._script && scriptEl._script.kind === 'note';
+      if (hat || !blk || isNote) {
         const script = scriptEl._script;
         openContextMenu(e.clientX, e.clientY, [
-          { label: '▶ 実行してみる', run: () => App.runScript(script) },
+          ...(isNote ? [] : [{ label: '▶ 実行してみる', run: () => App.runScript(script) }]),
           { label: '複製する', run: () => App.duplicateScript(script) },
           '-',
           { label: '削除する', danger: true, run: () => App.deleteScript(script) },
@@ -638,6 +705,25 @@
     });
     document.addEventListener('click', (e) => {
       if (!e.target.closest('#ctx-menu')) App.closeContextMenu();
+    });
+    // メニューの中では、↑ ↓ で項目を移り、Esc か Tab で閉じる（開いたまま外へ出ないように）
+    $('#ctx-menu').addEventListener('keydown', (e) => {
+      const items = [...$('#ctx-menu').querySelectorAll('.ctx-item')];
+      const i = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const next = items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length];
+        if (next) next.focus();
+      } else if (e.key === 'Enter' && i >= 0) {
+        e.preventDefault();
+        items[i].click();
+      } else if (e.key === 'Escape' || e.key === 'Tab') {
+        e.preventDefault();
+        App.closeContextMenu();
+      } else {
+        return;
+      }
+      e.stopPropagation();
     });
   }
 
@@ -823,6 +909,7 @@
     $('#btn-zoom-out').addEventListener('click', () => setZoom(App.zoom - 0.1));
     $('#btn-zoom-reset').addEventListener('click', () => setZoom(1));
     $('#btn-tidy').addEventListener('click', () => { tidy(); App.toast('整列しました'); });
+    $('#btn-note').addEventListener('click', () => App.addNote());
     $('#btn-import').addEventListener('click', async () => {
       const p = $('#import-path').value.trim();
       if (!p) return;
@@ -879,6 +966,18 @@
       searchInput.addEventListener('input', N.Search.renderSearch);
       searchInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') searchInput.blur(); });
     }
+
+    // パレットの「ブロックをさがす」: 打つたびに全カテゴリから探す。Esc で消して、もとのカテゴリへ
+    const paletteSearch = $('#palette-search');
+    const showPalette = () => Render.renderPalette($('#palette-blocks'), App.category, Model.project, paletteSearch.value);
+    paletteSearch.addEventListener('input', showPalette);
+    paletteSearch.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      paletteSearch.value = '';
+      showPalette();
+      paletteSearch.blur();
+    });
 
     // ---- キーボード
     document.addEventListener('keydown', (e) => {

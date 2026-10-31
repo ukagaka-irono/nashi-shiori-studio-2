@@ -6,6 +6,7 @@
  *
  *   model.js … 読みこんだプロジェクトの整形（normalize）と、かたまりの名前
  *   lint.js  … チェックタブが出す注意
+ *   player.js … 「ためす」が、さくらスクリプトをどう再生するか（入力欄・選択肢の情報）
  *
  * ブロックを動かすところは栞（shiori/src/interp.cpp）にしかないので、ここでは見ません
  * （そちらは shiori/test/parity と shiori/test/behavior が見ています）。
@@ -21,11 +22,11 @@ const { red, green, dim, off } = COLOR;
 
 // 画面のスクリプトをそのまま読みこむ（window があるつもりで動きます）
 global.window = {};
-for (const f of ['blocks.js', 'model.js', 'lint.js']) {
+for (const f of ['blocks.js', 'model.js', 'lint.js', 'player.js']) {
   (0, eval)(fs.readFileSync(path.join(root, 'ui', 'js', f), 'utf8'));
 }
 const N = global.window.NASHI;
-const { Model, Lint } = N;
+const { Model, Lint, Player } = N;
 
 let failed = 0;
 let checked = 0;
@@ -212,6 +213,69 @@ check('どこでも使われていない変数は言う',
   issuesOf(withScript([{ type: 'say', who: 0, text: 'やあ' }]), 'どこでも使われていません'),
   ['warn']);
 
+// --- 見落としていたまちがい
+check('数の欄に、数でない文字',
+  issuesOf(withScript([{ type: 'wait', ms: 'すこし' }]), '数の欄に「すこし」'), ['warn']);
+check('数の欄に数・変数のブロックなら言わない',
+  issuesOf(withScript([{ type: 'wait', ms: '500' }, { type: 'wait', ms: { type: 'var', name: 'こたえ' } }]), '数の欄に'), []);
+check('鳴らす音のファイルが空（1 回鳴らす）',
+  issuesOf(withScript([{ type: 'sound', file: '' }]), 'ファイル名が空'), ['warn']);
+check('まだ作っていない「うごき」',
+  issuesOf(withScript([{ type: 'anim', id: 5 }]), '「うごき 5」がありません'), ['warn']);
+check('作った「うごき」なら言わない',
+  issuesOf(withScript([{ type: 'anim', id: 5 }], { animations: [{ id: 5, base: 0, patterns: [] }] }), '「うごき 5」がありません'), []);
+check('どこからもよばれない「◯がよばれたとき」',
+  issuesOf(withScript([], { scripts: [{ id: 'f', kind: 'function', name: 'ひとり', blocks: [{ type: 'say', who: 0, text: 'x' }] }] }),
+    'どこからもよばれていません'), ['warn']);
+check('◯秒後によぶ・選択肢の行き先も「よばれている」に数える',
+  issuesOf(withScript([{ type: 'later', sec: 5, name: 'あと' }, { type: 'choice', label: 'はい', target: 'えらぶ' }], {
+    scripts: [
+      { id: 's1', kind: 'event', event: 'OnBoot', blocks: [{ type: 'later', sec: 5, name: 'あと' }, { type: 'choice', label: 'はい', target: 'えらぶ' }] },
+      { id: 'a', kind: 'function', name: 'あと', blocks: [{ type: 'say', who: 0, text: 'x' }] },
+      { id: 'b', kind: 'function', name: 'えらぶ', blocks: [{ type: 'say', who: 0, text: 'y' }] },
+    ],
+  }), 'どこからもよばれていません'), []);
+check('さくらスクリプトの中で名前を書いていれば、よばれていることにする',
+  issuesOf(withScript([], { scripts: [
+    { id: 's1', kind: 'event', event: 'OnBoot', blocks: [{ type: 'raw', text: '\\q[はい,こたえる]' }] },
+    { id: 'f', kind: 'function', name: 'こたえる', blocks: [{ type: 'say', who: 0, text: 'x' }] },
+  ] }), 'どこからもよばれていません'), []);
+check('さくらスクリプトの文字に名前がまじっているだけなら、よばれていない',
+  issuesOf(withScript([], { scripts: [
+    { id: 's1', kind: 'event', event: 'OnBoot', blocks: [{ type: 'raw', text: '\\_w[500]あいうえお' }] },
+    { id: 'f', kind: 'function', name: 'あ', blocks: [{ type: 'say', who: 0, text: 'x' }] },
+  ] }), 'どこからもよばれていません'), ['warn']);
+check('日付・SSP の情報をたずねる先も「使っている」に数える',
+  issuesOf(withScript([{ type: 'ask_kind', kind: 'dateinput', into: 'こたえ', min: 0, max: 100 }]), 'どこでも使われていません'), []);
+
+// --- チェックタブからその場で直す
+{
+  Model.project = Model.normalize(withScript([{ type: 'set', name: 'ないよ', value: 1 }, { type: 'call', name: 'ないトーク' }]));
+  const fixes = Lint.run(Model.project).filter((i) => i.fix).map((i) => i.fix);
+  check('無い変数・無いトークには「作る」、使っていない変数には「削除する」',
+    fixes.map((f) => (f.add ? 'add-' + f.add : 'remove-' + f.remove) + ':' + f.name).sort(),
+    ['add-talk:ないトーク', 'add-var:ないよ', 'remove-var:こたえ']);
+}
+
+// ============================================== 変数の名前を変えたとき
+section('変数の名前を変えたとき (model.renameVariable)');
+{
+  Model.project = Model.normalize(withScript([
+    { type: 'set', name: 'こたえ', value: 1 },
+    { type: 'ask', into: 'こたえ', initial: '' },
+    { type: 'ask_kind', kind: 'dateinput', into: 'こたえ', min: 0, max: 100 },
+    { type: 'property_get', prop: 'baseware.version', into: 'こたえ' },
+    { type: 'say', who: 0, text: { type: 'var', name: 'こたえ' }, nl: 1 },
+    { type: 'say', who: 0, text: 'こたえ', nl: 1 },
+  ]));
+  check('使っている数（入れる・たずねる 3 つ・中身）', Model.countVariableUses('こたえ'), 5);
+  Model.renameVariable('こたえ', '名前');
+  const bs = Model.project.scripts[0].blocks;
+  check('たずねて入れる先も、いっしょに付けかえる',
+    [bs[0].name, bs[1].into, bs[2].into, bs[3].into, bs[4].text.name], ['名前', '名前', '名前', '名前', '名前']);
+  check('セリフの文字はそのまま', bs[5].text, 'こたえ');
+}
+
 // ============================================== トークの名前を変えたとき
 section('トークの名前を変えたとき (model.renameTalkRefs)');
 {
@@ -243,6 +307,30 @@ section('トークの名前を変えたとき (model.renameTalkRefs)');
   project.scripts.push({ id: 'c', kind: 'talk', name: 'おはよう', weight: 1, blocks: [] });
   talk.name = 'こんばんは';
   check('同じ名前のトークがほかにあれば、付けかえない', Model.renameTalkRefs('おはよう', 'こんばんは', talk), 0);
+}
+
+// ============================================== 付箋（メモ）
+section('付箋（メモ）');
+{
+  const p = Model.normalize({ format: 'nashi/1', scripts: [{ id: 'n', kind: 'note', x: 10, y: 20 }] });
+  check('読みこむと、文字が空でも text を持つ', [p.scripts[0].kind, p.scripts[0].text, p.scripts[0].blocks], ['note', '', []]);
+  Model.project = p;
+  p.scripts[0].text = '朝のトーク\nここから下は朝だけ';
+  check('見出しは 1 行目', Model.scriptTitle(p.scripts[0]), 'メモ「朝のトーク」');
+  check('メモはチェックタブに出ない（つながっていない・中身がからっぽ、と言わない）',
+    Lint.run(p).filter((i) => i.script === p.scripts[0]).length, 0);
+}
+
+// ============================================== ためすの再生（player.parseSakura）
+section('ためすの再生 (player.parseSakura)');
+{
+  const ops = Player.parseSakura('\\0きみの名前は？\\![open,inputbox,nashi:名前,-1,なし]\\q[はい,OnAnswer,yes,2]\\![open,sliderinput,nashi:数,-1,5,0,10]');
+  const input = ops.filter((o) => o.op === 'input');
+  check('たずねると、入力欄の操作になる（ID・はじめの文字）', input.map((o) => [o.kind, o.id, o.initial]),
+    [['inputbox', 'nashi:名前', 'なし'], ['sliderinput', 'nashi:数', '5']]);
+  check('スライダーは最小・最大も読む', [input[1].min, input[1].max], [0, 10]);
+  const choice = ops.find((o) => o.op === 'choice');
+  check('選択肢の行き先のあとの情報を、イベントの情報として持つ', [choice.label, choice.id, choice.refs], ['はい', 'OnAnswer', ['yes', '2']]);
 }
 
 // ============================================== お手本ゴースト（ui/samples）

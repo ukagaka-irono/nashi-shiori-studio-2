@@ -78,6 +78,7 @@
     }
   ],
   "scripts": [
+    { "id": "s_note", "kind": "note", "text": "メモはゴーストに入らない", "x": 900, "y": 40, "blocks": [] },
     {
       "id": "s_boot", "kind": "event", "event": "OnBoot",
       "blocks": [{ "type": "say", "who": 0, "text": "おはよう。", "nl": 1 }]

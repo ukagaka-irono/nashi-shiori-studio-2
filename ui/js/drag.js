@@ -33,12 +33,20 @@
   }
 
   // ---------------------------------------------------------------- select
+  // えらんだブロックのかたまりにも印を付ける（▶ ⧉ ✕ の道具を、マウスを離しても出しておくため）
+  function markScript(blockEl, on) {
+    const scriptEl = blockEl && blockEl.closest && blockEl.closest('.script');
+    if (scriptEl) scriptEl.classList.toggle('is-selected', on);
+  }
+
   function select(blockEl) {
     if (D.selected && D.selected.el && D.selected.el.isConnected) {
       D.selected.el.classList.remove('selected');
+      markScript(D.selected.el, false);
     }
     if (!blockEl) { D.selected = null; return; }
     blockEl.classList.add('selected');
+    markScript(blockEl, true);
     D.selected = { el: blockEl, block: blockEl._blk, stack: blockEl._stack, index: blockEl._index };
   }
 
@@ -53,6 +61,7 @@
     const el = [...canvas.querySelectorAll('.blk')].find((e) => e._blk === s.block);
     if (!el) { D.selected = null; return; }
     el.classList.add('selected');
+    markScript(el, true);
     D.selected = { el, block: el._blk, stack: el._stack, index: el._index };
   }
 
@@ -202,11 +211,42 @@
       candidate = d.payload.type === 'reporter'
         ? findSlotCandidate(d, clientX, clientY)
         : (d.payload.type === 'moveScript' || d.payload.type === 'newScript'
-          ? null
+          ? findHatAttach(d)
           : findStackCandidate(d, left, top));
     }
     d.candidate = candidate;
     showMarker(candidate);
+  }
+
+  /**
+   * 帽子ブロック（起動したとき など）を運んでいるとき、その下のはしが、どこにもつながっていない
+   * ブロックの上はしに近ければ、そこにくっつける（あとから帽子をかぶせられるように）。
+   */
+  function findHatAttach(d) {
+    const script = d.payload.script;
+    if (!script || !['event', 'talk', 'function'].includes(script.kind)) return null;
+    const r = d.el.getBoundingClientRect();
+    const bottom = toCanvas(r.left, r.bottom);
+    const hatH = r.height / D.zoom;
+    let best = null;
+    for (const el of D.canvas.querySelectorAll(':scope > .script')) {
+      const s = el._script;
+      if (!s || s === script || s.kind !== 'loose') continue;
+      const sx = s.x || 0, sy = s.y || 0;
+      const dist = Math.abs(bottom.x - sx) + Math.abs(bottom.y - sy);
+      if (Math.abs(bottom.x - sx) < 50 && Math.abs(bottom.y - sy) < 36 && (!best || dist < best.dist)) {
+        best = { kind: 'attach', script: s, stackEl: el, point: { x: sx, y: sy }, hatH, dist };
+      }
+    }
+    return best;
+  }
+
+  /** findHatAttach で見つけた、つながっていないブロックを、帽子の下へ移す */
+  function attachUnderHat(script, c) {
+    script.blocks = (script.blocks || []).concat(c.script.blocks || []);
+    script.x = Math.max(0, Math.round(c.point.x));
+    script.y = Math.max(0, Math.round(c.point.y - c.hatH));
+    Model.removeScript(c.script);
   }
 
   function isOver(el, x, y) {
@@ -333,9 +373,12 @@
 
     const pos = toCanvas(parseFloat(d.el.style.left), parseFloat(d.el.style.top));
 
+    const attach = d.candidate && d.candidate.kind === 'attach' ? d.candidate : null;
+
     if (payload.type === 'moveScript') {
       payload.script.x = Math.max(0, Math.round(pos.x));
       payload.script.y = Math.max(0, Math.round(pos.y));
+      if (attach) attachUnderHat(payload.script, attach);
       Model.pushUndo(d.snapshot);
       Model.emit();
       return;
@@ -344,6 +387,7 @@
     if (payload.type === 'newScript') {
       payload.script.x = Math.max(0, Math.round(pos.x));
       payload.script.y = Math.max(0, Math.round(pos.y));
+      if (attach) attachUnderHat(payload.script, attach);
       payload.script.id = Model.uid('s');
       if (payload.script.kind === 'function') {
         payload.script.name = uniqueName(payload.script.name);
