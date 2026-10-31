@@ -9,7 +9,9 @@
  *   ・ブロックが無いイベントの既定の反応
  *   ・OnClose に \- が必ず付くこと、\e が補われること
  *   ・「◯秒ごと」の間引き
- *   ・OnMouseMove を数えて OnNadeNade を作ること
+ *   ・OnMouseMove を数えて OnNadeNade を作ること（20 回・続けては反応しない・しゃべっている途中は割りこまない）
+ *   ・しゃべれないあいだの「◯秒ごと」「1時間ごと」は、あとで出す
+ *   ・ランダムトークは、言うものが見つかるまでためす／時計はしゃべれるあいだだけ進む
  *   ・ゴースト間通信の届け先と、話しかけ合いの打ち切り
  *   ・外から来た要求の受け付けかた（出していない選択肢・開いていない箱・external）
  *   ・SSP のイベントの読みかた（しゃべれるか・1時間ごと・切り替わって来たとき）
@@ -26,6 +28,8 @@ const host = require('../lib/host');
 const { red, green, dim, off } = host.COLOR;
 const EMPTY = path.join(__dirname, 'empty');
 const MAIN = path.join(__dirname, 'main');
+const TALK = path.join(__dirname, 'talk');
+const TALKWAIT = path.join(__dirname, 'talkwait');
 
 // 応答 1 件に対する期待。文字列なら Value の完全一致。
 //   { value } Value / { commTo } 話しかけ先 / { status } 応答の種類
@@ -103,14 +107,36 @@ const scenarios = [
     ],
   },
   {
-    name: 'マウスが同じ場所で 8 回続いたら、なでられたことにする',
+    name: 'マウスが同じ場所で 20 回続いたら、なでられたことにする／すぐ続けては反応しない',
     dir: MAIN,
     steps: (() => {
       const out = [];
-      for (let i = 1; i <= 8; i++) {
+      for (let i = 1; i <= 20; i++) {
         out.push(['OnMouseMove:0,0,0,0,Head',
-          i < 8 ? { status: '204 No Content' } : { value: '\\0あたま\\e' }]);
+          i < 20 ? { status: '204 No Content' } : { value: '\\0あたま\\e' }]);
       }
+      // 反応したあと 5 秒のあいだは、また 20 回なでても反応しない
+      for (let i = 1; i <= 20; i++) out.push(['OnMouseMove:0,0,0,0,Head', { status: '204 No Content' }]);
+      return out;
+    })(),
+  },
+  {
+    name: 'しゃべっている途中（Status: talking）は、なでても割りこまない',
+    dir: MAIN,
+    steps: (() => {
+      const out = [];
+      for (let i = 1; i <= 20; i++) out.push(['OnMouseMove:0,0,0,0,Head|Status:talking', { status: '204 No Content' }]);
+      return out;
+    })(),
+  },
+  {
+    name: 'なでたときの既定の反応 — むねはいやがり、ほかの場所は（書いていなければ）何も言わない',
+    dir: EMPTY,
+    steps: (() => {
+      const out = [];
+      for (let i = 1; i <= 20; i++) out.push(['OnMouseMove:0,0,0,0,Hand', { status: '204 No Content' }]);
+      for (let i = 1; i <= 19; i++) out.push(['OnMouseMove:0,0,0,0,Bust', { status: '204 No Content' }]);
+      out.push(['OnMouseMove:0,0,0,0,Bust', { value: '\\0\\s[2]……あんまり触らないで。\\e' }]);
       return out;
     })(),
   },
@@ -285,10 +311,60 @@ const scenarios = [
       ['OnLaterTest', { status: '204 No Content' }],
       ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],
       ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],
-      ['OnSecondChange:0,0,0,0', { value: '\\01\\e' }],   // いつもの「3 秒ごと」は動く
+      ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],   // 「3 秒ごと」も、しゃべれないので取っておく
       ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],
-      ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],   // 5 秒目。しゃべれないので待つ
-      ['OnSecondChange:0,0,0,1', { value: '\\0おまたせ\\e' }],
+      ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],   // 5 秒目。予約も待つ
+      ['OnSecondChange:0,0,0,1', { value: '\\0おまたせ\\e' }],   // しゃべれるようになったら、時間が来た予約から
+      ['OnSecondChange:0,0,0,1', { value: '\\01\\e' }],         // つぎの秒に、取っておいた「3 秒ごと」のセリフ
+    ],
+  },
+  {
+    name: '時報は、しゃべっている途中（Status: talking）なら、しゃべれるようになってから出す',
+    dir: MAIN,
+    steps: [
+      ['OnHourTimeSignal:0,0,0,1|Status:talking', { status: '204 No Content' }],
+      ['OnSecondChange:0,0,0,1', { value: '\\0じほう\\e' }],
+    ],
+  },
+  {
+    name: '取っておいた時報は、そのあいだの「3 秒ごと」のセリフで上書きされない',
+    dir: MAIN,
+    steps: [
+      ['OnHourTimeSignal:0,0,0,1|Status:talking', { status: '204 No Content' }],
+      ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],
+      ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],
+      ['OnSecondChange:0,0,0,0', { status: '204 No Content' }],   // 「3 秒ごと」が動くが、時報のほうが大事
+      ['OnSecondChange:0,0,0,1', { value: '\\0じほう\\e' }],
+    ],
+  },
+  {
+    name: 'ランダムトーク — だまったトークのかわりに、ほかのトークをためす（直近に出したものも最後にはためす）',
+    dir: TALK,
+    steps: [
+      ['OnSecondChange:0,0,0,1', '\\0はなす\\e'],
+      // 「はなす」は直近に出したので外されるが、ほかがだまったので、最後にためして話す
+      ['OnSecondChange:0,0,0,1', '\\0はなす\\e'],
+    ],
+  },
+  {
+    name: 'ランダムトークの時計は、しゃべれないあいだ止まる（間隔 10 秒なら、しゃべれるようになってから 8〜12 秒）',
+    dir: TALKWAIT,
+    steps: (() => {
+      const out = [];
+      for (let i = 1; i <= 12; i++) out.push(['OnSecondChange:0,0,0,0', { status: '204 No Content' }]);
+      for (let i = 1; i <= 7; i++) out.push(['OnSecondChange:0,0,0,1', { status: '204 No Content' }]);
+      for (let i = 1; i <= 5; i++) out.push(['OnSecondChange:0,0,0,1', null]);
+      out.push(['OnCheck', '\\01\\e']);   // 12 秒たつまでのどこかで話している
+      return out;
+    })(),
+  },
+  {
+    name: 'ランダムトーク — しゃべっている途中・最小化されているあいだは、ひとりでにしゃべらない',
+    dir: TALK,
+    steps: [
+      ['OnSecondChange:0,0,0,1|Status:talking', { status: '204 No Content' }],
+      ['OnSecondChange:0,0,0,1|Status:minimizing', { status: '204 No Content' }],
+      ['OnSecondChange:0,0,0,1', '\\0はなす\\e'],
     ],
   },
   {

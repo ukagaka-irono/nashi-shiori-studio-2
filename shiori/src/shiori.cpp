@@ -402,6 +402,15 @@ int Shiori::NoRepeatCount(size_t talkCount) const {
 std::string Shiori::PlayRandomTalk(const ShioriRequest& req) {
     std::vector<const JValue*> all = prog_.talkScripts();
     if (all.empty()) return std::string();
+    // えらばれやすさが 0 以下のトークは出さない（全部ためすようになったので、ここで外しておく）。
+    // ただし全部が 0 なら、これまでどおり、その中から選ぶ。
+    {
+        std::vector<const JValue*> positive;
+        for (size_t i = 0; i < all.size(); i++) {
+            if ((*all[i])["weight"].asNum(1.0) > 0) positive.push_back(all[i]);
+        }
+        if (!positive.empty()) all = positive;
+    }
 
     // 直近に出したものを候補から外す。外しすぎて空になったら、古いほうから戻す。
     int avoid = NoRepeatCount(all.size());
@@ -421,17 +430,37 @@ std::string Shiori::PlayRandomTalk(const ShioriRequest& req) {
     }
     if (talks.empty()) talks = all;
 
-    for (int attempt = 0; attempt < 5 && !talks.empty(); attempt++) {
-        const JValue* pick = PickWeighted(talks);
-        if (!pick) break;
-        std::string out = RunOne(*pick, req);
-        if (!out.empty()) {
-            RememberTalk((*pick)["id"].asStr());
-            sys_.talkCount++;
-            return out;
+    // 「もし」で分けてあって今は何も言わないトークもあるので、言うものが見つかるまで全部ためす
+    // （以前は 5 回であきらめて、その回はまるごと黙っていた）。
+    // 何も言わなかったトークが変えた変数は、これまでどおり残す（「1 ずつ数えて 3 回目だけ話す」のような
+    // トークがあるので）。「◯秒後によぶ」の予約だけは捨てる。直近に出したもので外したトークは、
+    // ほかが全部だまったときだけ、最後にためす。
+    for (int pass = 0; pass < 2; pass++) {
+        while (!talks.empty()) {
+            const JValue* pick = PickWeighted(talks);
+            if (!pick) break;
+            size_t timersBefore = timers_.size();
+            std::string out = RunOne(*pick, req);
+            if (!out.empty()) {
+                RememberTalk((*pick)["id"].asStr());
+                sys_.talkCount++;
+                return out;
+            }
+            // 何も言わなかったトークの「◯秒後によぶ」は捨てる（だまる回が続くと予約がたまり、
+            // 上限 32 をこえて、選択肢などからの本当の予約が入らなくなるので）
+            if (timers_.size() > timersBefore) timers_.resize(timersBefore);
+            for (size_t i = 0; i < talks.size(); i++) {
+                if (talks[i] == pick) { talks.erase(talks.begin() + (long)i); break; }
+            }
         }
-        for (size_t i = 0; i < talks.size(); i++) {
-            if (talks[i] == pick) { talks.erase(talks.begin() + (long)i); break; }
+        if (pass == 0 && avoid > 0) {
+            // 直近に出したもの（さっき外したもの）だけを、もう一度並べる
+            for (size_t i = 0; i < all.size(); i++) {
+                std::string id = (*all[i])["id"].asStr();
+                for (int k = 0; k < avoid && k < (int)sys_.recentTalks.size(); k++) {
+                    if (sys_.recentTalks[(size_t)k] == id) { talks.push_back(all[i]); break; }
+                }
+            }
         }
     }
     return std::string();
@@ -500,7 +529,10 @@ std::string Shiori::BuiltinDefault(const std::string& id, const ShioriRequest& r
             static const char* lines[] = { "えへへ。", "くすぐったいよ。", "なでなでされちゃった。" };
             return std::string("\\0\\s[1]") + lines[RandInt(0, 2)];
         }
-        return "\\0\\s[2]……あんまり触らないで。";
+        // むねは、いやがる。それ以外（手や服など）は、書いた人が決めていなければ何も言わない
+        // （どこをなでても「触らないで」と言われると、さわってみる気がなくなる）
+        if (low == "bust") return "\\0\\s[2]……あんまり触らないで。";
+        return std::string();
     }
     // ネットワーク更新。ブロックを書いていなくても、結果だけは知らせる。
     // 途中経過（OnUpdateBegin / OnUpdateReady / OnUpdate.On…）は毎回しゃべると
@@ -601,6 +633,45 @@ static std::string RefAt(const ShioriRequest& req, size_t i) {
     return req.refs.size() > i ? req.refs[i] : std::string();
 }
 
+// SSP は要求に Status: を付けて、いまのようすを知らせてくる（talking,choosing,minimizing など）。
+// しゃべっている途中・選択肢を出している途中に割りこむと、出ているセリフや選択肢を消してしまう。
+static bool StatusHas(const ShioriRequest& req, const char* word) {
+    std::string s = LowerAscii(req.header("status"));
+    return s.find(word) != std::string::npos;
+}
+static bool StatusBusy(const ShioriRequest& req) {
+    return StatusHas(req, "talking") || StatusHas(req, "choosing") || StatusHas(req, "timecritical");
+}
+
+// いま、こちらからしゃべりだしてよいか。
+// OnSecondChange / OnMinuteChange は Reference3 にも入れてくる（1 = よい）。
+// OnHourTimeSignal の Reference3 はいつも 1 なので、Status: だけを見る。
+static bool CanTalkNow(const ShioriRequest& req) {
+    if (StatusBusy(req)) return false;
+    if ((req.id == "OnSecondChange" || req.id == "OnMinuteChange") &&
+        req.refs.size() > 3 && !req.refs[3].empty()) {
+        return req.refs[3] == "1";
+    }
+    return true;
+}
+
+// しゃべれないあいだに出たセリフを取っておく（古すぎるものは出さない）
+static const long kHeldTalkSec = 60;
+
+// 取っておく。いま取ってあるものより大事でなければ（「◯秒ごと」が時報を）上書きしない。
+// 話しかける相手（ゴースト間通信）もいっしょに取っておき、この応答には付けない。
+void Shiori::HoldTalk(const std::string& out, int priority) {
+    if (out.empty()) return;
+    bool free = heldTalk_.empty() || sys_.uptimeSec - heldAtSec_ > kHeldTalkSec;
+    if (free || priority >= heldPriority_) {
+        heldTalk_ = out;
+        heldAtSec_ = sys_.uptimeSec;
+        heldPriority_ = priority;
+        heldCommTo_ = commTo_;
+    }
+    commTo_.clear();
+}
+
 std::string Shiori::Dispatch(const ShioriRequest& req) {
     const std::string& id = req.id;
 
@@ -626,13 +697,20 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
 
     if (id == "OnSecondChange") {
         sys_.uptimeSec++;
-        secondsSinceTalk_++;
 
         // いましゃべってよいか。SSP は Reference3 に入れてくる（1 = よい）。
         // しゃべっている途中・選択肢を待っている途中などは 0 になる。
         // ここで割りこむと、出ている選択肢やセリフを消してしまう。
-        bool canTalk = true;
-        if (req.refs.size() > 3 && !req.refs[3].empty()) canTalk = (req.refs[3] == "1");
+        bool canTalk = CanTalkNow(req);
+        // 最小化されているあいだは、ひとりでにはしゃべらない（ランダムトークの時計も止める）
+        bool minimized = StatusHas(req, "minimizing");
+
+        // ランダムトークの時計は、しゃべれるあいだだけ進める（長いセリフの最中は数えない）。
+        // 使う人がしばらくさわっていない（Reference4 が 10 分以上）ときは、半分の速さにして控えめに。
+        if (canTalk && !minimized) {
+            long idle = (long)atoi(RefAt(req, 4).c_str());
+            if (idle < 600 || (sys_.uptimeSec % 2) == 0) secondsSinceTalk_++;
+        }
 
         // 待たずに呼んだ SAORI の答えが届いていたら、まずそれを知らせる。
         // SSP は毎秒たたいてくるので、ここを受け取り口にしている。
@@ -666,19 +744,54 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
             break;
         }
 
+        // 「◯秒ごと」のかたまりは、しゃべれなくても動かす（変数を変えるだけのものもあるので）。
+        // しゃべれないときに出たセリフは、取っておいて、しゃべれるようになってから出す。
         bool found = false;
         std::string out = RunHandlers(id, req, &found);
-        if (!out.empty()) { secondsSinceTalk_ = 0; return out; }
+        if (!heldTalk_.empty() && sys_.uptimeSec - heldAtSec_ > kHeldTalkSec) heldTalk_.clear();   // 古すぎる
+        if (canTalk && !heldTalk_.empty()) {
+            // しゃべれるようになったので、取っておいたものを出す。この秒の「◯秒ごと」は動かしたうえで、
+            // 出たセリフがあれば、こんどはそれを取っておく（変数の変化は失わない）
+            std::string held = heldTalk_;
+            std::string heldComm = heldCommTo_;
+            heldTalk_.clear();
+            HoldTalk(out, 0);
+            commTo_ = heldComm;
+            secondsSinceTalk_ = 0;
+            return held;
+        }
+        if (!out.empty()) {
+            if (canTalk) { secondsSinceTalk_ = 0; return out; }
+            HoldTalk(out, 0);
+        }
 
         if (dirty_ && sys_.uptimeSec - lastSaveSec_ > 120) {
             lastSaveSec_ = sys_.uptimeSec;
             SaveSave();
         }
 
+        // ランダムトーク。間隔は毎回 ±20% ゆらがせて、時計じかけのように聞こえないようにする
         int interval = TalkInterval();
-        if (canTalk && interval > 0 && secondsSinceTalk_ >= interval) {
-            secondsSinceTalk_ = 0;
-            return PlayRandomTalk(req);
+        if (interval > 0 && (talkWait_ <= 0 || talkWaitBase_ != interval)) {
+            talkWaitBase_ = interval;
+            talkWait_ = (long)interval * RandInt(80, 120) / 100;
+            if (talkWait_ < 1) talkWait_ = 1;
+        }
+        if (canTalk && !minimized && interval > 0 && secondsSinceTalk_ >= talkWait_) {
+            std::string talk = PlayRandomTalk(req);
+            if (!talk.empty()) {
+                secondsSinceTalk_ = 0;
+                talkWait_ = 0;                              // つぎの間隔は、つぎに決めなおす
+                talkFailStreak_ = 0;
+                return talk;
+            }
+            // どのトークも、いまは何も言わなかった（時間や変数で分けてあるなど）。
+            // 間隔をまるごと待たずに、少ししてからもう一度ためす。続けてだまるたびに 15 秒・30 秒・60 秒…と
+            // のばし、間隔そのものより長くはしない（何度もためして SAORI などを何度も動かさないように）。
+            long retry = 15L << (talkFailStreak_ < 6 ? talkFailStreak_ : 6);
+            if (retry > talkWait_) retry = talkWait_;
+            talkFailStreak_++;
+            secondsSinceTalk_ = talkWait_ - retry;
         }
         return std::string();
     }
@@ -686,8 +799,11 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
     // 同じ場所の上でマウスが動きつづけたら「なでられた」ことにする。
     // SSP は OnMouseMove を細かく送ってくるので、ここで数えて OnNadeNade を作る。
     if (id == "OnMouseMove") {
-        const int kStrokesNeeded = 8;
+        // 8 回だと、マウスが上を通っただけで「なでられた」になっていたので、しっかりなでたときだけにする。
+        // 反応したあと 5 秒は、続けて反応しない。しゃべっている途中にも割りこまない。
+        const int kStrokesNeeded = 20;
         const unsigned long kResetMs = 1500;
+        const unsigned long kCooldownMs = 5000;
         std::string scope = req.refs.size() > 3 ? req.refs[3] : std::string();
         std::string area = req.refs.size() > 4 ? req.refs[4] : std::string();
         unsigned long now = GetTickCount();
@@ -701,10 +817,14 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
         // 当たり判定の外（服のすき間など）はなでたことにしない
         if (!area.empty() && strokeCount_ >= kStrokesNeeded) {
             strokeCount_ = 0;
-            bool nadeFound = false;
-            std::string out = RunHandlers("OnNadeNade", req, &nadeFound);
-            if (out.empty() && !nadeFound) out = BuiltinDefault("OnNadeNade", req);
-            if (!out.empty()) { secondsSinceTalk_ = 0; return out; }
+            bool cooling = lastNadeTick_ != 0 && now - lastNadeTick_ < kCooldownMs;
+            if (!cooling && !StatusBusy(req)) {
+                bool nadeFound = false;
+                std::string out = RunHandlers("OnNadeNade", req, &nadeFound);
+                if (out.empty() && !nadeFound) out = BuiltinDefault("OnNadeNade", req);
+                // 休むのは、反応したときだけ（何も言わない場所をなでたあとは、すぐほかの場所で反応してよい）
+                if (!out.empty()) { lastNadeTick_ = now; secondsSinceTalk_ = 0; return out; }
+            }
         }
     }
 
@@ -752,8 +872,18 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
         bool hourFound = false;
         std::string out = RunHandlers(id, req, &hourFound);
         if (!hourFound) out = RunHandlers("OnHourChange", req, &hourFound);
+        // しゃべっている途中・選択肢を出している途中なら、時報はあとで（つぎの OnSecondChange で）出す
+        if (!out.empty() && !CanTalkNow(req)) { HoldTalk(out, 2); return std::string(); }
         if (!out.empty()) secondsSinceTalk_ = 0;
         return out;
+    }
+
+    // 「毎分」も同じく、しゃべれないときはあとで出す
+    if (id == "OnMinuteChange" && !CanTalkNow(req)) {
+        bool minFound = false;
+        std::string out = RunHandlers(id, req, &minFound);
+        HoldTalk(out, 1);
+        return std::string();
     }
 
     bool found = false;

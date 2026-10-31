@@ -50,6 +50,7 @@ private:
     void RememberTalk(const std::string& id);
     void DrainSaori();          // 待たずに呼んだ SAORI の答えを受け取る
     void RememberOffered(const std::string& script);
+    void HoldTalk(const std::string& out, int priority);
     bool TakeOffered(const std::string& key, bool consume);
     void NoteBoot(const ShioriRequest& req, const std::string& shell);
 
@@ -68,7 +69,20 @@ private:
     };
     std::vector<Timer> timers_;
     bool ready_ = false;
+    // ランダムトークまでの、しゃべれるあいだに数えた秒数と、つぎに話すまでの秒数
+    // （設定の間隔に ±20% のゆらぎを付けて、毎回決めなおす。talkWaitBase_ はそのもとにした間隔）
     long secondsSinceTalk_ = 0;
+    long talkWait_ = 0;
+    long talkWaitBase_ = 0;
+    // しゃべれないあいだに「◯秒ごと」「毎分」「1時間ごと」が出したセリフ。しゃべれるようになったら出す
+    // heldPriority_ は 2 = 1時間ごと、1 = 毎分、0 = ◯秒ごと（大事なほうを、あとから来たもので消さない）。
+    // heldCommTo_ は、そのセリフを話しかける相手（ゴースト間通信）
+    std::string heldTalk_;
+    long heldAtSec_ = 0;
+    int heldPriority_ = 0;
+    std::string heldCommTo_;
+    // ランダムトークが続けて何も言わなかった回数（もう一度ためすまでを、だんだん長くする）
+    int talkFailStreak_ = 0;
     long lastSaveSec_ = 0;
     unsigned long long progStamp_ = 0;
     unsigned long lastCheckTick_ = 0;
@@ -91,6 +105,7 @@ private:
     std::string strokeKey_;
     int strokeCount_ = 0;
     unsigned long strokeTick_ = 0;
+    unsigned long lastNadeTick_ = 0;   // さいごになでられた時刻（すぐ続けて反応しないように）
 };
 
 // exposed for the test host
