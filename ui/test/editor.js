@@ -6,6 +6,7 @@
  *
  *   model.js … 読みこんだプロジェクトの整形（normalize）と、かたまりの名前
  *   lint.js  … チェックタブが出す注意
+ *   player.js … 「ためす」が、さくらスクリプトをどう再生するか（入力欄・選択肢の情報）
  *
  * ブロックを動かすところは栞（shiori/src/interp.cpp）にしかないので、ここでは見ません
  * （そちらは shiori/test/parity と shiori/test/behavior が見ています）。
@@ -21,11 +22,11 @@ const { red, green, dim, off } = COLOR;
 
 // 画面のスクリプトをそのまま読みこむ（window があるつもりで動きます）
 global.window = {};
-for (const f of ['blocks.js', 'model.js', 'lint.js']) {
+for (const f of ['blocks.js', 'model.js', 'lint.js', 'player.js']) {
   (0, eval)(fs.readFileSync(path.join(root, 'ui', 'js', f), 'utf8'));
 }
 const N = global.window.NASHI;
-const { Model, Lint } = N;
+const { Model, Lint, Player } = N;
 
 let failed = 0;
 let checked = 0;
@@ -306,6 +307,18 @@ section('トークの名前を変えたとき (model.renameTalkRefs)');
   project.scripts.push({ id: 'c', kind: 'talk', name: 'おはよう', weight: 1, blocks: [] });
   talk.name = 'こんばんは';
   check('同じ名前のトークがほかにあれば、付けかえない', Model.renameTalkRefs('おはよう', 'こんばんは', talk), 0);
+}
+
+// ============================================== ためすの再生（player.parseSakura）
+section('ためすの再生 (player.parseSakura)');
+{
+  const ops = Player.parseSakura('\\0きみの名前は？\\![open,inputbox,nashi:名前,-1,なし]\\q[はい,OnAnswer,yes,2]\\![open,sliderinput,nashi:数,-1,5,0,10]');
+  const input = ops.filter((o) => o.op === 'input');
+  check('たずねると、入力欄の操作になる（ID・はじめの文字）', input.map((o) => [o.kind, o.id, o.initial]),
+    [['inputbox', 'nashi:名前', 'なし'], ['sliderinput', 'nashi:数', '5']]);
+  check('スライダーは最小・最大も読む', [input[1].min, input[1].max], [0, 10]);
+  const choice = ops.find((o) => o.op === 'choice');
+  check('選択肢の行き先のあとの情報を、イベントの情報として持つ', [choice.label, choice.id, choice.refs], ['はい', 'OnAnswer', ['yes', '2']]);
 }
 
 // ============================================== お手本ゴースト（ui/samples）

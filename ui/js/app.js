@@ -375,14 +375,15 @@
    * 動かすのは栞そのもの（studio/src/preview.cpp → shiori/src/interp.cpp）です。
    * 画面側で同じ規則をもう一度書くと、片方だけ直したときに静かにズレるためです。
    */
-  async function runPreview(script) {
+  // refs … イベントの情報を、画面から渡したいとき（選択肢の情報・入力欄の答え）。無ければ仮の値
+  async function runPreview(script, refs) {
     const meta = Model.project.meta || {};
     return api('/api/preview', {
       method: 'POST',
       body: {
         project: Model.project,
         scriptId: script.id,
-        refs: refsFor(script),
+        refs: refs || refsFor(script),
         vars: App.sessionVars,
         // SSP が知らせてくる情報は、ためすときは仮の値（誕生日は今日にしておく）
         sys: {
@@ -393,13 +394,13 @@
     });
   }
 
-  App.runScript = async function (script) {
+  App.runScript = async function (script, refs) {
     if (!script) return;
     $('#run-target').value = script.id;
     switchTab('run');
     let res;
     try {
-      res = await runPreview(script);
+      res = await runPreview(script, refs);
     } catch (e) {
       $('#script-preview').textContent = '（ためせませんでした: ' + e.message + '）';
       App.toast(e.message, true);
@@ -412,6 +413,24 @@
     $('#script-preview').textContent = preview;
     renderRunVars();
     N.Shell.playSakura(res.script);
+  };
+
+  /**
+   * ためすの入力欄に答えたとき。SSP で動かしたときと同じ順に、
+   *   ① 「たずねる」が付けた ID（nashi:変数名）なら、その変数に入れる（栞の shiori.cpp と同じ）
+   *   ② 「答えが返ってきたとき」（OnUserInput）のかたまりがあれば、ID と答えを情報にして動かす
+   */
+  // shown … 知らせに出す答え（パスワードは伏せる）
+  App.answerInput = function (id, answer, shown) {
+    const name = /^nashi:/.test(id) ? id.slice(6) : '';
+    if (name) {
+      App.sessionVars = Object.assign({}, App.sessionVars, { [name]: answer });
+      renderRunVars();
+    }
+    const handler = Model.project.scripts.find((s) => s.kind === 'event' && s.event === 'OnUserInput' && !s.disabled);
+    if (handler) { App.runScript(handler, [id, answer]); return; }
+    App.toast(name ? `変数「${name}」に「${shown == null ? answer : shown}」を入れました`
+      : '「答えが返ってきたとき」のかたまりがありません', !name);
   };
 
   function renderRunVars() {

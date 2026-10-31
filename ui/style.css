@@ -458,6 +458,13 @@ button, input, select, textarea { font-family: inherit; }
   display: inline-block; margin: 2px 3px 0 0; padding: 0 6px; border-radius: 6px;
   background: #f4f6f9; border: 1px dashed #cfd8e3; color: #7a8a9c; font-size: 10.5px;
 }
+/* 「たずねる」の入力欄（ためすの吹き出しの中で答えられる） */
+.balloon-input { display: flex; gap: 4px; align-items: center; margin: 3px 0 0; white-space: normal; }
+.balloon-input input {
+  flex: 1 1 auto; min-width: 0; padding: 2px 6px; border: 1px solid #cfdcea; border-radius: 6px;
+  font-size: 11.5px; color: #2b3a4d; background: #fff;
+}
+.balloon-input .btn { flex: none; white-space: nowrap; }
 
 .script-out { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .script-out-head {
@@ -477,6 +484,10 @@ button, input, select, textarea { font-family: inherit; }
   font-size: 11.5px; background: var(--cat-variables); color: #fff; border-radius: 999px;
   padding: 2px 9px; font-weight: 600;
 }
+/* ためすの「くわしく」（SSP とつなぐ・書き出したゴーストの記憶と記録）。ふだんはたたんでおく */
+.run-more { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+.run-more > summary { cursor: pointer; font-size: 12px; opacity: .75; margin-bottom: 8px; }
+.run-more > summary:focus-visible, #stage:focus-visible { outline: 2px solid var(--accent-dark); outline-offset: 2px; }
 .status-line { font-size: 12px; padding: 7px 10px; border-radius: 7px; margin-bottom: 10px; }
 .status-ok { background: #eaf7ee; color: #2e6b42; border: 1px solid #bfe3cb; }
 .status-ng { background: #fdeeea; color: #a1442a; border: 1px solid #f3c9bd; }

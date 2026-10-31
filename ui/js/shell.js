@@ -1254,9 +1254,24 @@
     refreshShell();
   }
 
+  // 再生中に立ち絵のあたりをクリックすると、いまのセリフを最後までいっぺんに出す（つぎの「クリックを待つ」まで）
+  let hurry = false;
+  let hurryHooked = false;
+
   async function playSakura(script) {
     const token = ++App.playToken;
     resetStage();
+    hurry = false;
+    if (!hurryHooked) {
+      hurryHooked = true;
+      $('#stage').addEventListener('click', () => { hurry = true; });
+      // キーボードでは、立ち絵にフォーカスを合わせて Enter（クリックと同じ）
+      $('#stage').addEventListener('keydown', (e) => {
+        if (e.target !== $('#stage') || e.key !== 'Enter') return;
+        e.preventDefault();
+        $('#stage').click();
+      });
+    }
     if (!script) return;
     const ops = Player.parseSakura(script);
     let who = 0;
@@ -1305,12 +1320,15 @@
             box.appendChild(span);
             box = span;
           }
-          for (const ch of Array.from(op.text)) {
+          const chars = Array.from(op.text);
+          for (let k = 0; k < chars.length; k++) {
             if (token !== App.playToken) return;
-            box.appendChild(document.createTextNode(ch));
+            if (hurry) { box.appendChild(document.createTextNode(chars.slice(k).join(''))); break; }
+            box.appendChild(document.createTextNode(chars[k]));
             target.scrollTop = target.scrollHeight;
             await sleep(22);
           }
+          target.scrollTop = target.scrollHeight;
           break;
         }
         case 'newline':
@@ -1320,24 +1338,33 @@
           target.querySelector('.balloon-text').textContent = '';
           break;
         case 'wait':
-          await sleep(Math.min(1200, op.ms));
+          if (!hurry) await sleep(Math.min(1200, op.ms));
           break;
         case 'clickwait': {
           const mark = Render.el('span', 'balloon-wait', ' ▼');
           target.querySelector('.balloon-text').appendChild(mark);
+          // セリフを出しきったクリックとは別に、もう 1 回のクリックで先へ進む
+          hurry = false;
           await Promise.race([sleep(2500), waitForStageClick()]);
+          hurry = false;            // ここから先は、またふつうの速さで
           mark.remove();
+          break;
+        }
+        case 'input': {
+          target.classList.remove('is-empty');
+          target.querySelector('.balloon-text').appendChild(inputForm(op));
           break;
         }
         case 'choice': {
           const chip = Render.el('span', 'balloon-choice', op.label);
           chip.addEventListener('click', () => {
-            // 行き先が On で始まるときは、SSP と同じく、そのイベントのブロックを動かす
+            // 行き先が On で始まるときは、SSP と同じく、そのイベントのブロックを動かす。
+            // 見出しと行き先のあとに書いた情報は、そのイベントの「イベントの情報」になる
             const isEvent = /^On/.test(op.id);
             const fn = Model.project.scripts.find((s) => (isEvent
               ? s.kind === 'event' && s.event === op.id
               : (s.kind === 'function' || s.kind === 'talk') && s.name === op.id));
-            if (fn) App.runScript(fn);
+            if (fn) App.runScript(fn, isEvent && op.refs && op.refs.length ? op.refs : undefined);
             else if (isEvent) App.toast(`「${op.id}」のブロックがありません`, true);
             else App.toast(`「${op.id}」というトークが見つかりません`, true);
           });
@@ -1351,6 +1378,48 @@
           break;
       }
     }
+  }
+
+  /**
+   * 「たずねる」の入力欄を、吹き出しの中に出す。答えると App.answerInput に渡す
+   * （SSP では入力ボックスが開き、答えが OnUserInput で届く。その形にそろえる）。
+   * 日付は「年,月,日」、時刻は「時,分,秒」にして渡す（SSP と同じ形）。
+   */
+  function inputForm(op) {
+    const form = Render.el('form', 'balloon-input');
+    const types = { inputbox: 'text', passwordinput: 'password', dateinput: 'date', timeinput: 'time', sliderinput: 'number' };
+    const inp = Render.el('input');
+    inp.type = types[op.kind] || 'text';
+    inp.value = op.initial || '';
+    if (op.kind === 'sliderinput') {
+      if (Number.isFinite(op.min)) inp.min = String(op.min);
+      if (Number.isFinite(op.max)) inp.max = String(op.max);
+    }
+    inp.setAttribute('aria-label', `${Player.INPUT_KINDS[op.kind] || '文字'}を入れる`);
+    const ok = Render.el('button', 'btn tiny', '答える');
+    ok.type = 'submit';
+    form.appendChild(inp);
+    form.appendChild(ok);
+    // 入力欄をさわっても「クリックで先へ」にならないように
+    form.addEventListener('click', (e) => e.stopPropagation());
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      let answer = inp.value;
+      if (op.kind === 'dateinput') {
+        const m = /^(\d+)-(\d+)-(\d+)$/.exec(answer);
+        if (!m) { inp.focus(); return; }
+        answer = `${Number(m[1])},${Number(m[2])},${Number(m[3])}`;
+      } else if (op.kind === 'timeinput') {
+        const m = /^(\d+):(\d+)(?::(\d+))?$/.exec(answer);
+        if (!m) { inp.focus(); return; }
+        answer = `${Number(m[1])},${Number(m[2])},${Number(m[3] || 0)}`;
+      }
+      const shown = op.kind === 'passwordinput' ? '＊＊＊' : answer;    // パスワードは見せない
+      form.replaceWith(Render.el('span', 'balloon-note', `（「${shown}」と答えました）`));
+      App.answerInput(op.id, answer, shown);
+    });
+    setTimeout(() => inp.focus(), 0);
+    return form;
   }
 
   // \f[…] を、吹き出しの文字の見た目（CSS）に直す。

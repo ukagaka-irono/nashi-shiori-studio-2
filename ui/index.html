@@ -91,13 +91,7 @@
             <select id="run-target"></select>
             <button id="btn-run" class="btn primary small">▶ 実行</button>
           </div>
-          <div class="ssp-bar">
-            <span id="ssp-status" class="ssp-badge is-off">SSP: 確認中…</span>
-            <button id="btn-run-ssp" class="btn small" title="いま動いているゴーストに、このトークをしゃべらせます">SSPでしゃべらせる</button>
-            <button id="btn-send-event" class="btn small" title="このイベントを SSP のゴーストに送ります">イベント送信</button>
-            <button id="btn-send-comm" class="btn small" title="他のゴーストのふりをして、SSP のゴーストに話しかけます">話しかけてみる</button>
-          </div>
-          <div id="stage">
+          <div id="stage" tabindex="0" aria-label="ためすの立ち絵（クリックか Enter で、いまのセリフを最後まで出す）">
             <div class="balloon" id="balloon-0"><div class="balloon-name"></div><div class="balloon-text"></div></div>
             <img class="chara" id="chara-0" alt="さくら" draggable="false">
             <div class="balloon side-r" id="balloon-1"><div class="balloon-name"></div><div class="balloon-text"></div></div>
@@ -113,17 +107,30 @@
           <div class="ssp-bar">
             <span class="run-vars-title">いまの変数</span>
             <button id="btn-vars-reset" class="btn small" title="ためすときの変数を、プロジェクトの初期値にもどします">ここの変数をもどす</button>
-            <button id="btn-save-reset" class="btn small" title="書き出したゴーストが覚えている変数（nashi_save.json）を消します">ゴーストの記憶を消す</button>
           </div>
           <div id="run-vars" class="run-vars"></div>
 
-          <div class="ssp-bar">
-            <span class="run-vars-title">栞の記録</span>
-            <button id="btn-log-show" class="btn small" title="書き出したゴーストの nashi_debug.txt を読みます">読む</button>
-            <button id="btn-log-start" class="btn small" title="記録用の空ファイルを作ります。栞はこれがあるときだけ書きます">記録をはじめる</button>
-            <button id="btn-log-clear" class="btn small" title="記録を消して、止めます">やめる</button>
-          </div>
-          <pre id="ghost-log" class="ghost-log">（まだ読んでいません）</pre>
+          <!-- SSP とつなぐ・書き出したゴーストの記憶と記録は、はじめのうちは使わないので、たたんでおく -->
+          <details class="run-more">
+            <summary>くわしく（SSP とつなぐ・書き出したゴーストの記憶と記録）</summary>
+            <div class="ssp-bar">
+              <span id="ssp-status" class="ssp-badge is-off">SSP: 確認中…</span>
+              <button id="btn-run-ssp" class="btn small" title="いま動いているゴーストに、このトークをしゃべらせます">SSPでしゃべらせる</button>
+              <button id="btn-send-event" class="btn small" title="このイベントを SSP のゴーストに送ります">イベント送信</button>
+              <button id="btn-send-comm" class="btn small" title="他のゴーストのふりをして、SSP のゴーストに話しかけます">話しかけてみる</button>
+            </div>
+            <div class="ssp-bar">
+              <span class="run-vars-title">書き出したゴーストの記憶</span>
+              <button id="btn-save-reset" class="btn small" title="書き出したゴーストが覚えている変数（nashi_save.json）を消します">ゴーストの記憶を消す</button>
+            </div>
+            <div class="ssp-bar">
+              <span class="run-vars-title">栞の記録</span>
+              <button id="btn-log-show" class="btn small" title="書き出したゴーストの nashi_debug.txt を読みます">読む</button>
+              <button id="btn-log-start" class="btn small" title="記録用の空ファイルを作ります。栞はこれがあるときだけ書きます">記録をはじめる</button>
+              <button id="btn-log-clear" class="btn small" title="記録を消して、止めます">やめる</button>
+            </div>
+            <pre id="ghost-log" class="ghost-log">（まだ読んでいません）</pre>
+          </details>
         </section>
 
         <!-- ---- ghost ---- -->
@@ -294,6 +301,7 @@
             <li><b>Shift+Enter</b> セリフを広げて書く</li>
             <li><b>Alt+↓</b> ▾ の付いた欄で、一覧からえらぶ（↑ ↓ で動いて Enter）</li>
             <li><b>Esc</b> ダイアログやメニューを閉じる</li>
+            <li><b>Enter</b> ためすの立ち絵で、いまのセリフを最後まで出す</li>
             <li><b>右クリック</b> 複製・削除・はりつけのメニュー</li>
             <li><b>マウスをのせる</b> ブロックの説明を見る（パレットの上の欄で、ブロックをさがせる）</li>
             <li><b>ホイール</b> キャンバスを動かす（中ドラッグ・空いた場所のドラッグでも）</li>
