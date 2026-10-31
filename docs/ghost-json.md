@@ -68,7 +68,7 @@
 | キー | 意味 |
 |---|---|
 | `id` | 任意の識別子。ランダムトークの重複回避と、`call` の代替キーに使われます |
-| `kind` | `event` / `talk` / `function`。それ以外（`loose` など）は無視されます |
+| `kind` | `event` / `talk` / `function`。それ以外（つながっていない `loose`、付箋の `note` など）は無視されます。書き出す ghost.json には入りません |
 | `event` | `kind: "event"` のときのイベント名 |
 | `name` | `talk` / `function` の名前。`call` や選択肢の行き先で使います |
 | `weight` | えらばれやすさ（既定 1）。同じイベントが複数あるとき、重み付きで抽選します |

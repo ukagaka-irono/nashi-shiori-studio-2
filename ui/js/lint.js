@@ -93,6 +93,7 @@
 
     // ---- スクリプトごと
     for (const s of project.scripts || []) {
+      if (s.kind === 'note') continue;     // 付箋はゴーストの動きに入らない
       const title = nameOf(s);
       const blocks = Array.isArray(s.blocks) ? s.blocks : [];
 

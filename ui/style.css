@@ -27,6 +27,10 @@ button, input, select, textarea { font-family: inherit; }
   --cat-variables: #ff8c1a;
   --cat-operators: #59c059;
   --cat-info: #5cb1d6;
+  /* 付箋（キャンバスのメモ）。ブロックの色とまちがえないよう、うすい紙の色 */
+  --note: #fff6c4;
+  --note-edge: #e6cf72;
+  --note-ink: #5c4a12;
 }
 
 #app { display: flex; flex-direction: column; height: 100%; }
@@ -131,12 +135,26 @@ button, input, select, textarea { font-family: inherit; }
   position: absolute; top: -22px; left: 2px; display: flex; gap: 4px;
   opacity: 0; transition: opacity .12s;
 }
-.script:hover .script-tools, .script.is-selected .script-tools { opacity: 1; }
+.script:hover .script-tools, .script.is-selected .script-tools, .script-tools:focus-within { opacity: 1; }
 .script-tool {
   border: 1px solid var(--line); background: #fff; border-radius: 5px;
   font-size: 11px; padding: 1px 6px; cursor: pointer; color: #4b5b70;
 }
 .script-tool:hover { background: #eef3f9; }
+/* 付箋（メモ）: 上の帯をつかんで動かし、中に書く */
+.script.note { width: 220px; }
+.note-head {
+  background: var(--note-edge); color: var(--note-ink); border-radius: 6px 6px 0 0;
+  padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: grab;
+}
+.note-text {
+  display: block; width: 100%; box-sizing: border-box; resize: none; border: 1px solid var(--note-edge);
+  border-top: 0; border-radius: 0 0 6px 6px; background: var(--note); color: var(--note-ink);
+  padding: 6px 9px; font-size: 12px; line-height: 1.6; box-shadow: 0 2px 6px rgba(40,70,110,.12);
+}
+.note-text:focus { outline: 2px solid var(--accent-dark); outline-offset: 1px; }
+/* えらんだメモ・さがすで飛んできたメモは、帯に印を付ける（ブロックの .row と同じ役目） */
+.note-head.selected { box-shadow: 0 0 0 2px var(--accent-dark); }
 #canvas-hint {
   position: absolute; left: 50%; top: 46%; transform: translate(-50%,-50%);
   text-align: center; color: #93a3b6; font-size: 14px; line-height: 1.9;
@@ -367,7 +385,7 @@ button, input, select, textarea { font-family: inherit; }
     filter: brightness(1.4) drop-shadow(0 0 3px #fff) drop-shadow(0 0 10px rgba(226,102,74,.95));
   }
 }
-.blk.flash > .row, .script.flash > .blk.hat > .row {
+.blk.flash > .row, .script.flash > .blk.hat > .row, .script.flash > .note-head {
   transform-origin: 20px center;
   animation: nashi-flash .9s ease-in-out 3;
   z-index: 2;

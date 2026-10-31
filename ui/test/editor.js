@@ -309,6 +309,18 @@ section('トークの名前を変えたとき (model.renameTalkRefs)');
   check('同じ名前のトークがほかにあれば、付けかえない', Model.renameTalkRefs('おはよう', 'こんばんは', talk), 0);
 }
 
+// ============================================== 付箋（メモ）
+section('付箋（メモ）');
+{
+  const p = Model.normalize({ format: 'nashi/1', scripts: [{ id: 'n', kind: 'note', x: 10, y: 20 }] });
+  check('読みこむと、文字が空でも text を持つ', [p.scripts[0].kind, p.scripts[0].text, p.scripts[0].blocks], ['note', '', []]);
+  Model.project = p;
+  p.scripts[0].text = '朝のトーク\nここから下は朝だけ';
+  check('見出しは 1 行目', Model.scriptTitle(p.scripts[0]), 'メモ「朝のトーク」');
+  check('メモはチェックタブに出ない（つながっていない・中身がからっぽ、と言わない）',
+    Lint.run(p).filter((i) => i.script === p.scripts[0]).length, 0);
+}
+
 // ============================================== ためすの再生（player.parseSakura）
 section('ためすの再生 (player.parseSakura)');
 {

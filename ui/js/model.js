@@ -167,6 +167,8 @@
         script.blocks = Array.isArray(script.blocks) ? script.blocks : [];
         if (typeof script.x !== 'number') script.x = 60;
         if (typeof script.y !== 'number') { script.y = y; y += 180; }
+        // 付箋（メモ）。ゴーストの動きには入らない（書き出す ghost.json にも入らない）
+        if (script.kind === 'note' && typeof script.text !== 'string') script.text = '';
         if (script.kind === 'talk' && script.weight == null) script.weight = 1;
         if (script.kind === 'talk' && typeof script.group !== 'string') script.group = '';
         if ((script.kind === 'talk' || script.kind === 'function') && !script.name) {
@@ -325,6 +327,10 @@
         return 'ランダムトーク「' + (s.name || '') + '」' + (g ? `（${g}）` : '');
       }
       if (s.kind === 'function') return '「' + (s.name || '') + '」';
+      if (s.kind === 'note') {
+        const first = String(s.text || '').split('\n')[0].trim();
+        return 'メモ' + (first ? '「' + (first.length > 20 ? first.slice(0, 20) + '…' : first) + '」' : '');
+      }
       return 'ブロックのかたまり';
     },
 

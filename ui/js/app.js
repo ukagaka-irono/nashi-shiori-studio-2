@@ -260,6 +260,19 @@
     App.toast(`「${name}」を作りました。ブロックをつなげてください`);
   };
 
+  /** 付箋（メモ）を置く。at が無ければ、見えているあたり */
+  App.addNote = function (at) {
+    const p = at || viewCenter();
+    let note = null;
+    Model.act(() => { note = Model.addScript('note', { text: '', x: Math.round(p.x), y: Math.round(p.y) }); });
+    App.toast('メモを置きました');
+    // 置いたらすぐ書けるように、中にカーソルを置く
+    setTimeout(() => {
+      const el = [...document.querySelectorAll('#canvas > .script.note')].find((e) => e._script === note);
+      if (el) el.querySelector('.note-text').focus();
+    }, 50);
+  };
+
   function viewCenter() {
     const ws = $('#workspace');
     return {
@@ -287,24 +300,32 @@
   };
 
   App.deleteScript = function (script) {
-    const count = (script.blocks || []).length;
+    // 中身があれば確かめる（ブロック、またはメモの文字）
+    const count = (script.blocks || []).length || (script.kind === 'note' && String(script.text || '').trim() ? 1 : 0);
     if (count && !confirm(`「${Model.scriptTitle(script)}」を削除しますか？`)) return;
     Model.act(() => Model.removeScript(script));
     App.toast('削除しました');
   };
 
+  // かたまりを、種類ごとに上から並べなおす。大きさは描いた実物で測る（セリフが長いと 420px より広いので）
   function tidy() {
+    const size = new Map();
+    for (const el of document.querySelectorAll('#canvas > .script')) {
+      if (el._script) size.set(el._script, { w: el.offsetWidth, h: el.offsetHeight });
+    }
     Model.act(() => {
       let x = 60, y = 40, colW = 0;
-      const order = { event: 0, talk: 1, function: 2, loose: 3 };
+      const order = { event: 0, talk: 1, function: 2, loose: 3, note: 4 };
       const sorted = Model.project.scripts.slice().sort(
         (a, b) => (order[a.kind] || 0) - (order[b.kind] || 0)
       );
       for (const s of sorted) {
+        const sz = size.get(s) || { w: 420, h: estimateHeight(s) };
+        // この列に入りきらなければ、となりの列へ（列の幅は、その列でいちばん広いかたまり）
+        if (y > 40 && y + sz.h > 2400) { y = 40; x += colW + 60; colW = 0; }
         s.x = x; s.y = y;
-        y += estimateHeight(s) + 40;
-        colW = Math.max(colW, 420);
-        if (y > 2400) { y = 40; x += colW + 60; colW = 0; }
+        y += sz.h + 40;
+        colW = Math.max(colW, sz.w);
       }
       Model.project.scripts = sorted;
     });
@@ -332,7 +353,7 @@
     const prev = sel.value;
     sel.textContent = '';
     for (const s of Model.project.scripts) {
-      if (s.kind === 'loose') continue;
+      if (s.kind === 'loose' || s.kind === 'note') continue;
       const o = Render.el('option', null, Model.scriptTitle(s));
       o.value = s.id;
       sel.appendChild(o);
@@ -621,22 +642,25 @@
       const hat = e.target.closest('#canvas .blk.hat');
       const blk = e.target.closest('#canvas .blk');
       const scriptEl = e.target.closest('#canvas .script');
-      if (!scriptEl && e.target.closest('#canvas') && App.clipboard) {
-        // 空いた場所: コピーしたブロックがあれば、そこへはりつけられる
+      if (!scriptEl && e.target.closest('#canvas')) {
+        // 空いた場所: メモを置ける。コピーしたブロックがあれば、そこへはりつけられる
         e.preventDefault();
         const at = N.Drag.toCanvas(e.clientX, e.clientY);
-        openContextMenu(e.clientX, e.clientY, [
-          { label: 'ここにはりつける', run: () => App.pasteOnCanvas(at) },
-        ]);
+        const items = [{ label: 'ここにメモを置く', run: () => App.addNote(at) }];
+        if (App.clipboard) items.push({ label: 'ここにはりつける', run: () => App.pasteOnCanvas(at) });
+        openContextMenu(e.clientX, e.clientY, items);
         return;
       }
       if (!scriptEl) { App.closeContextMenu(); return; }
+      // メモの中では、ふつうの文字の右クリック（コピー・はりつけ）のまま
+      if (e.target.closest('.note-text')) { App.closeContextMenu(); return; }
       e.preventDefault();
 
-      if (hat || !blk) {
+      const isNote = scriptEl._script && scriptEl._script.kind === 'note';
+      if (hat || !blk || isNote) {
         const script = scriptEl._script;
         openContextMenu(e.clientX, e.clientY, [
-          { label: '▶ 実行してみる', run: () => App.runScript(script) },
+          ...(isNote ? [] : [{ label: '▶ 実行してみる', run: () => App.runScript(script) }]),
           { label: '複製する', run: () => App.duplicateScript(script) },
           '-',
           { label: '削除する', danger: true, run: () => App.deleteScript(script) },
@@ -885,6 +909,7 @@
     $('#btn-zoom-out').addEventListener('click', () => setZoom(App.zoom - 0.1));
     $('#btn-zoom-reset').addEventListener('click', () => setZoom(1));
     $('#btn-tidy').addEventListener('click', () => { tidy(); App.toast('整列しました'); });
+    $('#btn-note').addEventListener('click', () => App.addNote());
     $('#btn-import').addEventListener('click', async () => {
       const p = $('#import-path').value.trim();
       if (!p) return;

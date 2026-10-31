@@ -481,11 +481,13 @@
         b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
         return b;
       };
-      tools.appendChild(mk('▶', 'このかたまりを実行してみる', () => N.App.runScript(script)));
+      if (script.kind !== 'note') tools.appendChild(mk('▶', 'このかたまりを実行してみる', () => N.App.runScript(script)));
       tools.appendChild(mk('⧉', '複製する', () => N.App.duplicateScript(script)));
       tools.appendChild(mk('✕', '削除する', () => N.App.deleteScript(script)));
       wrap.appendChild(tools);
     }
+
+    if (script.kind === 'note') return buildNote(wrap, script);
 
     const hatKey = hatKeyFor(script);
     if (hatKey) {
@@ -511,6 +513,37 @@
     return wrap;
   }
   let buildingEvent = null;
+
+  /**
+   * 付箋（メモ）。上の帯をつかんで動かし、中に何行でも書ける。ゴーストの動きには入らない。
+   * 帯は帽子ブロックと同じ「かたまりをつかむところ」として扱う（drag.js の _isHat）。
+   */
+  function buildNote(wrap, script) {
+    wrap.classList.add('note');
+    const head = div('blk note-head', 'メモ');
+    head._script = script;
+    head._isHat = true;
+    head.title = 'ドラッグで動かせます。ゴーストの動きには入りません';
+    wrap.appendChild(head);
+
+    const area = el('textarea', 'note-text');
+    area.value = script.text || '';
+    area.placeholder = 'ここにメモを書く';
+    area.spellcheck = false;
+    area.setAttribute('aria-label', 'メモ');
+    const fit = () => { area.rows = Math.max(3, Math.min(20, area.value.split('\n').length + 1)); };
+    fit();
+    area.addEventListener('focus', beginEdit);
+    area.addEventListener('input', () => {
+      script.text = area.value;
+      fit();
+      N.App && N.App.onLiveEdit && N.App.onLiveEdit();
+    });
+    area.addEventListener('change', () => endEdit(true));
+    area.addEventListener('blur', () => endEdit(false));
+    wrap.appendChild(area);
+    return wrap;
+  }
 
   // -------------------------------------------------------------- workspace
   function renderWorkspace(canvas, project) {

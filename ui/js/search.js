@@ -141,14 +141,31 @@
     const q = ($('#search-input').value || '').trim().toLowerCase();
     list.textContent = '';
     if (!q) {
-      list.appendChild(Render.div('hint', 'さがす言葉を入れてください。'));
+      // 言葉が無いときは、キャンバスにあるかたまりの一覧（上から順）。クリックでその場所へ
+      const scripts = Model.project.scripts.filter((s) => s.kind !== 'note')
+        .slice().sort((a, b) => (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0));
+      if (!scripts.length) {
+        list.appendChild(Render.div('hint', 'キャンバスにまだ何もありません。'));
+        return;
+      }
+      list.appendChild(Render.div('palette-group-title', `かたまりの一覧（${scripts.length} つ）`));
+      for (const s of scripts) {
+        const item = Render.el('button', 'check-item');
+        item.appendChild(Render.el('span', 'mark', '📄'));
+        item.appendChild(Render.div('msg', Model.scriptTitle(s)));
+        item.title = 'クリックでその場所へ移動します';
+        item.addEventListener('click', () => jumpTo({ script: s, block: null }));
+        list.appendChild(item);
+      }
       return;
     }
 
     const hits = [];
     for (const s of Model.project.scripts) {
       const title = Model.scriptTitle(s);
-      if (title.toLowerCase().includes(q)) hits.push({ script: s, block: null, text: title });
+      // メモ（付箋）は、見出しに出ない 2 行目より先の文字も探す
+      const noteText = s.kind === 'note' ? String(s.text || '').toLowerCase() : '';
+      if (title.toLowerCase().includes(q) || noteText.includes(q)) hits.push({ script: s, block: null, text: title });
       walkBlocks(s, (b) => {
         if (hits.length > 200) return;
         const text = blockSummary(b);
