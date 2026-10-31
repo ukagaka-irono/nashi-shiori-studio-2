@@ -77,9 +77,40 @@
     else setTimeout(run, 50);
   }
 
+  /**
+   * キャンバスの中で打っていた欄を覚えておく。欄を書きおえると描き直しになり、
+   * Tab で移った先の欄も作り直されるので、描き直したあとに同じ欄へもどす。
+   */
+  function rememberCanvasFocus(canvas) {
+    const el = document.activeElement;
+    if (!el || !canvas.contains(el) || !/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(el.tagName)) return null;
+    const all = [...canvas.querySelectorAll('input, select, textarea, button')];
+    const p = el.parentNode;
+    return {
+      index: all.indexOf(el), count: all.length,
+      owner: p && p._slotOwner, arg: p && p._slotArg,
+      start: el.selectionStart, end: el.selectionEnd,
+    };
+  }
+  function restoreCanvasFocus(canvas, f) {
+    if (!f) return;
+    const all = [...canvas.querySelectorAll('input, select, textarea, button')];
+    let el = null;
+    // 入力スロットは、持ち主のブロックと引数で探す（ブロックが増えたり減ったりしても当たる）
+    if (f.owner) el = all.find((e) => e.parentNode._slotOwner === f.owner && e.parentNode._slotArg === f.arg);
+    else if (all.length === f.count) el = all[f.index];
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    if (typeof f.start === 'number' && el.setSelectionRange) {
+      try { el.setSelectionRange(f.start, f.end); } catch { /* 文字の欄ではない */ }
+    }
+  }
+
   function renderAll() {
     const project = Model.project;
+    const focus = rememberCanvasFocus($('#canvas'));
     Render.renderWorkspace($('#canvas'), project);
+    restoreCanvasFocus($('#canvas'), focus);
     N.Drag.reselect($('#canvas'));
     Render.renderPalette($('#palette-blocks'), App.category, project);
     $('#canvas-hint').style.display = project.scripts.length ? 'none' : '';
@@ -477,11 +508,38 @@
     menu.classList.add('open');
   }
 
+  /**
+   * コピーしたブロックを、キャンバスの空いた場所に新しいかたまりとして置く。
+   * at が無ければ、さいごに押した空いた場所、それも無ければ見えている左上あたり。
+   */
+  App.pasteOnCanvas = function (at) {
+    if (!App.clipboard) { App.toast('コピーしたブロックがありません', true); return; }
+    const ws = $('#workspace');
+    const p = at || N.Drag.D.lastPoint ||
+      { x: ws.scrollLeft / App.zoom + 40, y: ws.scrollTop / App.zoom + 40 };
+    Model.act(() => {
+      Model.project.scripts.push({
+        id: Model.uid('s'), kind: 'loose', blocks: [Model.clone(App.clipboard)],
+        x: Math.max(0, Math.round(p.x)), y: Math.max(0, Math.round(p.y)),
+      });
+    });
+    App.toast('はりつけました');
+  };
+
   function setupContextMenu() {
     document.addEventListener('contextmenu', (e) => {
       const hat = e.target.closest('#canvas .blk.hat');
       const blk = e.target.closest('#canvas .blk');
       const scriptEl = e.target.closest('#canvas .script');
+      if (!scriptEl && e.target.closest('#canvas') && App.clipboard) {
+        // 空いた場所: コピーしたブロックがあれば、そこへはりつけられる
+        e.preventDefault();
+        const at = N.Drag.toCanvas(e.clientX, e.clientY);
+        openContextMenu(e.clientX, e.clientY, [
+          { label: 'ここにはりつける', run: () => App.pasteOnCanvas(at) },
+        ]);
+        return;
+      }
       if (!scriptEl) { App.closeContextMenu(); return; }
       e.preventDefault();
 
@@ -778,7 +836,8 @@
       const modalOpen = $('#modal-root').classList.contains('open');
       if (modalOpen && e.key === 'Escape') { e.preventDefault(); N.Dialog.closeModal(); return; }
       if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); N.Dialog.saveProject(false); return; }
-      if (modalOpen && !(e.ctrlKey && /^[zy]$/i.test(e.key))) return;
+      // ダイアログの欄に打っているときの Ctrl+Z は、欄の文字を戻す（プロジェクトは戻さない）
+      if (modalOpen && (typing || N.Dialog.modalBlocksUndo() || !(e.ctrlKey && /^[zy]$/i.test(e.key)))) return;
       if (e.ctrlKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         switchTab('search');
@@ -808,11 +867,9 @@
       }
       if (e.ctrlKey && key === 'v') {
         if (!App.clipboard) { App.toast('コピーしたブロックがありません', true); return; }
-        if (!sel || !Array.isArray(sel.stack)) {
-          App.toast('はりつける場所のブロックを、先にクリックしてください', true);
-          return;
-        }
         e.preventDefault();
+        // えらんだブロックが無い（または入れ子の中の値ブロック）なら、キャンバスの空いた場所へ
+        if (!sel || !Array.isArray(sel.stack)) { App.pasteOnCanvas(); return; }
         Model.act(() => { sel.stack.splice(sel.index + 1, 0, Model.clone(App.clipboard)); });
         App.toast('はりつけました');
         return;

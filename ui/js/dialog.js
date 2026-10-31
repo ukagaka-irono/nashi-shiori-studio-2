@@ -46,10 +46,12 @@
 
   // opts.wide … 絵を大きく見せたいときの広いダイアログ（当たり判定の編集など）
   // opts.onClose … どの閉じかたでも、閉じたあとに呼ぶ
+  // opts.noUndo … 開いているあいだは Ctrl+Z / Ctrl+Y でプロジェクトを戻さない（閉じるまで書きかけのもの）
   function modal(title, bodyEl, buttons, opts) {
     const root = $('#modal-root');
     root.textContent = '';
     modalOnClose = (opts && opts.onClose) || null;
+    modalNoUndo = !!(opts && opts.noUndo);
     const box = Render.div('modal' + (opts && opts.wide ? ' wide' : ''));
     box.appendChild(Render.el('h3', null, title));
     const body = Render.div('modal-body');
@@ -67,6 +69,8 @@
     root.onclick = (e) => { if (e.target === root) closeModal(); };
   }
   let modalOnClose = null;
+  let modalNoUndo = false;
+  function modalBlocksUndo() { return modalNoUndo && $('#modal-root').classList.contains('open'); }
   function closeModal() {
     $('#modal-root').classList.remove('open');
     const fn = modalOnClose;
@@ -250,7 +254,7 @@
 
   N.Dialog = {
     saveProject, openProjectDialog, openSampleDialog, doExport, withForeignCheck, rememberFolder, missingNote,
-    modal, closeModal,
+    modal, closeModal, modalBlocksUndo,
   };
 
 })(window.NASHI);

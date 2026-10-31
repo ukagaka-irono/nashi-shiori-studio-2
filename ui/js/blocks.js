@@ -270,7 +270,8 @@ window.NASHI = window.NASHI || {};
     spec: '%who が %text と話す %nl',
     args: {
       who: { kind: 'dropdown', options: WHO, def: 0 },
-      text: { kind: 'input', mode: 'text', def: 'こんにちは。', long: true },
+      // expand … 横に「広げて書く」ボタンを付ける（何行にもわたるセリフを書く窓）
+      text: { kind: 'input', mode: 'text', def: 'こんにちは。', long: true, expand: true },
       nl: { kind: 'dropdown', options: YESNO_NL, def: 1 },
     },
   });

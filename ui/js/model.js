@@ -360,6 +360,25 @@
       return true;
     },
 
+    /**
+     * トークの名前を変えたとき、そのトークをよぶブロック（よぶ・◯秒後によぶ・選択肢）も付けかえる。
+     * 同じ名前のトークがまだほかにあれば、よぶ先は消えていないので何もしない。付けかえた数を返す。
+     */
+    renameTalkRefs(oldName, newName, renamed) {
+      if (!oldName || oldName === newName) return 0;
+      const stillThere = Model.project.scripts.some((s) =>
+        s !== renamed && (s.kind === 'talk' || s.kind === 'function') && s.name === oldName);
+      if (stillThere) return 0;
+      let n = 0;
+      Model.walkBlocks((b) => {
+        const d = N.getDef(b);
+        for (const arg in (d && d.args) || {}) {
+          if (d.args[arg].kind === 'funcname' && b[arg] === oldName) { b[arg] = newName; n++; }
+        }
+      });
+      return n;
+    },
+
     removeVariable(name) {
       const i = Model.project.variables.findIndex((v) => v.name === name);
       if (i >= 0) Model.project.variables.splice(i, 1);

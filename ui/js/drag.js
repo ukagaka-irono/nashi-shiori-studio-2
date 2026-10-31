@@ -13,6 +13,7 @@
     ws: null, canvas: null, layer: null, palette: null, trash: null,
     zoom: 1,
     selected: null,
+    lastPoint: null,        // さいごに押したキャンバスの空いた場所（キャンバスの座標）
     pending: null,
     drag: null,
     marker: null,
@@ -154,11 +155,39 @@
     };
     document.body.style.cursor = 'grabbing';
     moveDrag(clientX, clientY);
+    requestAnimationFrame(autoScroll);
+  }
+
+  // ドラッグ中、キャンバスの端に近づいたら、そちらへ少しずつ動かす（遠くへ運べるように）
+  const EDGE = 48;          // 端からこの距離(px)に入ったら動かす
+  const EDGE_SPEED = 14;    // いちばん端での 1 コマの量(px)
+  function autoScroll() {
+    const d = D.drag;
+    if (!d) return;
+    const r = D.ws.getBoundingClientRect();
+    const x = d.lastX, y = d.lastY;
+    let dx = 0, dy = 0;
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+      if (x < r.left + EDGE) dx = -(r.left + EDGE - x);
+      else if (x > r.right - EDGE) dx = x - (r.right - EDGE);
+      if (y < r.top + EDGE) dy = -(r.top + EDGE - y);
+      else if (y > r.bottom - EDGE) dy = y - (r.bottom - EDGE);
+    }
+    if (dx || dy) {
+      const sl = D.ws.scrollLeft, st = D.ws.scrollTop;
+      D.ws.scrollLeft += Math.round(dx / EDGE * EDGE_SPEED);
+      D.ws.scrollTop += Math.round(dy / EDGE * EDGE_SPEED);
+      // 動いたら、置き先の目印を合わせなおす
+      if (D.ws.scrollLeft !== sl || D.ws.scrollTop !== st) moveDrag(x, y);
+    }
+    requestAnimationFrame(autoScroll);
   }
 
   function moveDrag(clientX, clientY) {
     const d = D.drag;
     if (!d) return;
+    d.lastX = clientX;
+    d.lastY = clientY;
     const left = clientX - d.grabX;
     const top = clientY - d.grabY;
     d.el.style.left = left + 'px';
@@ -382,7 +411,8 @@
     if (isFormTarget(e.target)) return;
 
     if (e.button === 1 || (!e.target.closest('.blk') && inCanvas)) {
-      // 背景ドラッグ = キャンバス移動
+      // 背景ドラッグ = キャンバス移動。押した場所は、何もえらんでいないときのはりつけ先にする
+      if (e.button === 0) D.lastPoint = toCanvas(e.clientX, e.clientY);
       D.pending = {
         pan: true, startX: e.clientX, startY: e.clientY,
         sl: D.ws.scrollLeft, st: D.ws.scrollTop,
@@ -445,6 +475,6 @@
   function setZoom(z) { D.zoom = z; }
   function getSelected() { return D.selected; }
 
-  N.Drag = { init, setZoom, select, reselect, getSelected, cleanupEmptyScripts, D };
+  N.Drag = { init, setZoom, select, reselect, getSelected, cleanupEmptyScripts, toCanvas, D };
 
 })(window.NASHI);

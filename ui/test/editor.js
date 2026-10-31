@@ -212,6 +212,39 @@ check('どこでも使われていない変数は言う',
   issuesOf(withScript([{ type: 'say', who: 0, text: 'やあ' }]), 'どこでも使われていません'),
   ['warn']);
 
+// ============================================== トークの名前を変えたとき
+section('トークの名前を変えたとき (model.renameTalkRefs)');
+{
+  const project = Model.normalize({
+    format: 'nashi/1',
+    scripts: [
+      { id: 'a', kind: 'function', name: 'あいさつ', blocks: [] },
+      { id: 'b', kind: 'event', event: 'OnBoot', blocks: [
+        { type: 'call', name: 'あいさつ' },
+        { type: 'later', sec: 5, name: 'あいさつ' },
+        { type: 'choice', label: 'うん', target: 'あいさつ' },
+        { type: 'if', cond: null, then: [{ type: 'call', name: 'あいさつ' }] },
+        { type: 'call', name: 'べつ' },
+        { type: 'say', who: 0, text: 'あいさつ', nl: 1 },
+      ] },
+    ],
+  });
+  Model.project = project;
+  const talk = project.scripts[0];
+  talk.name = 'おはよう';
+  const n = Model.renameTalkRefs('あいさつ', 'おはよう', talk);
+  const blocks = project.scripts[1].blocks;
+  check('よぶ・◯秒後によぶ・選択肢・入れ子の中も付けかえる', n, 4);
+  check('付けかえたあとの行き先',
+    [blocks[0].name, blocks[1].name, blocks[2].target, blocks[3].then[0].name], ['おはよう', 'おはよう', 'おはよう', 'おはよう']);
+  check('ほかのトークをよぶもの・セリフの文字はそのまま', [blocks[4].name, blocks[5].text], ['べつ', 'あいさつ']);
+
+  // 同じ名前のトークがまだあれば、よぶ先は消えていないので付けかえない
+  project.scripts.push({ id: 'c', kind: 'talk', name: 'おはよう', weight: 1, blocks: [] });
+  talk.name = 'こんばんは';
+  check('同じ名前のトークがほかにあれば、付けかえない', Model.renameTalkRefs('おはよう', 'こんばんは', talk), 0);
+}
+
 // ============================================== お手本ゴースト（ui/samples）
 section('お手本ゴースト');
 {

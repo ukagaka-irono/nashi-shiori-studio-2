@@ -275,6 +275,9 @@ button, input, select, textarea { font-family: inherit; }
   width: 20px; height: 20px; font-size: 13px; line-height: 1; cursor: pointer; padding: 0;
 }
 .blk-btn:hover { background: rgba(0,0,0,.3); }
+/* セリフの欄の中、右はしの「広げて書く」 */
+.blk-expand { margin-right: 1px; color: #2b3a4d; }   /* 白い欄の中なので、欄の文字と同じ色 */
+.slot input[readonly] { cursor: pointer; }
 .branch-label { font-size: 11px; opacity: .85; font-weight: 700; }
 
 /* drag layer */
