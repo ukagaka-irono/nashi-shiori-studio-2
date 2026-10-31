@@ -42,6 +42,8 @@ private:
     std::string BuiltinDefault(const std::string& eventId, const ShioriRequest& req);
     void MaybeReload();
     void LoadSave();
+    enum { kSaveOk = 0, kSaveMissing = 1, kSaveLocked = 2, kSaveBroken = 3 };
+    int LoadSaveFrom(const std::wstring& path);
     void SaveSave();
     bool Matches(const JValue& script, const ShioriRequest& req) const;
     std::string RunOne(const JValue& script, const ShioriRequest& req);
@@ -87,6 +89,10 @@ private:
     unsigned long long progStamp_ = 0;
     unsigned long lastCheckTick_ = 0;
     bool dirty_ = false;
+    // 保存データを読めなかった（ほかのプログラムが開いている・よけられなかった）回は、保存しない
+    bool saveBlocked_ = false;
+    // この回、もう本体を控えにまわしたか（控えには「前の回」の中身を残したいので、まわすのは最初の保存だけ）
+    bool rotatedThisSession_ = false;
 
     // 同じイベントで直前に選んだブロック（続けて同じ反応にならないように）
     std::map<std::string, std::string> lastEventPick_;

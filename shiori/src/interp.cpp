@@ -51,6 +51,31 @@ static bool IsNumericStr(const std::string& s) {
     return end && *end == '\0';
 }
 
+// 1970-01-01 からの日数（グレゴリオ暦）。月の長さやうるう年を、表を持たずに計算する
+static long DaysFromCivil(long y, long m, long d) {
+    y -= m <= 2 ? 1 : 0;
+    long era = (y >= 0 ? y : y - 399) / 400;
+    long yoe = y - era * 400;
+    long doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + doe - 719468;
+}
+
+long DayNumber(const std::string& ymd) {
+    if (ymd.size() < 10 || ymd[4] != '-' || ymd[7] != '-') return -1;
+    long y = atoi(ymd.substr(0, 4).c_str()), m = atoi(ymd.substr(5, 2).c_str()), d = atoi(ymd.substr(8, 2).c_str());
+    if (y < 1900 || m < 1 || m > 12 || d < 1 || d > 31) return -1;
+    return DaysFromCivil(y, m, d);
+}
+
+std::string TodayYmd() {
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    char buf[16];
+    sprintf_s(buf, "%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
+    return buf;
+}
+
 // -1 / 0 / +1
 static int CompareValues(const Value& a, const Value& b) {
     bool an = a.isNum || IsNumericStr(a.str);
@@ -246,6 +271,13 @@ static Value SysValue(const std::string& key, RunCtx& ctx) {
     if (key == "uptime")    return Value::Num((double)ctx.sys->uptimeSec);
     if (key == "uptimemin") return Value::Num((double)(ctx.sys->uptimeSec / 60));
     if (key == "boots")     return Value::Num(ctx.sys->bootCount);
+    // 前に会ってから（さいごに保存した日から）何日ぶりか（起動したときに決まる）。
+    // 出会ってから何日か（はじめて起動した日を 0 日目として、いま）
+    if (key == "dayssince") return Value::Num(ctx.sys->daysSinceLast);
+    if (key == "daysmet") {
+        long first = DayNumber(ctx.sys->firstBoot), today = DayNumber(TodayYmd());
+        return Value::Num(first < 0 || today < first ? 0 : (double)(today - first));
+    }
     if (key == "talks")     return Value::Num(ctx.sys->talkCount);
     if (key == "ghostname") return Value::Str(ctx.sys->ghostName);
     if (key == "shellname") return Value::Str(ctx.sys->shellName);

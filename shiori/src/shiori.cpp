@@ -163,15 +163,62 @@ void Shiori::Unload() {
     ready_ = false;
 }
 
+// 保存データ（nashi_save.json）と、そのひとつ前の控え（nashi_save.bak.json）。
+// 読めないものは捨てずに nashi_save.broken-日時.json へよけて、控えから読みなおす
+// （黙って初めからにすると、つぎの保存で好感度や名前がまるごと上書きされてしまうので）。
 void Shiori::LoadSave() {
+    std::wstring path = dir_ + L"nashi_save.json";
+    int r = LoadSaveFrom(path);
+    if (r == kSaveOk || (r == kSaveMissing && !FileExists(dir_ + L"nashi_save.bak.json"))) return;
+    if (r == kSaveLocked) {
+        // ほかのプログラムが開いているだけ（中身はたぶん無事）。よけたり控えから読んだりせず、
+        // この回は保存もしない（読めていない古い値で、無事な本体を上書きしないように）。
+        saveBlocked_ = true;
+        Log("nashi_save.json を開けませんでした（ほかのプログラムが使っているかもしれません）。この回は保存しません");
+        return;
+    }
+    if (r == kSaveBroken) {
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        char stamp[32];
+        sprintf_s(stamp, "%04d%02d%02d-%02d%02d%02d", st.wYear, st.wMonth, st.wDay,
+                  st.wHour, st.wMinute, st.wSecond);
+        std::wstring aside = dir_ + L"nashi_save.broken-" + Utf8ToWide(stamp) + L".json";
+        if (!MoveFileExW(path.c_str(), aside.c_str(), MOVEFILE_WRITE_THROUGH)) {
+            // よけられなかった。このまま保存すると、こわれた本体が控えにまわって、無事な控えを消してしまう
+            saveBlocked_ = true;
+            Log("nashi_save.json が読めず、よけることもできませんでした。この回は保存しません");
+        } else {
+            Log(std::string("nashi_save.json が読めなかったので、nashi_save.broken-") + stamp + ".json によけました");
+        }
+    }
+    // 本体が無い・読めなかったときは、ひとつ前の控えから
+    int b = LoadSaveFrom(dir_ + L"nashi_save.bak.json");
+    if (b == kSaveOk) {
+        Log("nashi_save.bak.json（ひとつ前の控え）から読みました");
+        dirty_ = true;                               // つぎの保存で、本体を書きなおす
+    } else if (b == kSaveLocked) {
+        // 控えも開けない。初めからの値で保存すると、つぎの回に無事な控えを上書きしてしまう
+        saveBlocked_ = true;
+        Log("nashi_save.bak.json も開けませんでした。この回は保存しません");
+    }
+}
+
+int Shiori::LoadSaveFrom(const std::wstring& path) {
     std::string text;
     // 自分で UTF-8 で書いたファイルなので、Shift_JIS かもしれないとは考えない
-    if (!ReadTextFile(dir_ + L"nashi_save.json", text, false)) return;
+    int r = ReadTextFileWhy(path, text, false);
+    if (r == kReadMissing) return kSaveMissing;
+    // 開いているだけ・アクセス権が無いときは、こわれているのとは区別する（よけたり上書きしたりしない）
+    if (r == kReadLocked || r == kReadDenied) return kSaveLocked;
+    if (r != kReadOk) return kSaveBroken;            // 大きすぎる
     JValue v;
     std::string err;
-    if (!JsonParse(text, v, err) || !v.isObj()) return;
+    if (!JsonParse(text, v, err) || !v.isObj()) return kSaveBroken;
     vars_.fromJson(v["vars"]);                       // saved values win over defaults
     sys_.bootCount = v["boots"].asInt(0);
+    sys_.firstBoot = v["firstBoot"].asStr();
+    sys_.lastBoot = v["lastBoot"].asStr();
 
     // 前回どのトークを出したかも覚えておく（起動しなおした直後の重複を防ぐ）
     const JValue& recent = v["recentTalks"];
@@ -180,12 +227,20 @@ void Shiori::LoadSave() {
         if (!id.empty()) sys_.recentTalks.push_back(id);
     }
     if (!sys_.recentTalks.empty()) sys_.lastTalk = sys_.recentTalks[0];
+    sys_.lastSeen = v["lastSeen"].asStr();
+    return kSaveOk;
 }
 
 void Shiori::SaveSave() {
+    if (saveBlocked_) return;                        // 読めなかった回は、上書きしない（LoadSave）
+    sys_.lastSeen = TodayYmd();
     JValue root = JValue::makeObj();
+    root.set("format", JValue::makeStr("nashi-save/1"));   // あとで形を変えたときに、見分けられるように
     root.set("vars", vars_.toJson());
     root.set("boots", JValue::makeNum(sys_.bootCount));
+    root.set("firstBoot", JValue::makeStr(sys_.firstBoot));
+    root.set("lastBoot", JValue::makeStr(sys_.lastBoot));
+    root.set("lastSeen", JValue::makeStr(sys_.lastSeen));
     JValue recent = JValue::makeArr();
     for (size_t i = 0; i < sys_.recentTalks.size(); i++) {
         recent.arr.push_back(JValue::makeStr(sys_.recentTalks[i]));
@@ -198,7 +253,18 @@ void Shiori::SaveSave() {
     sprintf_s(buf, "%04d-%02d-%02d %02d:%02d:%02d", st.wYear, st.wMonth, st.wDay,
               st.wHour, st.wMinute, st.wSecond);
     root.set("savedAt", JValue::makeStr(buf));
-    WriteTextFile(dir_ + L"nashi_save.json", root.dump(2));
+    // この回はじめての保存のときだけ、いまの本体（前の回の中身）を控え（nashi_save.bak.json）にまわす。
+    // 2 回目からは本体だけを書きかえるので、控えにはいつも「前の回」が残る。
+    // 本体の書きかえは、となりに書いてから差しかえる（WriteTextFile）ので、途中で落ちても前の中身が残る。
+    std::wstring path = dir_ + L"nashi_save.json";
+    if (!rotatedThisSession_ && FileExists(path)) {
+        if (!MoveFileExW(path.c_str(), (dir_ + L"nashi_save.bak.json").c_str(),
+                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            Log("nashi_save.json を控えにまわせませんでした（控えは前のまま）");
+        }
+    }
+    rotatedThisSession_ = true;
+    WriteTextFile(path, root.dump(2));
     dirty_ = false;
 }
 
@@ -621,11 +687,26 @@ bool Shiori::TakeOffered(const std::string& key, bool consume) {
 }
 
 // 起動・ゴーストの切り替え・呼び出し。どれも「このゴーストが動きはじめた」ところ。
+// shell が空なら、シェル名は変えない（はじめての起動では、SSP はシェル名を知らせてこない）。
+// 何日ぶりか・出会った日も、ここで記録する。
 void Shiori::NoteBoot(const ShioriRequest& req, const std::string& shell) {
     (void)req;
     sys_.bootCount++;
-    sys_.shellName = shell;
+    if (!shell.empty()) sys_.shellName = shell;
     sys_.ghostName = prog_.meta()["name"].asStr();
+    // 何日ぶりか。さいごに会った日（保存した日。動かしたままの日もふくむ）から数える。
+    // 前の版の保存データには lastSeen が無いので、そのときは前に起動した日から。
+    std::string today = TodayYmd();
+    long now = DayNumber(today);
+    long last = DayNumber(sys_.lastSeen.empty() ? sys_.lastBoot : sys_.lastSeen);
+    // 時計がおかしかった回の日付（2026 年より前・きょうより先）からは数えない
+    const long kFloor = DayNumber("2026-01-01");
+    sys_.daysSinceLast = (last < kFloor || now < last) ? 0 : (int)(now - last);
+    // 出会った日。時計がおかしい（2026 年より前・きょうより先）ものは信じず、きょうにする。
+    // きょう自体がおかしいときは、決めずにおく（つぎに時計が正しいときに決まる）。
+    long first = DayNumber(sys_.firstBoot);
+    if (now >= kFloor && (first < kFloor || first > now)) sys_.firstBoot = today;
+    sys_.lastBoot = today;
     dirty_ = true;
 }
 
@@ -675,7 +756,9 @@ void Shiori::HoldTalk(const std::string& out, int priority) {
 std::string Shiori::Dispatch(const ShioriRequest& req) {
     const std::string& id = req.id;
 
-    if (id == "OnBoot" || id == "OnFirstBoot") NoteBoot(req, RefAt(req, 0));
+    // OnBoot の Reference0 はシェル名。OnFirstBoot の Reference0 は消滅した回数なので、シェル名にはしない
+    if (id == "OnBoot") NoteBoot(req, RefAt(req, 0));
+    if (id == "OnFirstBoot") NoteBoot(req, std::string());
     // ほかのゴーストから切り替わって来たとき・呼ばれたときは OnBoot が来ない。
     // シェルの名前は Reference7 に入っている（SSP）。
     if (id == "OnGhostChanged" || id == "OnGhostCalled") NoteBoot(req, RefAt(req, 7));

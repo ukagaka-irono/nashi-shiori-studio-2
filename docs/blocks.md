@@ -306,6 +306,8 @@ SSP から返ってきた `OnChoiceSelect` / `OnAnchorSelect` / `OnUserInput` �
 | いまの時 など | `{"type":"sys","key":"hour"}` | `hour` `minute` `second` `year` `month` `day` `weekday`(0=日) |
 | 起動してからの秒数 / 分数 | `{"type":"sys","key":"uptime"}` / `uptimemin` | |
 | 起動した回数 | `{"type":"sys","key":"boots"}` | 保存データに記録 |
+| 前に会ってから何日ぶりか | `{"type":"sys","key":"dayssince"}` | 起動したときに、さいごに保存した日（動かしたままの日もふくむ）から数える。同じ日なら 0。ためすときは 0 |
+| 出会ってから何日か | `{"type":"sys","key":"daysmet"}` | はじめて起動した日を 0 日目として数える。この版より前の保存データでは、この版ではじめて起動した日から。時計がおかしい日付（2026 年より前・先の日付）は使わない。ためすときは 0 |
 | 今回のトーク回数 | `{"type":"sys","key":"talks"}` | |
 | ゴースト名 / シェル名 | `{"type":"sys","key":"ghostname"}` / `shellname` | |
 | 話しかけてきた相手 / 言われたこと | `{"type":"sys","key":"commfrom"}` / `commtext` | `OnCommunicate` の `Reference0` / `Reference1` |

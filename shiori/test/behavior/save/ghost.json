@@ -1,0 +1,99 @@
+{
+  "format": "nashi/1",
+  "_comment": "保存データ（控え・こわれたとき）と、何日ぶり・出会ってから何日のテスト用。",
+  "meta": {
+    "name": "きおくテスト",
+    "sakuraName": "さくら",
+    "keroName": "うにゅう"
+  },
+  "settings": {
+    "randomTalkEnabled": false
+  },
+  "variables": [
+    {
+      "name": "話した",
+      "value": 0
+    }
+  ],
+  "scripts": [
+    {
+      "id": "e_check",
+      "kind": "event",
+      "event": "OnCheck",
+      "blocks": [
+        {
+          "type": "say",
+          "who": 0,
+          "text": {
+            "type": "var",
+            "name": "話した"
+          },
+          "nl": 0
+        }
+      ]
+    },
+    {
+      "id": "e_days",
+      "kind": "event",
+      "event": "OnDays",
+      "blocks": [
+        {
+          "type": "say",
+          "who": 0,
+          "text": {
+            "type": "join",
+            "a": {
+              "type": "join",
+              "a": {
+                "type": "sys",
+                "key": "dayssince"
+              },
+              "b": "/"
+            },
+            "b": {
+              "type": "sys",
+              "key": "daysmet"
+            }
+          },
+          "nl": 0
+        }
+      ]
+    },
+    {
+      "id": "e_shell",
+      "kind": "event",
+      "event": "OnShell",
+      "blocks": [
+        {
+          "type": "say",
+          "who": 0,
+          "text": {
+            "type": "join",
+            "a": {
+              "type": "join",
+              "a": "「",
+              "b": {
+                "type": "sys",
+                "key": "shellname"
+              }
+            },
+            "b": "」"
+          },
+          "nl": 0
+        }
+      ]
+    },
+    {
+      "id": "e_inc",
+      "kind": "event",
+      "event": "OnInc",
+      "blocks": [
+        {
+          "type": "set",
+          "name": "話した",
+          "value": 9
+        }
+      ]
+    }
+  ]
+}

@@ -926,7 +926,8 @@ static bool SkipInDau(const std::wstring& rel) {
         if (low[i] >= L'A' && low[i] <= L'Z') low[i] = (wchar_t)(low[i] - L'A' + L'a');
     }
     // 使う人ごとの持ちもの・こちらの作業用ファイルは配らない
-    if (low.find(L"nashi_save.json") != std::wstring::npos) return true;
+    // nashi_save.json と、その控え（.bak.json）・読めなかったものをよけたもの（.broken-日時.json）
+    if (low.find(L"nashi_save.") != std::wstring::npos) return true;
     if (low.find(L"nashi_debug.txt") != std::wstring::npos) return true;
     if (low == L"updates2.dau" || low == L"updates.txt") return true;
     if (low == L"delete.txt") return true;              // サーバ側だけの指示書

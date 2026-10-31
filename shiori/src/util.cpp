@@ -88,16 +88,34 @@ std::string RepairUtf8(const std::string& s) {
 // ------------------------------------------------------------------- files
 
 bool ReadTextFile(const std::wstring& path, std::string& outUtf8, bool allowSjis) {
+    return ReadTextFileWhy(path, outUtf8, allowSjis) == kReadOk;
+}
+
+// 読めなかったわけも返す。ほかのプログラム（同期ソフト・ウイルス対策など）が開いているだけのときは、
+// 書きこみ・削除を許す開きかたでもう一度ためし、それでもだめなら kReadLocked
+// （こわれているのとは区別する。保存データを「こわれた」とまちがえて、よけてしまわないように）。
+int ReadTextFileWhy(const std::wstring& path, std::string& outUtf8, bool allowSjis) {
     HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h == INVALID_HANDLE_VALUE) return false;
+    DWORD err = h == INVALID_HANDLE_VALUE ? GetLastError() : 0;
+    for (int retry = 0; h == INVALID_HANDLE_VALUE && retry < 3; retry++) {
+        if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) return kReadMissing;
+        // ほかのプログラムが開いているとき以外（アクセス権が無いなど）は、ためしなおしてもむだ
+        if (err != ERROR_SHARING_VIOLATION && err != ERROR_LOCK_VIOLATION) return kReadDenied;
+        if (retry > 0) Sleep(100);
+        h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (h == INVALID_HANDLE_VALUE) err = GetLastError();
+    }
+    if (h == INVALID_HANDLE_VALUE) return kReadLocked;
     LARGE_INTEGER size;
-    if (!GetFileSizeEx(h, &size) || size.QuadPart > (1 << 24)) { CloseHandle(h); return false; }
+    if (!GetFileSizeEx(h, &size)) { CloseHandle(h); return kReadLocked; }
+    if (size.QuadPart > (1 << 24)) { CloseHandle(h); return kReadTooBig; }
     std::string buf((size_t)size.QuadPart, '\0');
     DWORD read = 0;
     if (!buf.empty() && !ReadFile(h, &buf[0], (DWORD)buf.size(), &read, NULL)) {
         CloseHandle(h);
-        return false;
+        return kReadLocked;
     }
     CloseHandle(h);
     buf.resize(read);
@@ -110,7 +128,7 @@ bool ReadTextFile(const std::wstring& path, std::string& outUtf8, bool allowSjis
         }
         outUtf8 = RepairUtf8(buf);
     }
-    return true;
+    return kReadOk;
 }
 
 // となりに書いてから差しかえます。書いている途中で落ちても前の中身が残るように

@@ -26,6 +26,9 @@ std::string RepairUtf8(const std::string& s);
 // ---- files ----------------------------------------------------------------
 // allowSjis = false: never guess Shift_JIS (for files the shiori wrote itself)
 bool ReadTextFile(const std::wstring& path, std::string& outUtf8, bool allowSjis = true);
+// ReadTextFile と同じだが、読めなかったわけを返す
+enum { kReadOk = 0, kReadMissing = 1, kReadLocked = 2, kReadTooBig = 3, kReadDenied = 4 };
+int ReadTextFileWhy(const std::wstring& path, std::string& outUtf8, bool allowSjis = true);
 // writes beside the file, then swaps it in (a crash never leaves half a file)
 bool WriteTextFile(const std::wstring& path, const std::string& utf8);
 bool FileExists(const std::wstring& path);

@@ -10,6 +10,7 @@ webview-data/
 projects/
 output/
 **/nashi_save.json
+**/nashi_save.*.json
 **/nashi_debug.txt
 .vs/
 

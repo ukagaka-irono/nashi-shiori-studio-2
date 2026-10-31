@@ -30,12 +30,117 @@ const EMPTY = path.join(__dirname, 'empty');
 const MAIN = path.join(__dirname, 'main');
 const TALK = path.join(__dirname, 'talk');
 const TALKWAIT = path.join(__dirname, 'talkwait');
+const SAVE = path.join(__dirname, 'save');
+
+// 保存データのテスト用: ゴーストのフォルダのファイルを書く・読む
+const fs = require('fs');
+const writeIn = (dir, name, text) => fs.writeFileSync(path.join(dir, name), text, 'utf8');
+const brokenIn = (dir) => fs.readdirSync(dir).filter((f) => /^nashi_save\.broken-\d{8}-\d{6}\.json$/.test(f));
+// きょうから n 日前の日付（YYYY-MM-DD）
+const daysAgo = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 // 応答 1 件に対する期待。文字列なら Value の完全一致。
 //   { value } Value / { commTo } 話しかけ先 / { status } 応答の種類
 //   { valueOneOf: [...] } どれか 1 つに当たればよい（既定の反応がランダムなもの）
 //   null なら見ない
 const scenarios = [
+  {
+    name: '保存データ — 読めない本体はよけて、ひとつ前の控えから読む',
+    dir: SAVE,
+    setup: (dir) => {
+      writeIn(dir, 'nashi_save.json', '{こわれている');
+      writeIn(dir, 'nashi_save.bak.json', JSON.stringify({ format: 'nashi-save/1', vars: { 話した: 5 }, boots: 2 }));
+    },
+    steps: [
+      ['OnBoot:master', null],
+      ['OnCheck', '\\05\\e'],
+    ],
+    after: (dir) => {
+      const out = [];
+      const broken = brokenIn(dir);
+      if (broken.length !== 1) out.push(`よけたファイルが 1 つではありません: ${broken.join(', ')}`);
+      else if (fs.readFileSync(path.join(dir, broken[0]), 'utf8') !== '{こわれている') out.push('よけたファイルの中身が変わっています');
+      const saved = JSON.parse(fs.readFileSync(path.join(dir, 'nashi_save.json'), 'utf8'));
+      if (saved.vars['話した'] !== 5 || saved.format !== 'nashi-save/1') out.push(`書きなおした本体がちがいます: ${JSON.stringify(saved)}`);
+      return out;
+    },
+  },
+  {
+    name: '保存データ — 控えも無ければ初めからにするが、読めなかった本体は消さずに残す',
+    dir: SAVE,
+    setup: (dir) => writeIn(dir, 'nashi_save.json', '{こわれている'),
+    steps: [
+      ['OnCheck', '\\00\\e'],
+    ],
+    after: (dir) => (brokenIn(dir).length === 1 ? [] : ['読めなかった本体が残っていません']),
+  },
+  {
+    name: '保存データ — 控え（nashi_save.bak.json）には前の回の中身を残し、本体に今回の中身と日付を書く',
+    dir: SAVE,
+    setup: (dir) => writeIn(dir, 'nashi_save.json', JSON.stringify({ vars: { 話した: 7 }, boots: 1 })),
+    steps: [
+      ['OnBoot:master', null],
+      ['OnInc', null],            // 話した を 9 に
+      ['OnClose', null],          // ここで 1 回、終わるときにもう 1 回保存する（控えにまわすのは 1 回目だけ）
+    ],
+    after: (dir) => {
+      const read = (f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+      const bak = read('nashi_save.bak.json');
+      const main = read('nashi_save.json');
+      const out = [];
+      if (bak.vars['話した'] !== 7) out.push(`控えが前の回の中身ではありません: ${JSON.stringify(bak.vars)}`);
+      if (main.vars['話した'] !== 9) out.push(`本体が今回の中身ではありません: ${JSON.stringify(main.vars)}`);
+      const today = daysAgo(0);
+      if (main.firstBoot !== today || main.lastBoot !== today || main.lastSeen !== today) {
+        out.push(`日付がちがいます: first=${main.firstBoot} last=${main.lastBoot} seen=${main.lastSeen}`);
+      }
+      return out;
+    },
+  },
+  {
+    name: '何日ぶりかは、さいごに会った日（lastSeen）から数える（起動したままの日もふくむ）',
+    dir: SAVE,
+    setup: (dir) => writeIn(dir, 'nashi_save.json',
+      JSON.stringify({ vars: {}, boots: 5, firstBoot: daysAgo(30), lastBoot: daysAgo(20), lastSeen: daysAgo(1) })),
+    steps: [
+      ['OnBoot:master', null],
+      ['OnDays', '\\01/30\\e'],
+    ],
+  },
+  {
+    name: '出会った日が先の日付（時計がずれていた）なら、信じずにきょうにする',
+    dir: SAVE,
+    setup: (dir) => writeIn(dir, 'nashi_save.json',
+      JSON.stringify({ vars: {}, boots: 5, firstBoot: daysAgo(-30), lastBoot: daysAgo(2) })),
+    steps: [
+      ['OnBoot:master', null],
+      ['OnDays', '\\02/0\\e'],
+    ],
+  },
+  {
+    name: '何日ぶりか・出会ってから何日か（保存データの firstBoot / lastBoot から）',
+    dir: SAVE,
+    setup: (dir) => writeIn(dir, 'nashi_save.json',
+      JSON.stringify({ vars: {}, boots: 5, firstBoot: daysAgo(10), lastBoot: daysAgo(3) })),
+    steps: [
+      ['OnBoot:master', null],
+      ['OnDays', '\\03/10\\e'],
+    ],
+  },
+  {
+    name: 'はじめての起動では、Reference0（消滅回数）をシェル名にしない',
+    dir: SAVE,
+    steps: [
+      ['OnFirstBoot:3', null],
+      ['OnShell', '\\0「」\\e'],
+      ['OnBoot:master', null],
+      ['OnShell', '\\0「master」\\e'],
+    ],
+  },
   {
     name: 'ブロックが無いゴーストの、既定の反応',
     dir: EMPTY,
@@ -459,7 +564,7 @@ let checked = 0;
 for (const sc of scenarios) {
   let got;
   try {
-    got = host.run(sc.dir, sc.steps.map((s) => s[0]));
+    got = host.run(sc.dir, sc.steps.map((s) => s[0]), sc.setup);
   } catch (e) {
     console.log(`${red}  だめ ${sc.name}${off}\n        ${e.message}`);
     failed++;
@@ -494,6 +599,9 @@ for (const sc of scenarios) {
       problems.push(`${spec}  世代数  出た: "${res.age}" / ほしい: "${exp.age}"`);
     }
   });
+
+  // 動かしたあとのフォルダのようす（保存データの控えなど）。問題があれば、その説明を返す
+  if (sc.after) { checked++; problems.push(...sc.after(sc.dir)); }
 
   if (problems.length) {
     failed++;
