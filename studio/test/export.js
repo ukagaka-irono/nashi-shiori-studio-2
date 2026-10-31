@@ -266,6 +266,79 @@ console.log('  ---- 絵を重ねて作る立ち絵 (element)');
   }
 }
 
+// ------------------------------------------------- 書き出し直し（シェルの目印）と読めない絵
+//
+// シェルの surfaces.txt / descript.txt は、スタジオの目印があれば毎回書き直し、
+// 目印を消した（手で直した）ものは残す。えらんであるのに読めない絵は、結果で知らせる。
+console.log('  ---- 書き出し直しと読めない絵');
+{
+  const tmpRe = fs.mkdtempSync(path.join(os.tmpdir(), 'nashi-re-'));
+  try {
+    const png = Buffer.alloc(8 + 8 + 13 + 4);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0);
+    png.writeUInt32BE(13, 8); png.write('IHDR', 12, 'ascii');
+    png.writeUInt32BE(40, 16); png.writeUInt32BE(30, 20); png[24] = 8; png[25] = 6;
+    fs.writeFileSync(path.join(tmpRe, 'ok.png'), png);
+    fs.writeFileSync(path.join(tmpRe, 'text.png'), 'not a png');
+    const project = {
+      meta: { name: 'かきなおし', sakuraName: 'さくら', keroName: 'うにゅう' },
+      shell: {
+        images: [
+          { id: 0, path: path.join(tmpRe, 'gone.png') },
+          { id: 1, path: '', layers: [{ path: path.join(tmpRe, 'ok.png'), x: 0, y: 0 }] },
+        ],
+        base: { 1: [{ path: path.join(tmpRe, 'text.png'), x: 0, y: 0 }] },
+      },
+      dressup: { parts: [
+        { id: 200, who: 0, category: '服', name: 'a', path: path.join(tmpRe, 'gone.png'), x: 0, y: 0, on: true },
+      ] },
+      scripts: [],
+    };
+    const fixture = path.join(tmpRe, 'project.json');
+    fs.writeFileSync(fixture, JSON.stringify(project));
+    const out = path.join(tmpRe, 'out');
+    const lines = (s) => s.toString('utf8').split(/\r?\n/).filter(Boolean);
+    const first = lines(run([fixture, '--export', out]));
+    const surfPath = path.join(out, 'かきなおし', 'shell', 'master', 'surfaces.txt');
+    const descPath = path.join(out, 'かきなおし', 'shell', 'master', 'descript.txt');
+    const marked = fs.readFileSync(surfPath, 'utf8').split('\r\n')[1].startsWith('// なしスタジオ 2');
+
+    // 1 回目のあと: surfaces.txt はそのまま（目印あり）、descript.txt は目印を消して手で直したことにする
+    fs.writeFileSync(surfPath, fs.readFileSync(surfPath, 'utf8') + '// old\r\n');
+    fs.writeFileSync(descPath, 'charset,UTF-8\r\n// 手で直した\r\n');
+    const second = lines(run([fixture, '--export', out]));
+    const surfAfter = fs.readFileSync(surfPath, 'utf8');
+    const descAfter = fs.readFileSync(descPath, 'utf8');
+    const third = lines(run([fixture, '--export', out, '--overwrite']));
+    const fourth = lines(run([fixture, '--export', out]));
+    const missing = first.filter((l) => l.startsWith('missing ')).map((l) => path.basename(l.slice(8)));
+
+    const checks = [
+      ['シェルの surfaces.txt の 2 行目に目印がある', marked],
+      ['目印のある surfaces.txt は書き直す', second.includes('written shell/master/surfaces.txt')
+        && !surfAfter.includes('// old')],
+      ['目印を消した descript.txt は残す', second.includes('skipped shell/master/descript.txt')
+        && descAfter.includes('手で直した')],
+      ['「上書き」に印を付ければ、目印が無くても書き直す', third.includes('written shell/master/descript.txt')
+        && !fs.readFileSync(descPath, 'utf8').includes('手で直した')],
+      ['読めない絵を 1 回ずつ知らせる（無い・PNG でない）', missing.sort().join(',') === 'gone.png,text.png'],
+      ['書きかえたファイルを知らせる（SSP にシェルも読み直させる目印）', second.includes('changed shell/master/surfaces.txt')
+        && !second.includes('changed shell/master/descript.txt')],
+      ['中身が同じなら、書きかえたことにしない', !fourth.some((l) => l.startsWith('changed '))],
+      ['前と同じ自動の立ち絵は「残した」に入れない', !second.some((l) => /^skipped .*\.png$/.test(l))],
+    ];
+    for (const [label, ok] of checks) {
+      checked++;
+      if (ok) { console.log(`${green}  OK  ${off}${label}`); continue; }
+      failed++;
+      console.log(`${red}  だめ ${label}${off}`);
+      console.log(`        ${dim}${JSON.stringify({ first, second, third, fourth })}${off}`);
+    }
+  } finally {
+    fs.rmSync(tmpRe, { recursive: true, force: true });
+  }
+}
+
 // ------------------------------------------------- ネットワーク更新の照合表
 //
 // 中身を作るところから確かめたいので、その場でフォルダを組み立てます。

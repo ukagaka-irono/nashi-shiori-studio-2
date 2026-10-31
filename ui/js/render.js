@@ -62,7 +62,8 @@
     if (argDef.long) input.classList.add('long');
     input.value = value == null ? '' : String(value);
     fitInput(input);
-    input.addEventListener('focus', () => { beginEdit(); input.select(); });
+    let before = owner[argName];
+    input.addEventListener('focus', () => { before = owner[argName]; beginEdit(); input.select(); });
     input.addEventListener('input', () => {
       fitInput(input);
       owner[argName] = argDef.mode === 'number' && input.value !== '' && !isNaN(Number(input.value))
@@ -70,14 +71,71 @@
         : input.value;
       N.App && N.App.onLiveEdit && N.App.onLiveEdit();
     });
-    input.addEventListener('change', () => endEdit(true));
+    input.addEventListener('change', () => {
+      // トークの名前を変えたら、よんでいるブロックも付けかえる（元にもどすと、いっしょにもどる）
+      if (argName === 'name' && (owner.kind === 'talk' || owner.kind === 'function')) {
+        const n = Model.renameTalkRefs(before, owner.name, owner);
+        if (n && N.App) N.App.toast(`よんでいるブロック ${n} か所も「${owner.name}」に付けかえました`);
+      }
+      endEdit(true);
+    });
     input.addEventListener('blur', () => endEdit(false));
+    const open = () => openLongText(owner, argName);
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') input.blur();
+      // 広げて書ける欄は、Shift+Enter（改行の入ったセリフは Enter でも）で窓を開く
+      if (argDef.expand && e.key === 'Enter' && (e.shiftKey || input.readOnly)) {
+        e.preventDefault();
+        open();
+      } else if (e.key === 'Enter') {
+        input.blur();
+      }
       e.stopPropagation();
     });
     slot.appendChild(input);
+
+    if (argDef.expand) {
+      // 1 行の欄は改行を落としてしまうので、改行の入ったセリフは窓でだけ直す
+      if (typeof value === 'string' && value.includes('\n')) {
+        input.readOnly = true;
+        input.value = value.replace(/\r?\n/g, ' ↵ ');
+        input.title = '何行かあるセリフです。クリック（または Enter）で、広げて書けます';
+        fitInput(input);
+        input.addEventListener('click', open);
+      }
+      const btn = el('button', 'blk-btn blk-expand', '⤢');
+      btn.title = '広げて書く (Shift+Enter)';
+      btn.tabIndex = -1;          // Tab は欄から欄へ（キーボードでは Shift+Enter で開く）
+      btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      btn.addEventListener('click', open);
+      slot.appendChild(btn);
+    }
     return slot;
+  }
+
+  /**
+   * 長いセリフを、何行も書ける大きな欄で書く。書いたものはそのまま入り、ゴーストタブの欄と同じく
+   * 閉じたときに 1 回ぶんの「元にもどす」にまとめる（開いているあいだは、プロジェクトを戻さない）。
+   */
+  function openLongText(owner, argName) {
+    const snap = Model.snapshot();
+    const body = div('');
+    const label = el('label', 'field');
+    label.appendChild(el('span', null, 'セリフ'));
+    const area = el('textarea');
+    area.rows = 8;
+    area.value = owner[argName] == null ? '' : String(owner[argName]);
+    area.addEventListener('input', () => {
+      owner[argName] = area.value;
+      N.App && N.App.onLiveEdit && N.App.onLiveEdit();
+    });
+    label.appendChild(area);
+    body.appendChild(label);
+    body.appendChild(div('hint', '改行は、そのままバルーンの改行になります。'));
+    N.Dialog.modal('セリフを広げて書く', body, [{ label: '閉じる' }], {
+      onClose: () => Model.pushUndo(snap),
+      noUndo: true,
+    });
+    area.focus();
   }
 
   function buildSelect(options, current, onPick) {
@@ -128,7 +186,11 @@
           input.value = owner[name] || '';
           fitInput(input);
           input.addEventListener('focus', beginEdit);
-          input.addEventListener('input', () => { fitInput(input); owner[name] = input.value; });
+          input.addEventListener('input', () => {
+            fitInput(input);
+            owner[name] = input.value;
+            N.App && N.App.onLiveEdit && N.App.onLiveEdit();
+          });
           input.addEventListener('change', () => endEdit(true));
           input.addEventListener('blur', () => endEdit(false));
           input.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -388,6 +450,10 @@
     for (const entry of entries) {
       if (typeof entry === 'object' && entry.note) {
         container.appendChild(div('palette-note', entry.note));
+        continue;
+      }
+      if (typeof entry === 'object' && entry.heading) {
+        container.appendChild(div('palette-group-title', entry.heading));
         continue;
       }
       if (typeof entry === 'object' && entry.button) {

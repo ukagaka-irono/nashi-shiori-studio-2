@@ -44,7 +44,7 @@
       "kind": "event",
       "event": "OnCommunicate",
       "x": 60,
-      "y": 300,
+      "y": 214,
       "_": "条件なし。上のどれにも当てはまらないときに使われます",
       "blocks": [
         {
@@ -75,7 +75,7 @@
       "id": "o_start",
       "kind": "event",
       "event": "OnMouseDoubleClick",
-      "x": 560,
+      "x": 761,
       "y": 40,
       "_": "こちらから話しかける。相手の名前は、その子の本体（\\0）の名前です",
       "blocks": [
@@ -97,8 +97,8 @@
       "id": "o_changed",
       "kind": "event",
       "event": "OnGhostChanged",
-      "x": 560,
-      "y": 300,
+      "x": 761,
+      "y": 206,
       "blocks": [
         {
           "type": "say",
@@ -120,8 +120,8 @@
       "kind": "talk",
       "name": "ひとりごと",
       "weight": 1,
-      "x": 560,
-      "y": 560,
+      "x": 761,
+      "y": 346,
       "blocks": [
         {
           "type": "say",

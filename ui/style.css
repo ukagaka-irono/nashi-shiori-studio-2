@@ -73,9 +73,14 @@ button, input, select, textarea { font-family: inherit; }
 
 /* ------------------------------------------------------------ palette */
 #palette {
-  width: var(--palette-w); flex: 0 0 auto; display: flex;
+  width: var(--palette-w); flex: 0 0 auto; display: flex; position: relative;
   background: var(--panel); border-right: 1px solid var(--line); min-height: 0;
 }
+/* 右のふちをドラッグして、パレットの幅を変える */
+#palette-resize {
+  position: absolute; top: 0; right: -4px; width: 7px; height: 100%; cursor: col-resize; z-index: 5;
+}
+#palette-resize:hover, #palette-resize.is-dragging, #palette-resize:focus-visible { background: var(--line); outline: 0; }
 #cat-list {
   width: 66px; flex: 0 0 auto; overflow-y: auto; padding: 6px 0;
   border-right: 1px solid var(--line); background: #fbfcfe;
@@ -275,6 +280,9 @@ button, input, select, textarea { font-family: inherit; }
   width: 20px; height: 20px; font-size: 13px; line-height: 1; cursor: pointer; padding: 0;
 }
 .blk-btn:hover { background: rgba(0,0,0,.3); }
+/* セリフの欄の中、右はしの「広げて書く」 */
+.blk-expand { margin-right: 1px; color: #2b3a4d; }   /* 白い欄の中なので、欄の文字と同じ色 */
+.slot input[readonly] { cursor: pointer; }
 .branch-label { font-size: 11px; opacity: .85; font-weight: 700; }
 
 /* drag layer */
@@ -305,6 +313,7 @@ button, input, select, textarea { font-family: inherit; }
 .panel-head:first-child { margin-top: 0; }
 .panel-head h2 { font-size: 13px; margin: 0 0 3px; color: #33455c; }
 .hint { font-size: 11.5px; color: #7c8b9e; line-height: 1.6; margin: 0; }
+.hint.result-note { margin-top: 8px; }   /* 書き出しの結果の下に足す説明 */
 
 .field { display: block; margin-bottom: 9px; }
 .field > span { display: block; font-size: 11.5px; color: #6b7b8f; margin-bottom: 3px; }
@@ -465,9 +474,6 @@ button, input, select, textarea { font-family: inherit; }
 .export-result { margin-top: 10px; font-size: 12px; line-height: 1.7; word-break: break-all; }
 .export-result code { background: #f1f5fa; padding: 1px 5px; border-radius: 4px; }
 .help-list { margin: 0; padding-left: 20px; font-size: 12.5px; line-height: 1.9; color: #4b5b70; }
-.key-table { width: 100%; font-size: 12px; border-collapse: collapse; }
-.key-table td { padding: 4px 6px; border-bottom: 1px solid #eef2f7; color: #4b5b70; }
-.key-table td:first-child { font-family: Consolas, monospace; color: #6b7b8f; width: 45%; }
 .help-cats { display: flex; flex-direction: column; gap: 4px; }
 .help-cat { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #4b5b70; }
 .help-cat i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
@@ -552,11 +558,10 @@ button, input, select, textarea { font-family: inherit; }
 .anim-pat { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .anim-pat .field.row { margin: 0; }
 .anim-pat .field.row input { width: 6em; }
-.help-keys { margin: 0 10px 12px; padding-left: 20px; line-height: 1.9; font-size: 12px; }
-.help-keys b {
-  display: inline-block; min-width: 92px; font-weight: 600;
-  font-family: Consolas, monospace;
-}
+/* キーと、することの 2 列 */
+.help-keys { margin: 0 0 12px; padding: 0; list-style: none; line-height: 1.7; font-size: 12px; color: #4b5b70; }
+.help-keys li { display: grid; grid-template-columns: 9.5em 1fr; gap: 8px; padding: 1px 0; }
+.help-keys b { font-weight: 600; font-family: Consolas, monospace; }
 .ghost-log {
   margin: 0 10px 10px; padding: 8px 10px; max-height: 180px; overflow: auto;
   background: var(--panel-2, #f4f4f8); border-radius: 8px;

@@ -270,7 +270,8 @@ window.NASHI = window.NASHI || {};
     spec: '%who が %text と話す %nl',
     args: {
       who: { kind: 'dropdown', options: WHO, def: 0 },
-      text: { kind: 'input', mode: 'text', def: 'こんにちは。', long: true },
+      // expand … 横に「広げて書く」ボタンを付ける（何行にもわたるセリフを書く窓）
+      text: { kind: 'input', mode: 'text', def: 'こんにちは。', long: true, expand: true },
       nl: { kind: 'dropdown', options: YESNO_NL, def: 1 },
     },
   });
@@ -735,9 +736,13 @@ window.NASHI = window.NASHI || {};
     talk: ['say', 'newline', 'click_wait', 'clear', 'choice', 'choice_event', 'link',
       'font_style', 'font_color', 'font_size', 'font_default', 'communicate', 'raw'],
     looks: ['surface', 'chara', 'anim', 'balloon', 'dressup', 'sound', 'bgm', 'sound_stop', 'alpha', 'move'],
-    control: ['wait', 'if', 'if_else', 'repeat', 'while', 'random_one', 'call',
-      'call_group', 'talk_interval', 'ask', 'ask_kind', 'property_get', 'later', 'raise', 'update', 'saori_call',
-      'open_browser', 'end', 'close', 'change_ghost'],
+    // { heading } … パレットの小見出し（ブロックが多いカテゴリを、探しやすく分ける）
+    control: [
+      { heading: '流れ' }, 'wait', 'if', 'if_else', 'repeat', 'while', 'random_one', 'end',
+      { heading: 'トークのよび出し' }, 'call', 'call_group', 'later', 'talk_interval', 'raise',
+      { heading: '質問' }, 'ask', 'ask_kind', 'property_get',
+      { heading: 'ゴーストと SSP' }, 'update', 'open_browser', 'change_ghost', 'close', 'saori_call',
+    ],
     variables: [{ button: 'add-var', label: '＋ 変数をつくる' }, '@vars', 'set', 'change'],
     operators: ['arith#+', 'arith#-', 'arith#*', 'arith#/', 'arith#%',
       'compare#<', 'compare#=', 'compare#>', 'compare#!=',

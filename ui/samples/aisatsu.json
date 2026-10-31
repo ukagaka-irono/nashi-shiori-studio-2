@@ -19,20 +19,20 @@
       ]
     },
     {
-      "id": "a_boot", "kind": "event", "event": "OnBoot", "x": 60, "y": 240,
+      "id": "a_boot", "kind": "event", "event": "OnBoot", "x": 60, "y": 248,
       "blocks": [
         { "type": "surface", "who": 0, "id": 1 },
         { "type": "say", "who": 0, "text": "おかえりなさい。", "nl": 1 }
       ]
     },
     {
-      "id": "a_close", "kind": "event", "event": "OnClose", "x": 60, "y": 420,
+      "id": "a_close", "kind": "event", "event": "OnClose", "x": 60, "y": 414,
       "blocks": [
         { "type": "say", "who": 0, "text": "またね。", "nl": 1 }
       ]
     },
     {
-      "id": "a_click", "kind": "event", "event": "OnMouseDoubleClick", "x": 480, "y": 40,
+      "id": "a_click", "kind": "event", "event": "OnMouseDoubleClick", "x": 533, "y": 40,
       "blocks": [
         { "type": "random_one", "branches": [
           [{ "type": "say", "who": 0, "text": "なあに？", "nl": 1 }],
@@ -42,13 +42,13 @@
       ]
     },
     {
-      "id": "a_talk1", "kind": "talk", "name": "そらの話", "weight": 1, "x": 480, "y": 300,
+      "id": "a_talk1", "kind": "talk", "name": "そらの話", "weight": 1, "x": 533, "y": 376,
       "blocks": [
         { "type": "say", "who": 0, "text": "そとは いい天気かなあ。", "nl": 1 }
       ]
     },
     {
-      "id": "a_talk2", "kind": "talk", "name": "おちゃの話", "weight": 1, "x": 480, "y": 440,
+      "id": "a_talk2", "kind": "talk", "name": "おちゃの話", "weight": 1, "x": 533, "y": 500,
       "blocks": [
         { "type": "say", "who": 0, "text": "おちゃでも いれようか。", "nl": 1 }
       ]

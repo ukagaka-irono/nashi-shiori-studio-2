@@ -58,6 +58,11 @@ static std::string Line(const char* key, const std::string& value) {
     return std::string(key) + "," + v + "\r\n";
 }
 
+// シェルの descript.txt / surfaces.txt の 2 行目に入れる目印。これがあるファイルは、スタジオが
+// 書いたものとして、次の書き出しで書き直す（無いものは手で直したものとして残す）。
+static const char kStudioMark[] =
+    "// なしスタジオ 2 が書きました。書き出すたびに書き直します。手で直して残すときは、この行を消してください。\r\n";
+
 // -------------------------------------------------------- 仮シェルの生成
 
 static const Rgb kSkin = { 255, 232, 216 };
@@ -357,6 +362,40 @@ static const JValue& ShellImageCollisions(const JValue& project, int surfaceId) 
     return JValue::Null();
 }
 
+// えらんである絵のうち読めないもの。書き出しは読めない絵を黙って飛ばす（表情は仮の立ち絵に
+// もどる）ので、どれが抜けたかをここで集めて、画面に知らせる。同じパスは 1 回だけ。
+std::vector<std::string> MissingShellImages(const JValue& project) {
+    std::vector<std::string> paths, out;
+    const JValue& images = project["shell"]["images"];
+    for (size_t i = 0; i < images.size(); i++) {
+        const JValue& one = images.at(i);
+        if (!one["path"].asStr().empty()) paths.push_back(one["path"].asStr());
+        const JValue& layers = one["layers"];
+        for (size_t k = 0; k < layers.size(); k++) paths.push_back(layers.at(k)["path"].asStr());
+    }
+    const char* who[2] = { "0", "1" };
+    for (int c = 0; c < 2; c++) {
+        const JValue& base = project["shell"]["base"][who[c]];
+        for (size_t k = 0; k < base.size(); k++) paths.push_back(base.at(k)["path"].asStr());
+    }
+    const JValue& parts = project["dressup"]["parts"];
+    for (size_t i = 0; i < parts.size(); i++) paths.push_back(parts.at(i)["path"].asStr());
+
+    for (size_t i = 0; i < paths.size(); i++) {
+        const std::string& path = paths[i];
+        bool seen = path.empty();
+        for (size_t k = 0; k < i && !seen; k++) seen = paths[k] == path;
+        if (seen) continue;
+        std::string data;
+        int w = 0, h = 0;
+        if (!IsLocalPath(Utf8ToWide(path)) ||
+            !ReadBinaryFile(Utf8ToWide(path), data) || !PngSize(data, &w, &h)) {
+            out.push_back(path);
+        }
+    }
+    return out;
+}
+
 // 着せ替え（MAYUNA）。部品ごとに
 //   ・絵を shell/master/dress<ID>.png に入れ、それだけを描く surface<10000+ID> を作る
 //   ・そのキャラのすべての表情に、animation<ID>.interval,bind と pattern0,add を足す（surface.append）
@@ -592,7 +631,7 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
     OutFile d;
     d.name = "shell/master/descript.txt";
     d.shell = true;
-    d.data = Line("charset", "UTF-8") + Line("type", "shell") + Line("name", "master") +
+    d.data = Line("charset", "UTF-8") + kStudioMark + Line("type", "shell") + Line("name", "master") +
              Line("craftman", meta["craftman"].asStr("nashi")) +
              Line("seriko.use_self_alpha", "1") +
              Line("seriko.alignmenttodesktop", "bottom") +
@@ -603,7 +642,7 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
     OutFile s;
     s.name = "shell/master/surfaces.txt";
     s.shell = true;
-    s.data = "charset,UTF-8\r\n\r\ndescript\r\n{\r\nversion,1\r\n}\r\n\r\n";
+    s.data = std::string("charset,UTF-8\r\n") + kStudioMark + "\r\ndescript\r\n{\r\nversion,1\r\n}\r\n\r\n";
     std::vector<int> surfaceIds;
     for (size_t i = 0; i < list.size(); i++) {
         surfaceIds.push_back(list[i].id);
@@ -953,6 +992,7 @@ ExportResult ExportToDir(const JValue& project, const std::wstring& outDir, cons
     std::vector<OutFile> files = BuildGhostFiles(project, dll, includeShell, &folder);
     r.folder = folder;
     r.root = PathJoin(outDir, Utf8ToWide(folder));
+    if (includeShell) r.missing = MissingShellImages(project);
 
     // フォルダ名が同じ別のゴーストを、まるごと上書きしてしまわないように
     if (!allowForeign && HasForeignGhost(r.root)) {
@@ -972,14 +1012,18 @@ ExportResult ExportToDir(const JValue& project, const std::wstring& outDir, cons
             if (rel[k] == L'/') rel[k] = L'\\';
         }
         std::wstring dest = PathJoin(r.root, rel);
-        if (files[i].shell && PathExists(dest) && !overwriteShell) {
-            r.skipped.push_back(files[i].name);
+        // 中身が同じなら書かない（SSP が読みこんでいる nashi.dll は差しかえられないため）。
+        // 同じものは「残した」とも言わない（前と同じ自動の立ち絵を、毎回知らせないように）。
+        std::string current;
+        bool exists = PathExists(dest) && ReadBinaryFile(dest, current);
+        if (exists && current == files[i].data) {
+            r.written.push_back(files[i].name);
             continue;
         }
-        // 中身が同じなら書かない（SSP が読みこんでいる nashi.dll は差しかえられないため）
-        std::string current;
-        if (PathExists(dest) && ReadBinaryFile(dest, current) && current == files[i].data) {
-            r.written.push_back(files[i].name);
+        // すでにあるシェルは、スタジオの目印が入っているもの（前にここから書いたもの）だけ書き直す
+        if (files[i].shell && exists && !overwriteShell &&
+            current.substr(0, 512).find(kStudioMark) == std::string::npos) {
+            r.skipped.push_back(files[i].name);
             continue;
         }
         if (!WriteBinaryFile(dest, files[i].data)) {
@@ -987,6 +1031,7 @@ ExportResult ExportToDir(const JValue& project, const std::wstring& outDir, cons
             return r;
         }
         r.written.push_back(files[i].name);
+        r.changed.push_back(files[i].name);
     }
 
     // 「更新のありか」を決めているゴーストには、照合表も置く。
@@ -1008,6 +1053,7 @@ ExportResult ExportToNar(const JValue& project, const std::wstring& outDir, cons
     std::string folder;
     std::vector<OutFile> files = BuildGhostFiles(project, dll, includeShell, &folder);
     r.folder = folder;
+    if (includeShell) r.missing = MissingShellImages(project);
 
     std::vector<ZipEntry> entries;
     for (size_t i = 0; i < files.size(); i++) {

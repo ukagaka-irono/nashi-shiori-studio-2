@@ -31,6 +31,12 @@ static void JsonError(HttpResponse& res, int status, const std::string& message)
 
 static JValue ReadConfig(const std::wstring& path);
 
+static JValue StrArray(const std::vector<std::string>& list) {
+    JValue a = JValue::makeArr();
+    for (size_t i = 0; i < list.size(); i++) a.arr.push_back(JValue::makeStr(list[i]));
+    return a;
+}
+
 // 書き出し先に別のゴーストがあったとき。画面はこれを見て、確かめてから呼びなおす。
 static void ForeignError(HttpResponse& res, const ExportResult& r) {
     JValue o = JValue::makeObj();
@@ -429,6 +435,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         JValue skipped = JValue::makeArr();
         for (size_t i = 0; i < r.skipped.size(); i++) skipped.arr.push_back(JValue::makeStr(r.skipped[i]));
         o.set("skipped", skipped);
+        o.set("missing", StrArray(r.missing));
         Json(res, 200, o);
         return;
     }
@@ -696,10 +703,20 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
             bool already = !ssp.ghostName.empty() &&
                            (ssp.ghostName == name ||
                             ssp.ghostName == project["meta"]["sakuraName"].asStr());
+            // 動いているゴーストなら、書きかえたところだけ読み直させる。栞はいつも。
+            // シェル（立ち絵・当たり判定・着せ替え）やバルーンを書きかえたら、それも。
+            std::string reload = "\\![reload,shiori]";
+            bool shell = false, balloon = false;
+            for (size_t i = 0; i < r.changed.size(); i++) {
+                if (r.changed[i].compare(0, 6, "shell/") == 0) shell = true;
+                if (r.changed[i].compare(0, 8, "balloon/") == 0) balloon = true;
+            }
+            if (shell) reload += "\\![reload,shell]";
+            if (balloon) reload += "\\![reload,balloon]";
             SstpResult sent = already
-                ? SstpSend("\\![reload,shiori]", "なしスタジオ 2")
+                ? SstpSend(reload, "なしスタジオ 2")
                 : SstpSend("\\![change,ghost," + name + "]", "なしスタジオ 2");
-            if (sent.ok) action = already ? "reload" : "change";
+            if (sent.ok) action = already ? (shell || balloon ? "reload-shell" : "reload") : "change";
             else action = "failed";
         }
 
@@ -707,7 +724,9 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         o.set("root", JValue::makeStr(WideToUtf8(r.root)));
         o.set("folder", JValue::makeStr(r.folder));
         o.set("files", JValue::makeNum((double)r.written.size()));
-        o.set("skipped", JValue::makeNum((double)r.skipped.size()));
+        o.set("skipped", StrArray(r.skipped));
+        o.set("changed", StrArray(r.changed));
+        o.set("missing", StrArray(r.missing));
         o.set("action", JValue::makeStr(action));
         o.set("ssp", SspToJson(ssp));
         Json(res, 200, o);

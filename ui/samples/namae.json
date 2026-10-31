@@ -49,7 +49,7 @@
       "kind": "event",
       "event": "OnUserInput",
       "x": 60,
-      "y": 280,
+      "y": 248,
       "_": "答えは栞が変数に入れてくれるので、ここではお礼を言うだけ",
       "blocks": [
         {
@@ -76,7 +76,7 @@
       "id": "n_boot",
       "kind": "event",
       "event": "OnBoot",
-      "x": 560,
+      "x": 761,
       "y": 40,
       "blocks": [
         {
@@ -120,8 +120,8 @@
       "id": "n_again",
       "kind": "event",
       "event": "OnMouseDoubleClick",
-      "x": 560,
-      "y": 360,
+      "x": 761,
+      "y": 320,
       "blocks": [
         {
           "type": "say",
@@ -145,8 +145,8 @@
       "id": "n_ask",
       "kind": "function",
       "name": "きく",
-      "x": 560,
-      "y": 560,
+      "x": 761,
+      "y": 528,
       "blocks": [
         {
           "type": "say",
@@ -165,8 +165,8 @@
       "id": "n_no",
       "kind": "function",
       "name": "やめる",
-      "x": 560,
-      "y": 740,
+      "x": 761,
+      "y": 694,
       "blocks": [
         {
           "type": "say",
@@ -182,7 +182,7 @@
       "name": "よびかけ",
       "weight": 1,
       "x": 60,
-      "y": 560,
+      "y": 430,
       "blocks": [
         {
           "type": "if_else",

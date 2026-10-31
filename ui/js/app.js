@@ -29,7 +29,8 @@
     t.classList.toggle('error', !!isError);
     t.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+    // うまくいかなかった知らせは、読みおわる前に消えないよう長めに出す
+    toastTimer = setTimeout(() => t.classList.remove('show'), isError ? 6000 : 2600);
   };
 
   async function api(path, options) {
@@ -76,9 +77,41 @@
     else setTimeout(run, 50);
   }
 
+  /**
+   * キャンバスの中で打っていた欄を覚えておく。欄を書きおえると描き直しになり、
+   * Tab で移った先の欄も作り直されるので、描き直したあとに同じ欄へもどす。
+   */
+  function rememberCanvasFocus(canvas) {
+    const el = document.activeElement;
+    if (!el || !canvas.contains(el) || !/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(el.tagName)) return null;
+    const all = [...canvas.querySelectorAll('input, select, textarea, button')];
+    const p = el.parentNode;
+    return {
+      index: all.indexOf(el), count: all.length,
+      owner: p && p._slotOwner, arg: p && p._slotArg,
+      start: el.selectionStart, end: el.selectionEnd,
+    };
+  }
+  function restoreCanvasFocus(canvas, f) {
+    if (!f) return;
+    const all = [...canvas.querySelectorAll('input, select, textarea, button')];
+    let el = null;
+    // 入力スロットは、持ち主のブロックと引数で探す（ブロックが増えたり減ったりしても当たる）
+    if (f.owner) el = all.find((e) => e.parentNode._slotOwner === f.owner && e.parentNode._slotArg === f.arg);
+    else if (all.length === f.count) el = all[f.index];
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    if (typeof f.start === 'number' && el.setSelectionRange) {
+      try { el.setSelectionRange(f.start, f.end); } catch { /* 文字の欄ではない */ }
+    }
+  }
+
   function renderAll() {
     const project = Model.project;
+    const focus = rememberCanvasFocus($('#canvas'));
     Render.renderWorkspace($('#canvas'), project);
+    restoreCanvasFocus($('#canvas'), focus);
+    N.Drag.reselect($('#canvas'));
     Render.renderPalette($('#palette-blocks'), App.category, project);
     $('#canvas-hint').style.display = project.scripts.length ? 'none' : '';
     renderVarList();
@@ -108,7 +141,10 @@
     return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   }
 
+  // 入力欄に打っている最中に呼ばれる。ここで「保存していない」にしておくと、
+  // 欄から離れる前に閉じたり自動保存が走ったりしても、打ったものが残る。
   App.onLiveEdit = function () {
+    Model.dirty = true;
     updateTitle();
   };
 
@@ -472,11 +508,85 @@
     menu.classList.add('open');
   }
 
+  /**
+   * コピーしたブロックを、キャンバスの空いた場所に新しいかたまりとして置く。
+   * at が無ければ、さいごに押した空いた場所、それも無ければ見えている左上あたり。
+   */
+  App.pasteOnCanvas = function (at) {
+    if (!App.clipboard) { App.toast('コピーしたブロックがありません', true); return; }
+    const ws = $('#workspace');
+    const p = at || N.Drag.D.lastPoint ||
+      { x: ws.scrollLeft / App.zoom + 40, y: ws.scrollTop / App.zoom + 40 };
+    Model.act(() => {
+      Model.project.scripts.push({
+        id: Model.uid('s'), kind: 'loose', blocks: [Model.clone(App.clipboard)],
+        x: Math.max(0, Math.round(p.x)), y: Math.max(0, Math.round(p.y)),
+      });
+    });
+    App.toast('はりつけました');
+  };
+
+  // ------------------------------------------------------- パレットの幅
+  // 右のふちをドラッグで広げる・せばめる。幅はこのパソコンに覚えておく（読めなくても困らない）。
+  const PALETTE_W = { def: 252, min: 200, max: 560, key: 'nashi.paletteWidth' };
+  function setPaletteWidth(w) {
+    w = Math.max(PALETTE_W.min, Math.min(PALETTE_W.max, Math.round(w)));
+    document.documentElement.style.setProperty('--palette-w', w + 'px');
+    $('#palette-resize').setAttribute('aria-valuenow', String(w));   // 読み上げにもいまの幅を伝える
+    return w;
+  }
+  function setupPaletteResize() {
+    try {
+      const saved = Number(localStorage.getItem(PALETTE_W.key));
+      if (saved) setPaletteWidth(saved);
+    } catch { /* 覚えておけない環境では、いつもの幅 */ }
+    const save = (w) => { try { localStorage.setItem(PALETTE_W.key, String(w)); } catch { /* なし */ } };
+    const handle = $('#palette-resize');
+    handle.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const left = $('#palette').getBoundingClientRect().left;
+      handle.setPointerCapture(e.pointerId);
+      handle.classList.add('is-dragging');
+      const move = (ev) => setPaletteWidth(ev.clientX - left);
+      const up = (ev) => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', up);
+        handle.classList.remove('is-dragging');
+        save(setPaletteWidth(ev.clientX - left));
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up);
+    });
+    handle.addEventListener('dblclick', () => save(setPaletteWidth(PALETTE_W.def)));
+    // キーボードでも: ← → で 20px ずつ、Home でもとの幅
+    handle.addEventListener('keydown', (e) => {
+      const now = $('#palette').offsetWidth;
+      let w = null;
+      if (e.key === 'ArrowLeft') w = now - 20;
+      else if (e.key === 'ArrowRight') w = now + 20;
+      else if (e.key === 'Home') w = PALETTE_W.def;
+      if (w == null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      save(setPaletteWidth(w));
+    });
+  }
+
   function setupContextMenu() {
     document.addEventListener('contextmenu', (e) => {
       const hat = e.target.closest('#canvas .blk.hat');
       const blk = e.target.closest('#canvas .blk');
       const scriptEl = e.target.closest('#canvas .script');
+      if (!scriptEl && e.target.closest('#canvas') && App.clipboard) {
+        // 空いた場所: コピーしたブロックがあれば、そこへはりつけられる
+        e.preventDefault();
+        const at = N.Drag.toCanvas(e.clientX, e.clientY);
+        openContextMenu(e.clientX, e.clientY, [
+          { label: 'ここにはりつける', run: () => App.pasteOnCanvas(at) },
+        ]);
+        return;
+      }
       if (!scriptEl) { App.closeContextMenu(); return; }
       e.preventDefault();
 
@@ -538,6 +648,8 @@
     const sh = Model.project.shell;
     setVal('#ghost-name', m.name);
     setVal('#meta-name', m.name);
+    setVal('#meta-folder', m.folder || '');
+    $('#meta-folder').placeholder = m.name || '';
     setVal('#meta-sakura', m.sakuraName);
     setVal('#meta-kero', m.keroName);
     setVal('#meta-craftman', m.craftman);
@@ -576,16 +688,18 @@
         Model.pushUndo(snap);
         snap = null;
       });
-      if (onLive) {
-        // 色を動かしている最中もそのまま描き直す（元にもどす記録は change のときだけ）
-        el.addEventListener('input', () => {
-          apply(el.type === 'checkbox' ? el.checked : el.value);
-          onLive();
-        });
-      }
+      // 打っている最中もプロジェクトに入れて「保存していない」にする。
+      // 欄から離れる前にウィンドウを閉じても、書いたものが消えないように（元にもどす記録は change のときだけ）。
+      // 色を動かしている最中は、そのまま描き直す。
+      el.addEventListener('input', () => {
+        apply(el.type === 'checkbox' ? el.checked : el.value);
+        if (onLive) onLive();
+        App.onLiveEdit();
+      });
     };
     bind('#ghost-name', (v) => { Model.project.meta.name = v; });
     bind('#meta-name', (v) => { Model.project.meta.name = v; });
+    bind('#meta-folder', (v) => { Model.project.meta.folder = v.trim(); });
     bind('#meta-sakura', (v) => { Model.project.meta.sakuraName = v; });
     bind('#meta-kero', (v) => { Model.project.meta.keroName = v; });
     bind('#meta-craftman', (v) => { Model.project.meta.craftman = v; });
@@ -617,6 +731,7 @@
     renderCategories();
     bindMeta();
     setupContextMenu();
+    setupPaletteResize();
 
     N.Drag.init({
       workspace: $('#workspace'),
@@ -645,29 +760,41 @@
     }
 
     let loaded = null;
+    let lostLast = '';
     if (state && state.lastProject) {
-      try { loaded = await api('/api/project?name=' + encodeURIComponent(state.lastProject)); } catch { /* 新規 */ }
+      try {
+        loaded = await api('/api/project?name=' + encodeURIComponent(state.lastProject));
+      } catch {
+        lostLast = state.lastProject;   // 消えた・動いた。黙ってお手本にすると、作ったものが消えたように見える
+      }
     }
-    Model.init(loaded || sampleProject());
+    Model.init(loaded || Model.newProject());
     // 開いたファイルに上書き保存する（ゴーストの名前を変えても、別のファイルにはしない）
     App.projectName = loaded ? state.lastProject : '';
+    if (lostLast) {
+      App.toast(`前に開いていた「${lostLast}」を開けませんでした`, true);
+    }
     setZoom(1);
     switchTab('run');
     N.Shell.resetStage();
 
     // ---- ボタン類
-    $('#btn-new').addEventListener('click', () => {
-      if (Model.dirty && !confirm('保存していない変更があります。新しく作りますか？')) return;
-      Model.init(sampleProject());
-      App.projectName = '';
-      App.sessionVars = {};
-      App.toast('新しいゴーストを作りました');
-    });
+    $('#btn-new').addEventListener('click', () => N.Dialog.openSampleDialog(false));
     $('#btn-open').addEventListener('click', N.Dialog.openProjectDialog);
     $('#btn-save').addEventListener('click', () => N.Dialog.saveProject(false));
     $('#btn-undo').addEventListener('click', () => Model.undo());
     $('#btn-redo').addEventListener('click', () => Model.redo());
-    $('#btn-export').addEventListener('click', () => { switchTab('export'); N.Dialog.doExport('dir'); });
+    // いちばん大きいボタン: SSP に入れて動かす。SSP が見つからなければ、書き出しタブで場所をたずねる
+    // （フォルダや .nar への書き出しも、そのタブからできる）
+    $('#btn-export').addEventListener('click', async () => {
+      switchTab('export');
+      const ssp = await N.Ssp.refreshSsp();
+      if (ssp && ssp.ghostDir) { N.Ssp.installToSsp(); return; }
+      $('#ssp-path').focus();
+      App.toast(ssp && ssp.exe
+        ? 'SSP の ghost フォルダが見つかりません。ssp.exe の場所を確かめてください'
+        : 'SSP が見つかりません。ssp.exe の場所を入れてください', true);
+    });
     $('#btn-export-dir').addEventListener('click', () => N.Dialog.doExport('dir'));
     $('#btn-export-nar').addEventListener('click', () => N.Dialog.doExport('nar'));
     $('#btn-add-var').addEventListener('click', () => App.promptNewVariable());
@@ -699,6 +826,7 @@
     $('#btn-import').addEventListener('click', async () => {
       const p = $('#import-path').value.trim();
       if (!p) return;
+      if (Model.dirty && !confirm('保存していない変更があります。読み込みますか？')) return;
       try {
         const r = await api('/api/import', { method: 'POST', body: { path: p } });
         Model.init(r.project);
@@ -755,7 +883,13 @@
     // ---- キーボード
     document.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+      // ダイアログを開いているあいだは、うしろのキャンバスのブロックを消したりはりつけたりしない。
+      // 保存と「もとに戻す」だけは効かせる（当たり判定の編集などは、戻すとダイアログも追いかける）。
+      const modalOpen = $('#modal-root').classList.contains('open');
+      if (modalOpen && e.key === 'Escape') { e.preventDefault(); N.Dialog.closeModal(); return; }
       if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); N.Dialog.saveProject(false); return; }
+      // ダイアログの欄に打っているときの Ctrl+Z は、欄の文字を戻す（プロジェクトは戻さない）
+      if (modalOpen && (typing || N.Dialog.modalBlocksUndo() || !(e.ctrlKey && /^[zy]$/i.test(e.key)))) return;
       if (e.ctrlKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         switchTab('search');
@@ -785,11 +919,9 @@
       }
       if (e.ctrlKey && key === 'v') {
         if (!App.clipboard) { App.toast('コピーしたブロックがありません', true); return; }
-        if (!sel || !Array.isArray(sel.stack)) {
-          App.toast('はりつける場所のブロックを、先にクリックしてください', true);
-          return;
-        }
         e.preventDefault();
+        // えらんだブロックが無い（または入れ子の中の値ブロック）なら、キャンバスの空いた場所へ
+        if (!sel || !Array.isArray(sel.stack)) { App.pasteOnCanvas(); return; }
         Model.act(() => { sel.stack.splice(sel.index + 1, 0, Model.clone(App.clipboard)); });
         App.toast('はりつけました');
         return;
@@ -825,59 +957,9 @@
     });
 
     setInterval(() => { if (Model.dirty) N.Dialog.saveProject(true); }, 60000);
-  }
 
-  // ------------------------------------------------------------ サンプル
-  function sampleProject() {
-    const p = Model.newProject();
-    p.meta.name = 'なしゴースト';
-    p.variables = [{ name: '好感度', value: 0 }];
-    p.scripts = [
-      {
-        id: 'sample_boot', kind: 'event', event: 'OnFirstBoot', x: 60, y: 40,
-        blocks: [
-          { type: 'surface', who: 0, id: 0 },
-          { type: 'say', who: 0, text: 'はじめまして。', nl: 1 },
-          { type: 'say', who: 1, text: 'よろしくね。', nl: 1 },
-        ],
-      },
-      {
-        id: 'sample_boot2', kind: 'event', event: 'OnBoot', x: 60, y: 260,
-        blocks: [
-          { type: 'change', name: '好感度', value: 1 },
-          { type: 'say', who: 0, text: 'おかえりなさい。', nl: 1 },
-        ],
-      },
-      {
-        id: 'sample_click', kind: 'event', event: 'OnMouseDoubleClick', x: 60, y: 440,
-        blocks: [
-          {
-            type: 'random_one',
-            branches: [
-              [{ type: 'say', who: 0, text: 'なあに？', nl: 1 }],
-              [{ type: 'say', who: 0, text: 'どうしたの？', nl: 1 }],
-            ],
-          },
-        ],
-      },
-      {
-        id: 'sample_nade', kind: 'event', event: 'OnNadeNade', area: 'Head', who: 0,
-        x: 60, y: 620,
-        blocks: [
-          { type: 'change', name: '好感度', value: 3 },
-          { type: 'surface', who: 0, id: 1 },
-          { type: 'say', who: 0, text: 'えへへ、くすぐったい。', nl: 1 },
-        ],
-      },
-      {
-        id: 'sample_talk', kind: 'talk', name: '天気の話', weight: 1, x: 480, y: 40,
-        blocks: [
-          { type: 'say', who: 0, text: 'いい天気だね。', nl: 1 },
-          { type: 'say', who: 1, text: 'そうだね。', nl: 1 },
-        ],
-      },
-    ];
-    return p;
+    // 開くものが無かったとき（はじめての起動など）は、はじめかたをえらんでもらう
+    if (!loaded) N.Dialog.openSampleDialog(true);
   }
 
   // ---------------------------------------------------- 分けた画面ファイルへ渡すもの

@@ -46,10 +46,12 @@
 
   // opts.wide … 絵を大きく見せたいときの広いダイアログ（当たり判定の編集など）
   // opts.onClose … どの閉じかたでも、閉じたあとに呼ぶ
+  // opts.noUndo … 開いているあいだは Ctrl+Z / Ctrl+Y でプロジェクトを戻さない（閉じるまで書きかけのもの）
   function modal(title, bodyEl, buttons, opts) {
     const root = $('#modal-root');
     root.textContent = '';
     modalOnClose = (opts && opts.onClose) || null;
+    modalNoUndo = !!(opts && opts.noUndo);
     const box = Render.div('modal' + (opts && opts.wide ? ' wide' : ''));
     box.appendChild(Render.el('h3', null, title));
     const body = Render.div('modal-body');
@@ -67,6 +69,8 @@
     root.onclick = (e) => { if (e.target === root) closeModal(); };
   }
   let modalOnClose = null;
+  let modalNoUndo = false;
+  function modalBlocksUndo() { return modalNoUndo && $('#modal-root').classList.contains('open'); }
   function closeModal() {
     $('#modal-root').classList.remove('open');
     const fn = modalOnClose;
@@ -97,6 +101,7 @@
       });
       row.appendChild(x);
       row.addEventListener('click', async () => {
+        if (Model.dirty && !confirm('保存していない変更があります。開きますか？')) return;
         try {
           const data = await api('/api/project?name=' + encodeURIComponent(p.file));
           Model.init(data);
@@ -109,23 +114,40 @@
       list.appendChild(row);
     }
     modal('プロジェクトを開く', list, [
-      { label: 'お手本から始める', run: () => setTimeout(openSampleDialog, 0) },
+      { label: 'あたらしく作る', run: () => setTimeout(openSampleDialog, 0) },
       { label: '閉じる' },
     ]);
   }
 
-  /** お手本ゴースト（exe に入っている見本）をひらく */
-  async function openSampleDialog() {
-    let index;
+  /**
+   * あたらしく作る: 空から、またはお手本ゴースト（exe に入っている見本）から。
+   * 「新規」ボタンと、はじめて起動したとき（first = true）に出す。
+   */
+  async function openSampleDialog(first) {
+    let index = [];
     try {
       index = await (await fetch('samples/index.json')).json();
     } catch (e) {
       App.toast('お手本を読めませんでした', true);
-      return;
     }
     const list = Render.div('');
-    list.appendChild(Render.div('hint',
-      'えらぶと、いまのプロジェクトを置きかえて開きます（保存していないものは消えます）。'));
+    list.appendChild(Render.div('hint', first
+      ? 'なしスタジオ 2 へようこそ。お手本をえらぶと、動くゴーストを見ながら、まねて作れます。'
+      : 'えらぶと、いまのプロジェクトを置きかえて開きます（保存していないものは消えます）。'));
+
+    const empty = Render.div('proj-row');
+    empty.appendChild(Render.div('t', '空からはじめる'));
+    empty.appendChild(Render.div('d', '何もないキャンバスから、自分で組みます。'));
+    empty.addEventListener('click', () => {
+      if (Model.dirty && !confirm('保存していない変更があります。新しく作りますか？')) return;
+      Model.init(Model.newProject());
+      App.projectName = '';
+      App.sessionVars = {};
+      closeModal();
+      App.toast('新しいゴーストを作りました');
+    });
+    list.appendChild(empty);
+
     for (const s of index) {
       const row = Render.div('proj-row');
       row.appendChild(Render.div('t', s.title));
@@ -143,7 +165,10 @@
       });
       list.appendChild(row);
     }
-    modal('お手本からはじめる', list, [{ label: '閉じる' }]);
+    const buttons = first
+      ? [{ label: 'プロジェクトを開く', run: () => setTimeout(openProjectDialog, 0) }, { label: '閉じる' }]
+      : [{ label: '閉じる' }];
+    modal('あたらしく作る', list, buttons);
   }
 
   // ------------------------------------------------------------- 書き出し
@@ -164,9 +189,78 @@
     }
   }
 
+  /**
+   * はじめて書き出したフォルダの名前を、プロジェクトに覚えておく。
+   * あとでゴースト名を変えても、同じフォルダ（SSP では同じゴースト）に入るように。
+   */
+  function rememberFolder(folder) {
+    if (!folder || Model.project.meta.folder) return;
+    Model.project.meta.folder = folder;
+    Model.dirty = true;
+    Model.emit();
+  }
+
+  /**
+   * えらんであるのに読めなかった絵の知らせ（書き出しと SSP に入れるの結果で使う）。
+   * 無ければ null。表情の絵は仮の立ち絵に、重ねる絵と着せ替えはその絵が抜けて書き出されている。
+   */
+  function missingNote(list) {
+    if (!list || !list.length) return null;
+    const box = Render.div('status-line status-ng');
+    const head = Render.div('');
+    head.innerHTML = `ファイルが見つからない絵が ${list.length} 枚あり、その絵は入れていません。` +
+      '<b>ゴースト</b>タブで、えらび直してください。';
+    box.appendChild(head);
+    for (const path of list) {
+      const row = Render.div('');
+      const name = Render.el('code', null, path.split(/[\\/]/).pop());
+      name.title = path;
+      row.appendChild(name);
+      box.appendChild(row);
+    }
+    return box;
+  }
+
+  /**
+   * すでにあったので書きかえなかったシェルのファイルの知らせ（書き出しと SSP に入れるの結果で使う）。
+   * 無ければ null。手で直したものを守ったので、まちがいではない（だから赤ではなく説明の字）。
+   */
+  function skippedNote(list) {
+    if (!list || !list.length) return null;
+    const box = Render.div('hint result-note');
+    box.appendChild(Render.div('', `すでにあったシェルのファイル ${list.length} 個は、そのまま残しました。` +
+      '書き直すときは「すでにあるシェルの絵も上書き」に印を付けてください。'));
+    for (const name of list) {
+      const row = Render.div('');
+      row.appendChild(Render.el('code', null, name));
+      box.appendChild(row);
+    }
+    return box;
+  }
+
+  /**
+   * チェックタブに ⛔（エラー）があれば、書き出す前に確かめる。やめたらチェックタブを開いて false。
+   * ⚠（注意）では止めない。ためしに動かしたいときもあるので、書き出しそのものは禁じない。
+   * question … 最後にたずねる文（「それでも書き出しますか？」など。押したボタンに合わせる）
+   */
+  function confirmIfErrors(question) {
+    const errors = N.Lint.run(Model.project).filter((i) => i.level === 'error');
+    if (!errors.length) return true;
+    const shown = errors.slice(0, 3).map((i) => '・' + i.message);
+    if (errors.length > 3) shown.push(`（ほかに ${errors.length - 3} つ）`);
+    const ok = confirm(`チェックタブに ⛔ が ${errors.length} つあります。\n${shown.join('\n')}\n\n` +
+      'このままだと、そこはうまく動きません。' + question);
+    if (!ok) App.switchTab('check');
+    return ok;
+  }
+
   async function doExport(mode) {
     const outDir = $('#export-dir').value.trim();
     const box = $('#export-result');
+    if (!confirmIfErrors(mode === 'nar' ? 'それでも .nar を作りますか？' : 'それでも書き出しますか？')) {
+      box.textContent = 'やめました。';
+      return;
+    }
     box.textContent = '書き出し中…';
     try {
       const r = await withForeignCheck((overwriteForeign) => api('/api/export', {
@@ -181,6 +275,7 @@
         },
       }));
       if (!r) { box.textContent = 'やめました。'; return; }
+      rememberFolder(r.folder);
       box.textContent = '';
       const p = Render.div('');
       if (mode === 'nar') {
@@ -188,13 +283,16 @@
           'SSP のウィンドウにドラッグ＆ドロップするとインストールできます。';
       } else {
         p.innerHTML = `<b>書き出しました</b><br><code>${escapeHtml(r.root)}</code><br>` +
-          `ファイル ${r.written.length} 個` +
-          (r.skipped.length ? `（既存のシェル ${r.skipped.length} 個はそのまま）` : '');
+          `ファイル ${r.written.length} 個`;
+        const kept = skippedNote(r.skipped);
+        if (kept) p.appendChild(kept);
       }
       if (!r.dll) {
         p.appendChild(Render.div('status-line status-ng',
           'nashi.dll が見つかりません。shiori\\build.ps1 を実行してから書き出し直してください。'));
       }
+      const lost = missingNote(r.missing);
+      if (lost) p.appendChild(lost);
       const open = Render.el('button', 'btn small', 'フォルダを開く');
       open.style.marginTop = '8px';
       open.addEventListener('click', () => api('/api/reveal', {
@@ -202,7 +300,8 @@
       }).catch(() => {}));
       p.appendChild(open);
       box.appendChild(p);
-      App.toast('書き出しました');
+      if (lost) App.toast(`書き出しました。見つからない絵が ${r.missing.length} 枚あります`, true);
+      else App.toast('書き出しました');
     } catch (e) {
       box.textContent = '';
       box.appendChild(Render.div('status-line status-ng', e.message));
@@ -211,6 +310,10 @@
   }
 
 
-  N.Dialog = { saveProject, openProjectDialog, openSampleDialog, doExport, withForeignCheck, modal, closeModal };
+  N.Dialog = {
+    saveProject, openProjectDialog, openSampleDialog, doExport, withForeignCheck, rememberFolder, missingNote,
+    confirmIfErrors, skippedNote,
+    modal, closeModal, modalBlocksUndo,
+  };
 
 })(window.NASHI);

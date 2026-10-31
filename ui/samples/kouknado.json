@@ -27,7 +27,7 @@
     },
     {
       "id": "k_nade", "kind": "event", "event": "OnNadeNade", "area": "Head", "who": 0,
-      "x": 60, "y": 300,
+      "x": 60, "y": 346,
       "blocks": [
         { "type": "change", "name": "好感度", "value": 1 },
         { "type": "surface", "who": 0, "id": 1 },
@@ -44,7 +44,7 @@
     },
     {
       "id": "k_bust", "kind": "event", "event": "OnNadeNade", "area": "Bust", "who": 0,
-      "x": 60, "y": 620,
+      "x": 60, "y": 694,
       "blocks": [
         { "type": "change", "name": "好感度", "value": -1 },
         { "type": "surface", "who": 0, "id": 2 },
@@ -52,7 +52,7 @@
       ]
     },
     {
-      "id": "k_talk", "kind": "talk", "name": "いまの気もち", "weight": 2, "x": 560, "y": 40,
+      "id": "k_talk", "kind": "talk", "name": "いまの気もち", "weight": 2, "x": 514, "y": 40,
       "blocks": [
         { "type": "if_else",
           "cond": { "type": "compare", "op": ">",
@@ -66,7 +66,7 @@
       ]
     },
     {
-      "id": "k_show", "kind": "talk", "name": "好感度をいう", "weight": 1, "x": 560, "y": 320,
+      "id": "k_show", "kind": "talk", "name": "好感度をいう", "weight": 1, "x": 514, "y": 304,
       "blocks": [
         { "type": "say", "who": 0, "nl": 1,
           "text": { "type": "join", "a": "いまの好感度は ",
