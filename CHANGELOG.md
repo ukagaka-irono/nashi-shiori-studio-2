@@ -137,6 +137,9 @@
 * 更新の照合表（`updates2.dau`）に、ジャンクションの先のファイルや SSP の `profile` を入れません。
 * GitHub Actions: タグの名前をスクリプトに直接はめこまないようにし、使うアクションを
   コミットで固定しました。公開ずみの Release の中身は、タグを押しなおしても差しかえません。
+  アクションは Node.js 24 で動く版（checkout 7 / setup-node 7 / upload-artifact 7 /
+  download-artifact 8）に上げ、テストを走らせる Node も 24 にしました
+  （Node.js 20 向けの版は、GitHub で使えなくなっていくため）。
 
 ### もとのプロジェクトで、まだリリースされていなかったもの
 
