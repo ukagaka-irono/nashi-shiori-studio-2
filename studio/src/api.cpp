@@ -31,6 +31,12 @@ static void JsonError(HttpResponse& res, int status, const std::string& message)
 
 static JValue ReadConfig(const std::wstring& path);
 
+static JValue StrArray(const std::vector<std::string>& list) {
+    JValue a = JValue::makeArr();
+    for (size_t i = 0; i < list.size(); i++) a.arr.push_back(JValue::makeStr(list[i]));
+    return a;
+}
+
 // 書き出し先に別のゴーストがあったとき。画面はこれを見て、確かめてから呼びなおす。
 static void ForeignError(HttpResponse& res, const ExportResult& r) {
     JValue o = JValue::makeObj();
@@ -429,6 +435,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         JValue skipped = JValue::makeArr();
         for (size_t i = 0; i < r.skipped.size(); i++) skipped.arr.push_back(JValue::makeStr(r.skipped[i]));
         o.set("skipped", skipped);
+        o.set("missing", StrArray(r.missing));
         Json(res, 200, o);
         return;
     }
@@ -708,6 +715,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         o.set("folder", JValue::makeStr(r.folder));
         o.set("files", JValue::makeNum((double)r.written.size()));
         o.set("skipped", JValue::makeNum((double)r.skipped.size()));
+        o.set("missing", StrArray(r.missing));
         o.set("action", JValue::makeStr(action));
         o.set("ssp", SspToJson(ssp));
         Json(res, 200, o);

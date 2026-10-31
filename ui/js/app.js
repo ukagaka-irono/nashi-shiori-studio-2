@@ -29,7 +29,8 @@
     t.classList.toggle('error', !!isError);
     t.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+    // うまくいかなかった知らせは、読みおわる前に消えないよう長めに出す
+    toastTimer = setTimeout(() => t.classList.remove('show'), isError ? 6000 : 2600);
   };
 
   async function api(path, options) {
@@ -79,6 +80,7 @@
   function renderAll() {
     const project = Model.project;
     Render.renderWorkspace($('#canvas'), project);
+    N.Drag.reselect($('#canvas'));
     Render.renderPalette($('#palette-blocks'), App.category, project);
     $('#canvas-hint').style.display = project.scripts.length ? 'none' : '';
     renderVarList();
@@ -108,7 +110,10 @@
     return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   }
 
+  // 入力欄に打っている最中に呼ばれる。ここで「保存していない」にしておくと、
+  // 欄から離れる前に閉じたり自動保存が走ったりしても、打ったものが残る。
   App.onLiveEdit = function () {
+    Model.dirty = true;
     updateTitle();
   };
 
@@ -538,6 +543,8 @@
     const sh = Model.project.shell;
     setVal('#ghost-name', m.name);
     setVal('#meta-name', m.name);
+    setVal('#meta-folder', m.folder || '');
+    $('#meta-folder').placeholder = m.name || '';
     setVal('#meta-sakura', m.sakuraName);
     setVal('#meta-kero', m.keroName);
     setVal('#meta-craftman', m.craftman);
@@ -576,16 +583,18 @@
         Model.pushUndo(snap);
         snap = null;
       });
-      if (onLive) {
-        // 色を動かしている最中もそのまま描き直す（元にもどす記録は change のときだけ）
-        el.addEventListener('input', () => {
-          apply(el.type === 'checkbox' ? el.checked : el.value);
-          onLive();
-        });
-      }
+      // 打っている最中もプロジェクトに入れて「保存していない」にする。
+      // 欄から離れる前にウィンドウを閉じても、書いたものが消えないように（元にもどす記録は change のときだけ）。
+      // 色を動かしている最中は、そのまま描き直す。
+      el.addEventListener('input', () => {
+        apply(el.type === 'checkbox' ? el.checked : el.value);
+        if (onLive) onLive();
+        App.onLiveEdit();
+      });
     };
     bind('#ghost-name', (v) => { Model.project.meta.name = v; });
     bind('#meta-name', (v) => { Model.project.meta.name = v; });
+    bind('#meta-folder', (v) => { Model.project.meta.folder = v.trim(); });
     bind('#meta-sakura', (v) => { Model.project.meta.sakuraName = v; });
     bind('#meta-kero', (v) => { Model.project.meta.keroName = v; });
     bind('#meta-craftman', (v) => { Model.project.meta.craftman = v; });
@@ -645,12 +654,20 @@
     }
 
     let loaded = null;
+    let lostLast = '';
     if (state && state.lastProject) {
-      try { loaded = await api('/api/project?name=' + encodeURIComponent(state.lastProject)); } catch { /* 新規 */ }
+      try {
+        loaded = await api('/api/project?name=' + encodeURIComponent(state.lastProject));
+      } catch {
+        lostLast = state.lastProject;   // 消えた・動いた。黙ってお手本にすると、作ったものが消えたように見える
+      }
     }
     Model.init(loaded || sampleProject());
     // 開いたファイルに上書き保存する（ゴーストの名前を変えても、別のファイルにはしない）
     App.projectName = loaded ? state.lastProject : '';
+    if (lostLast) {
+      App.toast(`前に開いていた「${lostLast}」を開けませんでした`, true);
+    }
     setZoom(1);
     switchTab('run');
     N.Shell.resetStage();
@@ -699,6 +716,7 @@
     $('#btn-import').addEventListener('click', async () => {
       const p = $('#import-path').value.trim();
       if (!p) return;
+      if (Model.dirty && !confirm('保存していない変更があります。読み込みますか？')) return;
       try {
         const r = await api('/api/import', { method: 'POST', body: { path: p } });
         Model.init(r.project);
@@ -755,7 +773,12 @@
     // ---- キーボード
     document.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+      // ダイアログを開いているあいだは、うしろのキャンバスのブロックを消したりはりつけたりしない。
+      // 保存と「もとに戻す」だけは効かせる（当たり判定の編集などは、戻すとダイアログも追いかける）。
+      const modalOpen = $('#modal-root').classList.contains('open');
+      if (modalOpen && e.key === 'Escape') { e.preventDefault(); N.Dialog.closeModal(); return; }
       if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); N.Dialog.saveProject(false); return; }
+      if (modalOpen && !(e.ctrlKey && /^[zy]$/i.test(e.key))) return;
       if (e.ctrlKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         switchTab('search');

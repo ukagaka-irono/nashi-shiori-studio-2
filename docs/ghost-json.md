@@ -19,6 +19,7 @@
     "craftman": "作者名",
     "craftmanUrl": "",
     "homeUrl": "",                 // ネットワーク更新のありか（descript.txt の homeurl）
+    "folder": "nashichan",         // 書き出すフォルダの名前（無ければ name。はじめて書き出したときに入る）
     "version": "1.0.0"
   },
 

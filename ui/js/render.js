@@ -128,7 +128,11 @@
           input.value = owner[name] || '';
           fitInput(input);
           input.addEventListener('focus', beginEdit);
-          input.addEventListener('input', () => { fitInput(input); owner[name] = input.value; });
+          input.addEventListener('input', () => {
+            fitInput(input);
+            owner[name] = input.value;
+            N.App && N.App.onLiveEdit && N.App.onLiveEdit();
+          });
           input.addEventListener('change', () => endEdit(true));
           input.addEventListener('blur', () => endEdit(false));
           input.addEventListener('pointerdown', (e) => e.stopPropagation());

@@ -41,6 +41,20 @@
     D.selected = { el: blockEl, block: blockEl._blk, stack: blockEl._stack, index: blockEl._index };
   }
 
+  /**
+   * 描き直したあと、えらんでいたブロックの新しい要素を探して、えらびなおす。
+   * 古い要素の場所（stack と index）のままだと、コピーや削除がちがうブロックに当たる。
+   * もとに戻すなどでブロックそのものが無くなったら、えらんでいない状態にする。
+   */
+  function reselect(canvas) {
+    const s = D.selected;
+    if (!s || !s.block) return;
+    const el = [...canvas.querySelectorAll('.blk')].find((e) => e._blk === s.block);
+    if (!el) { D.selected = null; return; }
+    el.classList.add('selected');
+    D.selected = { el, block: el._blk, stack: el._stack, index: el._index };
+  }
+
   // ------------------------------------------------------------ drag start
   function pickPayload(target, clientX, clientY) {
     // パレットから
@@ -431,6 +445,6 @@
   function setZoom(z) { D.zoom = z; }
   function getSelected() { return D.selected; }
 
-  N.Drag = { init, setZoom, select, getSelected, cleanupEmptyScripts, D };
+  N.Drag = { init, setZoom, select, reselect, getSelected, cleanupEmptyScripts, D };
 
 })(window.NASHI);

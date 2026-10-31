@@ -64,6 +64,23 @@ int wmain(int argc, wchar_t** argv) {
         return 0;
     }
 
+    // export_host <project.json> --export <フォルダ> [--overwrite]
+    //   画面の「フォルダに書き出す」と同じ書きかたで置いて、書いた・残した・読めなかった絵を出す
+    if (argc >= 4 && std::wstring(argv[2]) == L"--export") {
+        std::string src;
+        if (!ReadBinaryFile(argv[1], src)) { printf("読めません: %ls\n", argv[1]); return 2; }
+        JValue proj;
+        std::string perr;
+        if (!JsonParse(src, proj, perr)) { printf("JSON が壊れています: %s\n", perr.c_str()); return 3; }
+        bool overwrite = argc >= 5 && std::wstring(argv[4]) == L"--overwrite";
+        ExportResult r = ExportToDir(proj, argv[3], std::string(), true, overwrite, true);
+        if (!r.ok) { printf("だめ: %s\n", r.error.c_str()); return 4; }
+        for (size_t i = 0; i < r.written.size(); i++) printf("written %s\n", r.written[i].c_str());
+        for (size_t i = 0; i < r.skipped.size(); i++) printf("skipped %s\n", r.skipped[i].c_str());
+        for (size_t i = 0; i < r.missing.size(); i++) printf("missing %s\n", r.missing[i].c_str());
+        return 0;
+    }
+
     std::string text;
     if (!ReadBinaryFile(argv[1], text)) {
         printf("読めません: %ls\n", argv[1]);

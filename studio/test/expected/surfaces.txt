@@ -1,6 +1,7 @@
 == folder: export-test / 12 ファイル
----- shell/master/surfaces.txt (1826 バイト)
+---- shell/master/surfaces.txt (1984 バイト)
 charset,UTF-8
+// なしスタジオ 2 が書きました。書き出すたびに書き直します。手で直して残すときは、この行を消してください。
 
 descript
 {

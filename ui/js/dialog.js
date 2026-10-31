@@ -97,6 +97,7 @@
       });
       row.appendChild(x);
       row.addEventListener('click', async () => {
+        if (Model.dirty && !confirm('保存していない変更があります。開きますか？')) return;
         try {
           const data = await api('/api/project?name=' + encodeURIComponent(p.file));
           Model.init(data);
@@ -164,6 +165,38 @@
     }
   }
 
+  /**
+   * はじめて書き出したフォルダの名前を、プロジェクトに覚えておく。
+   * あとでゴースト名を変えても、同じフォルダ（SSP では同じゴースト）に入るように。
+   */
+  function rememberFolder(folder) {
+    if (!folder || Model.project.meta.folder) return;
+    Model.project.meta.folder = folder;
+    Model.dirty = true;
+    Model.emit();
+  }
+
+  /**
+   * えらんであるのに読めなかった絵の知らせ（書き出しと SSP に入れるの結果で使う）。
+   * 無ければ null。表情の絵は仮の立ち絵に、重ねる絵と着せ替えはその絵が抜けて書き出されている。
+   */
+  function missingNote(list) {
+    if (!list || !list.length) return null;
+    const box = Render.div('status-line status-ng');
+    const head = Render.div('');
+    head.innerHTML = `ファイルが見つからない絵が ${list.length} 枚あり、その絵は入れていません。` +
+      '<b>ゴースト</b>タブで、えらび直してください。';
+    box.appendChild(head);
+    for (const path of list) {
+      const row = Render.div('');
+      const name = Render.el('code', null, path.split(/[\\/]/).pop());
+      name.title = path;
+      row.appendChild(name);
+      box.appendChild(row);
+    }
+    return box;
+  }
+
   async function doExport(mode) {
     const outDir = $('#export-dir').value.trim();
     const box = $('#export-result');
@@ -181,6 +214,7 @@
         },
       }));
       if (!r) { box.textContent = 'やめました。'; return; }
+      rememberFolder(r.folder);
       box.textContent = '';
       const p = Render.div('');
       if (mode === 'nar') {
@@ -195,6 +229,8 @@
         p.appendChild(Render.div('status-line status-ng',
           'nashi.dll が見つかりません。shiori\\build.ps1 を実行してから書き出し直してください。'));
       }
+      const lost = missingNote(r.missing);
+      if (lost) p.appendChild(lost);
       const open = Render.el('button', 'btn small', 'フォルダを開く');
       open.style.marginTop = '8px';
       open.addEventListener('click', () => api('/api/reveal', {
@@ -202,7 +238,8 @@
       }).catch(() => {}));
       p.appendChild(open);
       box.appendChild(p);
-      App.toast('書き出しました');
+      if (lost) App.toast(`書き出しました。見つからない絵が ${r.missing.length} 枚あります`, true);
+      else App.toast('書き出しました');
     } catch (e) {
       box.textContent = '';
       box.appendChild(Render.div('status-line status-ng', e.message));
@@ -211,6 +248,9 @@
   }
 
 
-  N.Dialog = { saveProject, openProjectDialog, openSampleDialog, doExport, withForeignCheck, modal, closeModal };
+  N.Dialog = {
+    saveProject, openProjectDialog, openSampleDialog, doExport, withForeignCheck, rememberFolder, missingNote,
+    modal, closeModal,
+  };
 
 })(window.NASHI);

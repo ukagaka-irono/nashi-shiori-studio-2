@@ -134,6 +134,7 @@
         },
       }));
       if (!r) { box.textContent = 'やめました。'; return; }
+      N.Dialog.rememberFolder(r.folder);
       const notes = {
         reload: '入れ直して、栞を読み込み直しました。すぐ反映されています。',
         change: 'SSP のゴーストを切り替えました。切り替わらないときは、新しいゴーストなので SSP を再起動してください。',
@@ -144,7 +145,13 @@
       box.innerHTML =
         `<b>${escapeHtml(r.folder)}</b> を入れました（${r.files} ファイル）<br>` +
         `<code>${escapeHtml(r.root)}</code><br>${escapeHtml(notes[r.action] || '')}`;
-      App.toast('SSP に入れました');
+      const lost = N.Dialog.missingNote(r.missing);
+      if (lost) {
+        box.appendChild(lost);
+        App.toast(`SSP に入れました。見つからない絵が ${r.missing.length} 枚あります`, true);
+      } else {
+        App.toast('SSP に入れました');
+      }
       refreshSsp();
     } catch (e) {
       box.textContent = '';

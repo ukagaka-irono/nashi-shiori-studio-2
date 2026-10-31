@@ -125,6 +125,9 @@
         <section class="side-panel" data-panel="ghost">
           <div class="panel-head"><h2>ゴーストの設定</h2></div>
           <label class="field"><span>ゴースト名</span><input id="meta-name" type="text"></label>
+          <label class="field"><span>フォルダ名</span><input id="meta-folder" type="text" spellcheck="false"></label>
+          <p class="hint">書き出しや SSP に入れるときのフォルダの名前です。はじめて書き出したときに決まり、
+            あとでゴースト名を変えても同じフォルダに入ります。空ならゴースト名を使います。</p>
           <label class="field"><span>本体（さくら）の名前</span><input id="meta-sakura" type="text"></label>
           <label class="field"><span>相方（うにゅう）の名前</span><input id="meta-kero" type="text"></label>
           <label class="field"><span>作者名</span><input id="meta-craftman" type="text"></label>
@@ -237,7 +240,9 @@
           <label class="field"><span>書き出し先フォルダ</span><input id="export-dir" type="text" spellcheck="false"></label>
           <p class="hint" id="ssp-hint"></p>
           <label class="field row"><span>仮シェルも書き出す</span><input id="export-shell" type="checkbox" checked></label>
-          <label class="field row"><span>既存のシェル画像を上書き</span><input id="export-overwrite" type="checkbox"></label>
+          <label class="field row"><span>すでにあるシェルの絵も上書き</span><input id="export-overwrite" type="checkbox"></label>
+          <p class="hint">シェルの surfaces.txt と descript.txt は、なしスタジオが書き出したものなら毎回書き直します。
+            ここに印を付けると、自動で描いた立ち絵やバルーンの絵と、手で直したシェルのファイルも上書きします。</p>
           <div class="btn-row">
             <button id="btn-export-dir" class="btn primary">フォルダに書き出す</button>
             <button id="btn-export-nar" class="btn">.nar を作る</button>
