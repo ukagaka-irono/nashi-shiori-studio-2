@@ -123,20 +123,23 @@
     const box = $('#ssp-result');
     box.textContent = 'SSP に入れています…';
     try {
-      const r = await api('/api/ssp/install', {
+      const r = await N.Dialog.withForeignCheck((overwriteForeign) => api('/api/ssp/install', {
         method: 'POST',
         body: {
           project: Model.project,
           includeShell: $('#export-shell').checked,
           overwriteShell: $('#export-overwrite').checked,
+          overwriteForeign,
           activate: true,
         },
-      });
+      }));
+      if (!r) { box.textContent = 'やめました。'; return; }
       const notes = {
         reload: '入れ直して、栞を読み込み直しました。すぐ反映されています。',
         change: 'SSP のゴーストを切り替えました。切り替わらないときは、新しいゴーストなので SSP を再起動してください。',
         none: '書き出しました。SSP を起動（または再起動）すると反映されます。',
         failed: '書き出しましたが、SSP への指示は届きませんでした。',
+        'unsafe-name': '書き出しました。ゴースト名に [ ] \\ " , が入っているので、自動では切り替えませんでした。SSP のメニューから切り替えてください。',
       };
       box.innerHTML =
         `<b>${escapeHtml(r.folder)}</b> を入れました（${r.files} ファイル）<br>` +

@@ -23,12 +23,30 @@ static HGLOBAL Dup(const std::string& s, long* len) {
     return h;
 }
 
-static std::string BuildRequest(const std::string& spec) {
+// spec の形:  ID  /  ID:ref0,ref1  /  ID:ref0|Age:3|SecurityLevel:external
+// （コマンドラインで渡すので、空白は入れません。値の前後の空白は栞が落とします）
+// | のうしろは、そのまま見出しとして足します（同じ名前なら、あとのものが勝ちます）。
+static std::string BuildRequest(const std::string& fullSpec) {
+    std::string spec = fullSpec, extra;
+    size_t bar = fullSpec.find('|');
+    if (bar != std::string::npos) {
+        spec = fullSpec.substr(0, bar);
+        std::string rest = fullSpec.substr(bar + 1);
+        size_t pos = 0;
+        while (pos <= rest.size()) {
+            size_t e = rest.find('|', pos);
+            std::string h = (e == std::string::npos) ? rest.substr(pos) : rest.substr(pos, e - pos);
+            if (!h.empty()) extra += h + "\r\n";
+            if (e == std::string::npos) break;
+            pos = e + 1;
+        }
+    }
     std::string id = spec, refspec;
     size_t c = spec.find(':');
     if (c != std::string::npos) { id = spec.substr(0, c); refspec = spec.substr(c + 1); }
 
     std::string req = "GET SHIORI/3.0\r\nCharset: UTF-8\r\nSender: TestHost\r\nSecurityLevel: local\r\n";
+    req += extra;
     req += "ID: " + id + "\r\n";
     int n = 0;
     size_t pos = 0;

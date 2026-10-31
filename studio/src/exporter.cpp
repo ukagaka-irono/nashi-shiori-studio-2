@@ -20,9 +20,34 @@ std::string SafeFolderName(const std::string& name, const char* fallback) {
             c == '"' || c == '<' || c == '>' || c == '|') continue;
         out += (char)c;
     }
+    // 長すぎるとパスの上限（260 文字）にかかるので、UTF-8 の途中でない所で切る
+    const size_t kMaxBytes = 120;
+    if (out.size() > kMaxBytes) {
+        size_t n = kMaxBytes;
+        while (n > 0 && ((unsigned char)out[n] & 0xC0) == 0x80) n--;
+        out.erase(n);
+    }
     while (!out.empty() && (out[0] == '.' || out[0] == ' ')) out.erase(0, 1);
     while (!out.empty() && (out[out.size() - 1] == '.' || out[out.size() - 1] == ' ')) out.erase(out.size() - 1);
-    return out.empty() ? std::string(fallback) : out;
+    if (out.empty()) return std::string(fallback);
+
+    // CON や NUL などは Windows が「装置」として扱うので、ファイルにもフォルダにもできない
+    std::string stem = out.substr(0, out.find('.'));
+    while (!stem.empty() && stem[stem.size() - 1] == ' ') stem.erase(stem.size() - 1);
+    for (size_t i = 0; i < stem.size(); i++) {
+        if (stem[i] >= 'a' && stem[i] <= 'z') stem[i] = (char)(stem[i] - 'a' + 'A');
+    }
+    static const char* kDevices[] = { "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$" };
+    bool device = false;
+    for (size_t i = 0; i < sizeof(kDevices) / sizeof(kDevices[0]); i++) {
+        if (stem == kDevices[i]) device = true;
+    }
+    if (stem.size() == 4 && (stem.compare(0, 3, "COM") == 0 || stem.compare(0, 3, "LPT") == 0) &&
+        stem[3] >= '0' && stem[3] <= '9') {
+        device = true;
+    }
+    if (device) out = "_" + out;
+    return out;
 }
 
 static std::string Line(const char* key, const std::string& value) {
@@ -112,6 +137,65 @@ static std::string DrawCharacter(int w, int h, const std::string& hairHex,
     return c.ToPng();
 }
 
+// 当たり判定の行。立ち絵（prefix ""）にも、うごき（prefix "animationN."）にも使います。
+// 四角は collision、それ以外の形は collisionex で書きます。
+//
+//   collision0,10,20,110,90,Head
+//   collisionex0,Face,ellipse,30,80,90,130
+static std::string CollisionDefLines(const JValue& cols, const std::string& prefix) {
+    std::string out;
+    int c = 0, cx = 0;
+    for (size_t k = 0; k < cols.size() && k < 64; k++) {
+        const JValue& one = cols.at(k);
+        if (!one.isObj()) continue;
+        std::string name = Trim(one["name"].asStr());
+        if (name.empty()) continue;
+        for (size_t n = 0; n < name.size(); n++) {         // 1 行に収める
+            if (name[n] == ',' || name[n] == '\r' || name[n] == '\n') name[n] = ' ';
+        }
+        if (name.size() > 64) name.resize(64);
+        std::string shape = one["shape"].asStr("rect");
+        int x1 = one["x1"].asInt(0), y1 = one["y1"].asInt(0);
+        int x2 = one["x2"].asInt(0), y2 = one["y2"].asInt(0);
+        char cbuf[320];
+
+        if (shape == "ellipse") {
+            sprintf_s(cbuf, "%scollisionex%d,%s,ellipse,%d,%d,%d,%d\r\n",
+                      prefix.c_str(), cx++, name.c_str(), x1, y1, x2, y2);
+            out += cbuf;
+        } else if (shape == "circle") {
+            if (x2 <= 0) continue;                         // 半径 0 は触れない
+            sprintf_s(cbuf, "%scollisionex%d,%s,circle,%d,%d,%d\r\n",
+                      prefix.c_str(), cx++, name.c_str(), x1, y1, x2);
+            out += cbuf;
+        } else if (shape == "polygon") {
+            // "100,100 200,300 50,200" のように書いてもらったものを数だけ取り出す
+            std::vector<int> nums;
+            std::string src = one["points"].asStr();
+            for (size_t n = 0; n < src.size(); ) {
+                if ((src[n] >= '0' && src[n] <= '9') || src[n] == '-') {
+                    size_t e = n + 1;
+                    while (e < src.size() && src[e] >= '0' && src[e] <= '9') e++;
+                    nums.push_back(atoi(src.substr(n, e - n).c_str()));
+                    n = e;
+                } else {
+                    n++;
+                }
+            }
+            if (nums.size() < 6 || nums.size() % 2 != 0) continue;   // かどは 3 つ以上
+            if (nums.size() > 64) nums.resize(64);
+            std::string line = prefix + "collisionex" + NumToStr(cx++) + "," + name + ",polygon";
+            for (size_t n = 0; n < nums.size(); n++) line += "," + NumToStr(nums[n]);
+            out += line + "\r\n";
+        } else {
+            sprintf_s(cbuf, "%scollision%d,%d,%d,%d,%d,%s\r\n",
+                      prefix.c_str(), c++, x1, y1, x2, y2, name.c_str());
+            out += cbuf;
+        }
+    }
+    return out;
+}
+
 // SERIKO のアニメーション定義。
 //
 //   animationN.interval,sometimes
@@ -183,6 +267,8 @@ static std::string AnimationLines(const JValue& project, int surfaceId) {
                 if (file.empty() || file.size() > 160) continue;
                 if (file.find(',') != std::string::npos) continue;      // 1 行が壊れる
                 if (file.find("..") != std::string::npos) continue;     // 外へは出さない
+                if (file.find(':') != std::string::npos) continue;      // C:\… も外
+                if (file[0] == '\\' || file[0] == '/') continue;        // \\host\… も外
                 if (file.find('\r') != std::string::npos ||
                     file.find('\n') != std::string::npos) continue;
                 sprintf_s(buf, "animation%d.pattern%d,import,%s,%d,%d,%d\r\n",
@@ -198,58 +284,8 @@ static std::string AnimationLines(const JValue& project, int surfaceId) {
         // 絵の指定が 1 つも無ければ、動かしようがないので何も書かない
         if (m == 0) continue;
 
-        // このうごきが動いている間だけ有効な当たり判定。
-        // 四角は collision、それ以外の形は collisionex で書きます。
-        const JValue& cols = a["collisions"];
-        int c = 0, cx = 0;
-        for (size_t k = 0; k < cols.size(); k++) {
-            const JValue& one = cols.at(k);
-            if (!one.isObj()) continue;
-            std::string name = Trim(one["name"].asStr());
-            if (name.empty()) continue;
-            for (size_t n = 0; n < name.size(); n++) {         // 1 行に収める
-                if (name[n] == ',' || name[n] == '\r' || name[n] == '\n') name[n] = ' ';
-            }
-            std::string shape = one["shape"].asStr("rect");
-            int x1 = one["x1"].asInt(0), y1 = one["y1"].asInt(0);
-            int x2 = one["x2"].asInt(0), y2 = one["y2"].asInt(0);
-            char cbuf[320];
-
-            if (shape == "ellipse") {
-                sprintf_s(cbuf, "animation%d.collisionex%d,%s,ellipse,%d,%d,%d,%d\r\n",
-                          id, cx++, name.c_str(), x1, y1, x2, y2);
-                body += cbuf;
-            } else if (shape == "circle") {
-                if (x2 <= 0) continue;                         // 半径 0 は触れない
-                sprintf_s(cbuf, "animation%d.collisionex%d,%s,circle,%d,%d,%d\r\n",
-                          id, cx++, name.c_str(), x1, y1, x2);
-                body += cbuf;
-            } else if (shape == "polygon") {
-                // "100,100 200,300 50,200" のように書いてもらったものを数だけ取り出す
-                std::vector<int> nums;
-                std::string src = one["points"].asStr();
-                for (size_t n = 0; n < src.size(); ) {
-                    if ((src[n] >= '0' && src[n] <= '9') || src[n] == '-') {
-                        size_t e = n + 1;
-                        while (e < src.size() && src[e] >= '0' && src[e] <= '9') e++;
-                        nums.push_back(atoi(src.substr(n, e - n).c_str()));
-                        n = e;
-                    } else {
-                        n++;
-                    }
-                }
-                if (nums.size() < 6 || nums.size() % 2 != 0) continue;   // かどは 3 つ以上
-                if (nums.size() > 64) nums.resize(64);
-                std::string line = "animation" + NumToStr(id) + ".collisionex" +
-                                   NumToStr(cx++) + "," + name + ",polygon";
-                for (size_t n = 0; n < nums.size(); n++) line += "," + NumToStr(nums[n]);
-                body += line + "\r\n";
-            } else {
-                sprintf_s(cbuf, "animation%d.collision%d,%d,%d,%d,%d,%s\r\n",
-                          id, c++, x1, y1, x2, y2, name.c_str());
-                body += cbuf;
-            }
-        }
+        // このうごきが動いている間だけ有効な当たり判定
+        body += CollisionDefLines(a["collisions"], "animation" + NumToStr(id) + ".");
 
         char head2[96];
         sprintf_s(head2, "animation%d.interval,", id);
@@ -311,6 +347,16 @@ std::string ShellImagePath(const JValue& project, int surfaceId) {
     return std::string();
 }
 
+// プロジェクトで、その番号の絵に描いた当たり判定（無ければ空の配列ではなく Null）
+static const JValue& ShellImageCollisions(const JValue& project, int surfaceId) {
+    const JValue& list = project["shell"]["images"];
+    for (size_t i = 0; i < list.size(); i++) {
+        const JValue& one = list.at(i);
+        if (one["id"].asInt(-1) == surfaceId) return one["collisions"];
+    }
+    return JValue::Null();
+}
+
 static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
     const JValue& shell = project["shell"];
     const JValue& meta = project["meta"];
@@ -320,7 +366,10 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
     std::string keroCloth = shell["keroCloth"].asStr("#e8b45c");
 
     const int SW = 190, SH = 320, KW = 140, KH = 230;
-    struct Surface { int id; int w, h; const std::string* hair; const std::string* cloth; int face; };
+    struct Surface {
+        int id; int w, h; const std::string* hair; const std::string* cloth; int face;
+        bool custom = false;   // 自分でえらんだ絵を使う
+    };
     std::vector<Surface> list;
     const int stdIds[6] = { 0, 1, 2, 10, 11, 12 };
     for (int i = 0; i < 6; i++) {
@@ -366,9 +415,11 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
         std::string path = ShellImagePath(project, list[i].id);
         std::string data;
         int w = 0, h = 0;
-        if (!path.empty() && ReadBinaryFile(Utf8ToWide(path), data) && PngSize(data, &w, &h)) {
+        if (!path.empty() && IsLocalPath(Utf8ToWide(path)) &&
+            ReadBinaryFile(Utf8ToWide(path), data) && PngSize(data, &w, &h)) {
             f.data = data;
             f.shell = false;   // 自分でえらんだ絵は、既存があっても書きこむ
+            list[i].custom = true;
             list[i].w = w;
             list[i].h = h;
         } else {
@@ -397,7 +448,11 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
         char head[32];
         sprintf_s(head, "surface%d\r\n{\r\n", list[i].id);
         s.data += head;
-        s.data += CollisionLines(list[i].w, list[i].h);   // 画像を使うときはその大きさで
+        // 自分の絵に当たり判定を描いてあれば、それを使う。無ければ、仮の立ち絵の
+        // 割合で付ける（画像を使うときはその大きさで）。
+        const JValue& own = ShellImageCollisions(project, list[i].id);
+        if (list[i].custom && own.size() > 0) s.data += CollisionDefLines(own, "");
+        else s.data += CollisionLines(list[i].w, list[i].h);
         s.data += AnimationLines(project, list[i].id);    // SERIKO のアニメーション
         s.data += "}\r\n\r\n";
     }
@@ -528,7 +583,7 @@ std::vector<OutFile> BuildGhostFiles(const JValue& project, const std::string& d
     f.data += "----\r\n";
     f.data += "このゴーストは nashi 栞 (nashi.dll) で動いています。\r\n";
     f.data += "会話の中身は ghost/master/ghost.json にブロック形式で入っています。\r\n";
-    f.data += "なしスタジオで読み込むと編集できます。\r\n";
+    f.data += "なしスタジオ 2 で読み込むと編集できます。\r\n";
     files.push_back(f);
 
     f.name = "ghost/master/descript.txt";
@@ -672,6 +727,9 @@ static bool SkipInDau(const std::wstring& rel) {
     if (low == L"delete.txt") return true;              // サーバ側だけの指示書
     if (low == L"thumbs.db" || low == L"desktop.ini") return true;
     if (low.compare(0, 5, L".git\\") == 0 || low == L".git") return true;
+    // SSP が使う人ごとに作る記録（ghost\master\profile\ など）も、配るものではない
+    if (low.compare(0, 8, L"profile\\") == 0 || low.find(L"\\profile\\") != std::wstring::npos) return true;
+    if (low.size() > 4 && low.compare(low.size() - 4, 4, L".tmp") == 0) return true;
     return false;
 }
 
@@ -695,13 +753,47 @@ std::string BuildUpdatesDau(const std::wstring& root) {
 
 // -------------------------------------------------------------- 書き出し
 
+// そのフォルダにあるゴーストが、なし栞以外の栞で動いているか。
+// descript.txt の shiori の行を見る（無ければ、なし栞の書き出しとみなさない）。
+static bool HasForeignGhost(const std::wstring& root) {
+    std::string text;
+    if (!ReadBinaryFile(PathJoin(root, L"ghost\\master\\descript.txt"), text)) return false;
+    text = ToUtf8(text);
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t e = text.find('\n', pos);
+        if (e == std::string::npos) e = text.size();
+        std::string line = Trim(text.substr(pos, e - pos));
+        pos = e + 1;
+        if (line.size() < 7) continue;
+        std::string key = line.substr(0, 7);
+        for (size_t i = 0; i < key.size(); i++) {
+            if (key[i] >= 'A' && key[i] <= 'Z') key[i] = (char)(key[i] - 'A' + 'a');
+        }
+        if (key != "shiori,") continue;
+        std::string v = Trim(line.substr(7));
+        for (size_t i = 0; i < v.size(); i++) {
+            if (v[i] >= 'A' && v[i] <= 'Z') v[i] = (char)(v[i] - 'A' + 'a');
+        }
+        return v != "nashi.dll";
+    }
+    return true;                                   // 栞の書かれていないゴースト
+}
+
 ExportResult ExportToDir(const JValue& project, const std::wstring& outDir, const std::string& dll,
-                         bool includeShell, bool overwriteShell) {
+                         bool includeShell, bool overwriteShell, bool allowForeign) {
     ExportResult r;
     std::string folder;
     std::vector<OutFile> files = BuildGhostFiles(project, dll, includeShell, &folder);
     r.folder = folder;
     r.root = PathJoin(outDir, Utf8ToWide(folder));
+
+    // フォルダ名が同じ別のゴーストを、まるごと上書きしてしまわないように
+    if (!allowForeign && HasForeignGhost(r.root)) {
+        r.foreign = true;
+        r.error = "「" + folder + "」には、別の栞で動くゴーストがすでに入っています。";
+        return r;
+    }
 
     if (!EnsureDir(r.root)) {
         r.error = "フォルダを作れませんでした";
@@ -716,6 +808,12 @@ ExportResult ExportToDir(const JValue& project, const std::wstring& outDir, cons
         std::wstring dest = PathJoin(r.root, rel);
         if (files[i].shell && PathExists(dest) && !overwriteShell) {
             r.skipped.push_back(files[i].name);
+            continue;
+        }
+        // 中身が同じなら書かない（SSP が読みこんでいる nashi.dll は差しかえられないため）
+        std::string current;
+        if (PathExists(dest) && ReadBinaryFile(dest, current) && current == files[i].data) {
+            r.written.push_back(files[i].name);
             continue;
         }
         if (!WriteBinaryFile(dest, files[i].data)) {

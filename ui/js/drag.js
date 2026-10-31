@@ -92,7 +92,7 @@
 
   function startDrag(payload, clientX, clientY, grab) {
     const project = Model.project;
-    const snapshot = Model.clone(project);
+    const snapshot = Model.snapshot();
 
     // モデルから切り離す（切り離した状態で再描画してから、ドラッグ用の見た目を作る）
     let blocks = payload.blocks;

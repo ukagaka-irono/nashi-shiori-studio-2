@@ -1,19 +1,23 @@
-AIを思いっきり使ってます。
-頑張って、プログラミングを勉強して、いつかは、ＡＩ無しで開発できるように努力します。
-おすすめの勉強サイトを教えてくれたら、うれしいです。
-欲を言えば、Duolingoみたいな感じのです。
+# なし栞 2 + なしスタジオ 2
 
-# なし栞 + なしスタジオ
-
-[![build](https://github.com/miyagawa-yukinterface/nashi-shiori-studio/actions/workflows/build.yml/badge.svg)](https://github.com/miyagawa-yukinterface/nashi-shiori-studio/actions/workflows/build.yml)
+[![build](https://github.com/ukagaka-irono/nashi-shiori-studio-2/actions/workflows/build.yml/badge.svg)](https://github.com/ukagaka-irono/nashi-shiori-studio-2/actions/workflows/build.yml)
 
 伺か（SSP）用の **栞（SHIORI）** と、その栞を使うゴーストを **Scratch のようにブロックを積んで作れるアプリ** の一式です。
 どちらも Windows ネイティブ（C++ / MSVC）で、ランタイムのインストールは要りません。
 
+> **これは「なし栞 + なしスタジオ」を引き継いだフォーク版です。**
+> 原作者の 月見里　彩葉 さん (miyagawa-yukinterface) から頼まれて、ukagaka-irono が引き継ぎました。
+> もとのものと取りちがえないよう、名前に「2」を付けています。
+> 何を変えたかは [`CHANGELOG.md`](CHANGELOG.md) にあります。
+> もとのプロジェクトと作者は、[ライセンス](#ライセンス) の節に書いてあります。
+>
+> 書き出したゴーストの栞は、これまでどおり `nashi.dll`、会話データも同じ `ghost.json` です。
+> もとの なしスタジオ で作ったプロジェクトも、そのまま開けます。
+
 | | |
 |---|---|
-| **なし栞 `nashi.dll`** | SHIORI/3.0 の DLL（32bit）。**SSP と同じく Windows 2000 から**動きます。会話は C++ ではなく `ghost.json` に入ったブロックで書く。 |
-| **なしスタジオ `nashi-studio.exe`** | ブロックエディタ本体（64bit・単体で動く1ファイル）。自前のウィンドウに WebView2 を埋め込んだネイティブアプリ。UI も栞も exe の中。 |
+| **なし栞 2 `nashi.dll`** | SHIORI/3.0 の DLL（32bit）。**SSP と同じく Windows 2000 から**動きます。会話は C++ ではなく `ghost.json` に入ったブロックで書く。 |
+| **なしスタジオ 2 `nashi-studio-2.exe`** | ブロックエディタ本体（64bit・単体で動く1ファイル）。自前のウィンドウに WebView2 を埋め込んだネイティブアプリ。UI も栞も exe の中。 |
 
 ---
 
@@ -22,7 +26,7 @@ AIを思いっきり使ってます。
 |  | |
 |---|---|
 | **書き出したゴースト**（`nashi.dll` が入ります） | **Windows 2000 以降**。SSP の動作環境に合わせてあります |
-| **なしスタジオ**（`nashi-studio.exe`） | **Windows 10 / 11**（WebView2 が要ります） |
+| **なしスタジオ 2**（`nashi-studio-2.exe`） | **Windows 10 / 11**（WebView2 が要ります） |
 
 ゴーストを**作る**のは新しい Windows で、**配ったゴーストが動く**のは古い Windows から、
 という形です。エディタは WebView2（Edge）の上に乗っているので、古い Windows では動きません。
@@ -39,12 +43,12 @@ AIを思いっきり使ってます。
 
 | どこから | 要るもの | 中身 |
 |---|---|---|
-| [**Releases**](https://github.com/miyagawa-yukinterface/nashi-shiori-studio/releases) | 何も要りません | 版ごとの zip。**ふつうはこちら** |
-| [**Actions**](https://github.com/miyagawa-yukinterface/nashi-shiori-studio/actions) の実行ページ | **GitHub のログイン** | 押すたびの最新。30 日間 |
+| [**Releases**](https://github.com/ukagaka-irono/nashi-shiori-studio-2/releases) | 何も要りません | 版ごとの zip。**ふつうはこちら** |
+| [**Actions**](https://github.com/ukagaka-irono/nashi-shiori-studio-2/actions) の実行ページ | **GitHub のログイン** | 押すたびの最新。30 日間 |
 
 Actions のほうは、実行ページをいちばん下まで送ると **Artifacts** にあります。
 
-* `nashi-studio-<版>-<sha>` … Releases の zip と同じ中身（exe / README / CHANGELOG / LICENSE / docs）
+* `nashi-studio-2-<版>-<sha>` … Releases の zip と同じ中身（exe / README / CHANGELOG / LICENSE / docs）
 * `nashi-dll-<版>-<sha>` … 栞だけ。自分でゴーストに入れる人むけ
 
 > Actions の成果物は、**GitHub にログインしていないと落とせません**（ボタンが出ません）。
@@ -61,7 +65,7 @@ Actions のほうは、実行ページをいちばん下まで送ると **Artifa
 
 ### 1. 起動する
 
-**`nashi-studio.exe` をダブルクリック** するだけです。
+**`nashi-studio-2.exe` をダブルクリック** するだけです。
 はじめてなら「開く」→「**お手本から始める**」で、動くゴーストを読みこんで
 中を見るのがいちばん早いです（あいさつ／好感度／時間で変わる／名前をきく／ゴースト間通信）。
 
@@ -86,6 +90,10 @@ Actions のほうは、実行ページをいちばん下まで送ると **Artifa
    でやり直せます。
 4. 立ち絵は **ゴースト** タブの「立ち絵の画像」で、用意した PNG を番号ごとに割り当てられます
    （えらばなかった番号は、指定した色でかんたんな立ち絵を自動生成します）。
+   割り当てた絵には「**当たり判定**」ボタンで、頭・顔などの触れる場所を描けます
+   （絵の上をドラッグすると四角が描けます。だ円・円・多角形は数字で入れます）。
+   描いた名前は、「◯の □□ が なでられたとき」などの「どこ」でえらべます。
+   描かなかった絵には、書き出すときに仮の立ち絵と同じ割合で自動で付けます。
    同じタブの「**うごき**」で、立ち絵をパラパラ切りかえるアニメーションを作れます。
    「いつ動く」を決めておけば勝手に動きますし、「うごき N を再生する」ブロックでも呼べます。
    こまごとに重ねかたと位置を決められ、「そのうごきの間だけ触れる場所」も足せます。
@@ -152,7 +160,7 @@ SSP 側で「SSTP を受け付ける」設定が有効（既定でオン）に�
 4. 使う人の側は、右クリックメニューの「ネットワーク更新」で新しくなります。
    ゴーストから始めたいときは「**ネットワーク更新をする**」ブロックを置きます。
 
-> `updates2.dau` の形式は公式には公開されていません。なしスタジオは、公開されている
+> `updates2.dau` の形式は公式には公開されていません。なしスタジオ 2 は、公開されている
 > 読み取り側の実装（ninix-kagari の `lib/ninix/update.rb`）に合わせて書いています。
 > `md5 miss` などでうまくいかないときは、**アップロードするフォルダを SSP のウィンドウに
 > ドラッグ＆ドロップ**すると SSP が作り直してくれるので、それを上書きしてください。
@@ -167,13 +175,13 @@ SSP 側で「SSTP を受け付ける」設定が有効（既定でオン）に�
 
 ### 保存される場所
 
-`nashi-studio.exe` と同じフォルダに作られます。
+`nashi-studio-2.exe` と同じフォルダに作られます。
 
 | | |
 |---|---|
 | `projects\` | プロジェクト（作りかけのブロック）。初回起動時にサンプルが入ります |
 | `output\` | 書き出したゴースト（書き出し先を変えていない場合） |
-| `nashi-studio.json` | 最後に開いたプロジェクト・書き出し先・ウィンドウの大きさ |
+| `nashi-studio-2.json` | 最後に開いたプロジェクト・書き出し先・ウィンドウの大きさ |
 | `webview-data\` | WebView2 の作業フォルダ（消しても再生成されます） |
 
 exe のとなりに `nashi.dll` を置くと、埋め込みのものより **そちらが優先** されます（栞を作り直したときに便利）。
@@ -190,9 +198,10 @@ Visual Studio の「C++ によるデスクトップ開発」が入っていれ�
 .\build.ps1 -Release   # きれいに作り直してテストし、配布用の zip を作る
 ```
 
-`-Release` は `dist\nashi-studio-<版>.zip` を作ります（中身は exe と読みもの）。
+`-Release` は `dist\nashi-studio-2-<版>.zip` を作ります（中身は exe と読みもの）。
 版の数字は **ルートの `VERSION` ファイル**の 1 行だけです。ここを直すと、
-zip の名前と exe のプロパティ（右クリック→プロパティ→詳細）の両方に入ります。
+zip の名前と exe のプロパティ（右クリック→プロパティ→詳細）、栞が SSP に名乗る版
+（`GET version`）のすべてに入ります。
 変わったことは `CHANGELOG.md` に足してください。
 
 `-Test` を付けると、7 つのテストが走ります。
@@ -200,7 +209,7 @@ zip の名前と exe のプロパティ（右クリック→プロパティ→�
 | | |
 |---|---|
 | **そろい点検**（`tools\check-blocks.js`） | ブロックが「定義・栞・説明・テスト」のすべてにそろっているか。ビルドが要らないので、いちばん先に走ります |
-| **一致テスト**（`shiori\test\parity\parity.js`） | 同じ `interp.cpp` を **32bit（SSP に入る栞）** と **64bit（なしスタジオの「ためす」）** で組んで、同じ `ghost.json` を流し、出てきたさくらスクリプトが一致するか見くらべます（ビット幅に頼った書きかたを見つけます） |
+| **一致テスト**（`shiori\test\parity\parity.js`） | 同じ `interp.cpp` を **32bit（SSP に入る栞）** と **64bit（なしスタジオ 2 の「ためす」）** で組んで、同じ `ghost.json` を流し、出てきたさくらスクリプトが一致するか見くらべます（ビット幅に頼った書きかたを見つけます） |
 | **ふるまいテスト**（`shiori\test\behavior\behavior.js`） | 栞だけが持っている判断 — 同じイベントに複数あるときどれを選ぶか、ブロックが無いときの既定の反応、`OnClose` の `\-`、「◯秒ごと」の間引き、なでなでの生成、通信の届け先、SAORI（テスト用のおそい DLL を実際に呼びます） — が期待どおりか |
 | **書き出しテスト**（`studio\test\export.js`） | 書き出したファイル（`surfaces.txt` / `descript.txt` / `ghost.json` / `install.txt`）の中身が期待どおりか。`updates2.dau` は MD5 を node の `crypto` と突き合わせます |
 | **エディタテスト**（`ui\test\editor.js`） | 読みこんだプロジェクトの整形（`model.js`）と、チェックタブが出す注意（`lint.js`）が期待どおりか |
@@ -233,7 +242,7 @@ exe に静的リンクしているので、**配るときは著作権表示の�
 
 Windows 11 の **スマートアプリコントロール**（既定でオンの環境があります）は、
 署名がなく実績のない exe をブロックすることがあります。ビルドしたばかりの
-`nashi-studio.exe` が「アプリケーション制御ポリシーによってブロックされました」と
+`nashi-studio-2.exe` が「アプリケーション制御ポリシーによってブロックされました」と
 言われた場合は、次のどれかで対応してください。
 
 1. **少し待ってもう一度実行する** — 判定が確定すると通ることがあります（確実ではありません）。
@@ -254,10 +263,10 @@ Windows 11 の **スマートアプリコントロール**（既定でオンの�
 ## フォルダ構成
 
 ```
-nashi-shiori/
+nashi-shiori-studio-2/
 ├── .github/workflows/
 │   └── build.yml            push のたびにビルドしてテストを走らせる
-├── nashi-studio.exe        ビルド結果（これ1つで動く）
+├── nashi-studio-2.exe        ビルド結果（これ1つで動く）
 ├── build.ps1               まとめてビルド
 ├── LICENSE                 なしライセンス（＋同梱物の表示）
 ├── shiori/                 栞（C++ / 32bit DLL）
@@ -279,7 +288,7 @@ nashi-shiori/
 │   │   ├── saori/          テスト用の「わざとおそい SAORI」
 │   │   └── behavior/       栞のふるまい（どれを選ぶか・既定の反応）のテスト
 │   └── dist/               ビルド結果（nashi.dll / test_host.exe）
-├── studio/                 なしスタジオ（C++ / 64bit EXE）
+├── studio/                 なしスタジオ 2（C++ / 64bit EXE）
 │   ├── build.ps1
 │   ├── test/               答え合わせテスト（-Test でコンソールも作る）
 │   │                         export_host  … 書き出したファイルの中身を見る
@@ -331,7 +340,7 @@ nashi-shiori/
 
 ## 栞のしくみ
 
-エディタの「ためす」も、**この栞そのもの**が動かしています。なしスタジオは
+エディタの「ためす」も、**この栞そのもの**が動かしています。なしスタジオ 2 は
 `shiori/src/interp.cpp` を 64bit で組んだものを積んでいて、画面は `POST /api/preview`
 で頼むだけです（画面側にブロックの解釈はありません）。
 違うのは 2 つだけで、**SAORI は呼びません**（本物の 32bit DLL が要るため）、
@@ -438,14 +447,27 @@ nashi-shiori/
 
 ## ライセンス
 
-[**なしライセンス 1.1**](LICENSE)（このプロジェクト独自のものです）。
+[**なしライセンス 1.1**](LICENSE)（もとのプロジェクト独自のものを、そのまま使っています）。
 Copyright (c) 2026 月見里　彩葉 (miyagawa-yukinterface)
+フォーク版での変更: Copyright (c) 2026 ukagaka-irono（同じ なしライセンス 1.1 で配ります）
 
 だれでも無償で、目的を問わず、使う・直す・配ることができます。
 
+### もとになったプロジェクト
+
+ライセンスの 3 節（フォークを配るとき）にしたがって、ここに書いておきます。
+
+```
+このソフトウェアは「なし栞 + なしスタジオ」をもとにしています。
+https://github.com/miyagawa-yukinterface/nashi-shiori-studio
+作者: 月見里　彩葉 (miyagawa-yukinterface)
+```
+
+変更した旨は、名前の「2」と、[`CHANGELOG.md`](CHANGELOG.md) の「2.0.0」以降の記録で示しています。
+
 ### 作ったゴーストについて
 
-**なしスタジオで書き出したゴーストは、まるごとあなたのものです。**
+**なしスタジオ 2 で書き出したゴーストは、まるごとあなたのものです。**
 ゴーストの中には `nashi.dll` が入りますが、それを配るときに
 
 * このライセンス文を**同梱する必要はありません**
@@ -457,7 +479,7 @@ Copyright (c) 2026 月見里　彩葉 (miyagawa-yukinterface)
 
 ### このソフト自体を配るとき・フォークするとき
 
-`nashi-studio.exe` や `nashi.dll` を単体で、あるいはソースを配るときは、
+`nashi-studio-2.exe` や `nashi.dll` を単体で、あるいはソースを配るときは、
 `LICENSE` を一緒に入れてください。
 
 **書きかえたもの（フォークを含みます）を配るときは、あわせて**
@@ -482,7 +504,7 @@ https://github.com/miyagawa-yukinterface/nashi-shiori-studio
 
 ### 同梱しているもの
 
-`nashi-studio.exe` には **Microsoft Edge WebView2 SDK**（BSD 3-Clause）を
+`nashi-studio-2.exe` には **Microsoft Edge WebView2 SDK**（BSD 3-Clause）を
 静的リンクしています。その著作権表示は `LICENSE` の後ろに入っていて、
 配布用の zip にも必ず入ります。
 
@@ -499,3 +521,14 @@ https://github.com/miyagawa-yukinterface/nashi-shiori-studio
   見せかけのアドレスから exe の中身を直接返しているだけで、通信はしていません。
 * `ui\index.html` をブラウザで直接開くと、画面の見た目は出ますが、保存・書き出し・
   「ためす」は動きません（どれも exe の中の処理を呼んでいるためです）。
+
+---
+
+## 原作者より
+
+もとの README の冒頭に、原作者の 月見里　彩葉 さんが書いていた一言です。そのまま残しておきます。
+
+> AIを思いっきり使ってます。
+> 頑張って、プログラミングを勉強して、いつかは、ＡＩ無しで開発できるように努力します。
+> おすすめの勉強サイトを教えてくれたら、うれしいです。
+> 欲を言えば、Duolingoみたいな感じのです。

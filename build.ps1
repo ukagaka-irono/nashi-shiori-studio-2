@@ -53,7 +53,7 @@ $studioArgs = @('-Arch', $StudioArch)
 if ($Test) { $studioArgs += '-Test' }
 if ($Clean) { $studioArgs += '-Clean' }
 Write-Host ''
-Write-Host '=== なしスタジオ (nashi-studio.exe) ===' -ForegroundColor Yellow
+Write-Host '=== なしスタジオ 2 (nashi-studio-2.exe) ===' -ForegroundColor Yellow
 Invoke-Sub (Join-Path $root 'studio\build.ps1') $studioArgs
 
 # テスト。Node.js を使うのはここだけで、アプリの動作には要りません。
@@ -83,12 +83,12 @@ if ($Test) {
 if ($Release) {
     Write-Host ''
     Write-Host '=== 配布用のまとめ ===' -ForegroundColor Yellow
-    $stage = Join-Path $root "obj\release\nashi-studio-$version"
+    $stage = Join-Path $root "obj\release\nashi-studio-2-$version"
     if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
     New-Item -ItemType Directory -Force $stage | Out-Null
     New-Item -ItemType Directory -Force (Join-Path $stage 'docs') | Out-Null
 
-    Copy-Item (Join-Path $root 'nashi-studio.exe') $stage
+    Copy-Item (Join-Path $root 'nashi-studio-2.exe') $stage
     # LICENSE は「あれば入れる」ではなく、無かったら止めます。
     # 同梱している WebView2 SDK が、配るときに著作権表示を求めているためです
     # （その本文は LICENSE の後ろに入れてあります）。
@@ -102,13 +102,13 @@ if ($Release) {
 
     $dist = Join-Path $root 'dist'
     New-Item -ItemType Directory -Force $dist | Out-Null
-    $zip = Join-Path $dist "nashi-studio-$version.zip"
+    $zip = Join-Path $dist "nashi-studio-2-$version.zip"
     if (Test-Path $zip) { Remove-Item -Force $zip }
     Compress-Archive -Path $stage -DestinationPath $zip
     $kb = [math]::Round((Get-Item $zip).Length / 1KB, 1)
     Write-Host "  できました -> $zip ($kb KB)" -ForegroundColor Green
-    Write-Host '  中身: nashi-studio.exe / README.md / CHANGELOG.md / LICENSE / docs' -ForegroundColor DarkGray
+    Write-Host '  中身: nashi-studio-2.exe / README.md / CHANGELOG.md / LICENSE / docs' -ForegroundColor DarkGray
 }
 
 Write-Host ''
-Write-Host "できあがりました（v$version）。nashi-studio.exe をダブルクリックしてください。" -ForegroundColor Green
+Write-Host "できあがりました（v$version）。nashi-studio-2.exe をダブルクリックしてください。" -ForegroundColor Green

@@ -56,9 +56,38 @@ std::string ToUtf8(const std::string& raw) {
     return WideToUtf8(MbToWide(s, 932)); // Shift_JIS fallback
 }
 
+// 壊れた並び（途中で切れた文字・知らない先頭バイト）を、1 バイトずつ '?' にします。
+// 外から来た値は、ここを通してから覚えます。1 バイトでも壊れた値をセーブに入れると、
+// 次に読むときファイル全体が Shift_JIS と見なされて、ほかの値まで化けてしまうためです。
+std::string RepairUtf8(const std::string& s) {
+    if (LooksUtf8(s)) return s;
+    const unsigned char* p = (const unsigned char*)s.c_str();
+    size_t len = s.size(), i = 0;
+    std::string out;
+    out.reserve(len);
+    while (i < len) {
+        unsigned char c = p[i];
+        size_t extra = 0;
+        bool ok = true;
+        if (c < 0x80)                  extra = 0;
+        else if ((c & 0xE0) == 0xC0) { extra = 1; ok = c >= 0xC2; }
+        else if ((c & 0xF0) == 0xE0)   extra = 2;
+        else if ((c & 0xF8) == 0xF0) { extra = 3; ok = c <= 0xF4; }
+        else ok = false;
+        if (ok && i + extra >= len && extra > 0) ok = false;
+        for (size_t k = 1; ok && k <= extra; k++) {
+            if ((p[i + k] & 0xC0) != 0x80) ok = false;
+        }
+        if (!ok) { out += '?'; i++; continue; }
+        out.append(s, i, extra + 1);
+        i += extra + 1;
+    }
+    return out;
+}
+
 // ------------------------------------------------------------------- files
 
-bool ReadTextFile(const std::wstring& path, std::string& outUtf8) {
+bool ReadTextFile(const std::wstring& path, std::string& outUtf8, bool allowSjis) {
     HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE) return false;
@@ -72,19 +101,39 @@ bool ReadTextFile(const std::wstring& path, std::string& outUtf8) {
     }
     CloseHandle(h);
     buf.resize(read);
-    outUtf8 = ToUtf8(buf);
+    if (allowSjis) {
+        outUtf8 = ToUtf8(buf);
+    } else {
+        if (buf.size() >= 3 && (unsigned char)buf[0] == 0xEF && (unsigned char)buf[1] == 0xBB &&
+            (unsigned char)buf[2] == 0xBF) {
+            buf = buf.substr(3);
+        }
+        outUtf8 = RepairUtf8(buf);
+    }
     return true;
 }
 
+// となりに書いてから差しかえます。書いている途中で落ちても前の中身が残るように
+// するためです（いきなり上書きすると、途中で切れたファイルが残ります）。
 bool WriteTextFile(const std::wstring& path, const std::string& utf8) {
-    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+    std::wstring tmp = path + L".tmp";
+    HANDLE h = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE) return false;
     DWORD written = 0;
     BOOL ok = TRUE;
-    if (!utf8.empty()) ok = WriteFile(h, utf8.c_str(), (DWORD)utf8.size(), &written, NULL);
+    if (!utf8.empty()) {
+        ok = WriteFile(h, utf8.c_str(), (DWORD)utf8.size(), &written, NULL);
+        if (ok && written != (DWORD)utf8.size()) ok = FALSE;
+    }
+    if (ok) ok = FlushFileBuffers(h);
     CloseHandle(h);
-    return ok != FALSE;
+    if (!ok || !MoveFileExW(tmp.c_str(), path.c_str(),
+                            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(tmp.c_str());
+        return false;
+    }
+    return true;
 }
 
 bool FileExists(const std::wstring& path) {

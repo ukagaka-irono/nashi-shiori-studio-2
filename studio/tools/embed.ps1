@@ -86,11 +86,11 @@ $v4 = ($nums[0..3]) -join ','
 [void]$rc.AppendLine(' {')
 [void]$rc.AppendLine('  BLOCK "041104b0"')          # 日本語 + Unicode
 [void]$rc.AppendLine('  {')
-[void]$rc.AppendLine('   VALUE "ProductName", "なしスタジオ"')
-[void]$rc.AppendLine('   VALUE "FileDescription", "なしスタジオ - 伺かゴーストをブロックで作る"')
+[void]$rc.AppendLine('   VALUE "ProductName", "なしスタジオ 2"')
+[void]$rc.AppendLine('   VALUE "FileDescription", "なしスタジオ 2 - 伺かゴーストをブロックで作る"')
 [void]$rc.AppendLine('   VALUE "FileVersion", "' + $Version + '"')
 [void]$rc.AppendLine('   VALUE "ProductVersion", "' + $Version + '"')
-[void]$rc.AppendLine('   VALUE "OriginalFilename", "nashi-studio.exe"')
+[void]$rc.AppendLine('   VALUE "OriginalFilename", "nashi-studio-2.exe"')
 [void]$rc.AppendLine('  }')
 [void]$rc.AppendLine(' }')
 [void]$rc.AppendLine(' BLOCK "VarFileInfo"')
@@ -115,6 +115,8 @@ foreach ($e in $entries) {
 }
 [void]$h.AppendLine('};')
 [void]$h.AppendLine(('static const int kWebAssetCount = {0};' -f $entries.Count))
+[void]$h.AppendLine('')
+[void]$h.AppendLine(('static const char* kStudioVersionGen = "{0}";' -f $Version))
 
 $hPath = Join-Path $StageDir 'assets_gen.h'
 [System.IO.File]::WriteAllText($hPath, $h.ToString(), (New-Object System.Text.UTF8Encoding($false)))

@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 namespace nashi {
 
@@ -31,7 +32,7 @@ public:
     Value get(const std::string& name) const;
     void  set(const std::string& name, const Value& v);
     bool  exists(const std::string& name) const;
-    void  clear() { items_.clear(); }
+    void  clear() { items_.clear(); index_.clear(); version_++; }
 
     void   fromJson(const JValue& v);   // { "name": value, ... } or [ {name,value}, ... ]
     JValue toJson() const;
@@ -39,8 +40,15 @@ public:
     size_t size() const { return items_.size(); }
     const std::pair<std::string, Value>& at(size_t i) const { return items_[i]; }
 
+    // 値がほんとうに変わるたびに 1 増える（保存が要るかを見るため）
+    unsigned long version() const { return version_; }
+
 private:
+    // 並びは書いた順のまま保つ（セーブの見た目が毎回入れかわらないように）。
+    // 探すのは index_ で（変数が多いゴーストでも、1 回で見つかる）。
     std::vector<std::pair<std::string, Value> > items_;
+    std::map<std::string, size_t> index_;
+    unsigned long version_ = 0;
 };
 
 // ---------------------------------------------------------------- Program
@@ -69,9 +77,20 @@ public:
     bool hasEvent(const std::string& eventName) const;
 
 private:
+    void BuildIndex();
+    const JValue* ScriptAt(size_t i) const;
+
     JValue root_;
     bool loaded_ = false;
     std::string error_;
+
+    // 読みこんだときに一度だけ作る索引（scripts の何番目か）。
+    // SSP は OnMouseMove を 1 秒に何十回も送ってくるので、そのたびに全部を
+    // 端から見ていくと重い。番号で持つのは、Program がまるごと写されても使えるようにするため。
+    std::map<std::string, std::vector<size_t> > events_;
+    std::vector<size_t> talks_;
+    std::map<std::string, size_t> byName_;    // function / talk の name（先に書いたほうが勝つ）
+    std::map<std::string, size_t> byId_;
 };
 
 } // namespace nashi

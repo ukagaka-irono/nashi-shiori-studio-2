@@ -149,6 +149,65 @@
     {
       "id": "f_answer", "kind": "function", "name": "こたえ",
       "blocks": [{ "type": "say", "who": 0, "text": "えらばれた", "nl": 0 }]
+    },
+
+    {
+      "id": "b_choice_comma", "kind": "event", "event": "OnChoiceComma",
+      "blocks": [{ "type": "choice", "label": "はい,OnEvil", "target": "こたえ" }]
+    },
+    {
+      "id": "b_hour_old", "kind": "event", "event": "OnHourChange",
+      "blocks": [{ "type": "say", "who": 0, "text": "じほう", "nl": 0 }]
+    },
+    {
+      "id": "b_shell", "kind": "event", "event": "OnShowShell",
+      "blocks": [{ "type": "say", "who": 0, "text": { "type": "sys", "key": "shellname" }, "nl": 0 }]
+    },
+
+    {
+      "id": "b_style", "kind": "event", "event": "OnStyleTest",
+      "blocks": [
+        { "type": "font_style", "style": "bold", "on": 1 },
+        { "type": "font_color", "color": "#2f62c8" },
+        { "type": "font_size", "size": 150 },
+        { "type": "say", "who": 0, "text": "だいじ", "nl": 0 },
+        { "type": "font_default" }
+      ]
+    },
+    {
+      "id": "b_bgm", "kind": "event", "event": "OnBgmTest",
+      "blocks": [
+        { "type": "bgm", "file": "music\\bgm.mp3", "mode": "loop", "volume": 40 },
+        { "type": "alpha", "who": 1, "alpha": 30, "ms": 500 },
+        { "type": "move", "who": 0, "x": 100, "y": 200, "ms": 1000 },
+        { "type": "sound_stop" }
+      ]
+    },
+    {
+      "id": "b_choice_ev", "kind": "event", "event": "OnChoiceEventTest",
+      "blocks": [{ "type": "choice_event", "label": "春", "event": "LikeSeason", "a": "花見" }]
+    },
+    {
+      "id": "b_like", "kind": "event", "event": "OnLikeSeason",
+      "blocks": [{ "type": "say", "who": 0, "text": { "type": "ref", "index": 0 }, "nl": 0 }]
+    },
+    {
+      "id": "b_slider", "kind": "event", "event": "OnSliderTest",
+      "blocks": [{ "type": "ask_kind", "kind": "sliderinput", "into": "こたえ", "min": 1, "max": 10 }]
+    },
+    {
+      "id": "b_user", "kind": "event", "event": "OnShowUser",
+      "blocks": [{ "type": "say", "who": 0, "nl": 0, "text": {
+        "type": "join", "a": { "type": "sys", "key": "username" },
+        "b": { "type": "join", "a": "/", "b": {
+          "type": "join", "a": { "type": "sys", "key": "birthmonth" },
+          "b": { "type": "join", "a": "/", "b": {
+            "type": "join", "a": { "type": "sys", "key": "birthday" },
+            "b": { "type": "join", "a": "/", "b": { "type": "sys", "key": "baseware" } } } } } } } }]
+    },
+    {
+      "id": "b_drop", "kind": "event", "event": "OnFileDrop2",
+      "blocks": [{ "type": "say", "who": 0, "text": { "type": "sys", "key": "droppedfile" }, "nl": 0 }]
     }
   ]
 }

@@ -7,7 +7,7 @@
     "craftman": "あなたの名前",
     "craftmanUrl": "",
     "version": "1.0.0",
-    "description": "なしスタジオのサンプルゴーストです。ブロックを組み替えて自分のゴーストにしてください。"
+    "description": "なしスタジオ 2 のサンプルゴーストです。ブロックを組み替えて自分のゴーストにしてください。"
   },
   "settings": {
     "randomTalkInterval": 120,

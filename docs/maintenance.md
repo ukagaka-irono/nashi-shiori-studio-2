@@ -25,7 +25,7 @@ node tools\check-blocks.js     # 1 秒。ビルド不要。ブロックがそろ
 | どこで動くか | 誰が動かすか |
 |---|---|
 | SSP に入れたゴースト | `nashi.dll`（32bit）の `interp.cpp` |
-| エディタの「ためす」 | `nashi-studio.exe`（64bit）に積んだ **同じ** `interp.cpp` |
+| エディタの「ためす」 | `nashi-studio-2.exe`（64bit）に積んだ **同じ** `interp.cpp` |
 
 画面（`ui/js/`）はブロックを解釈しません。`POST /api/preview` に頼んで、
 返ってきたさくらスクリプトを `ui/js/player.js` が再生するだけです。
@@ -116,7 +116,7 @@ Actions の実行ページをいちばん下まで送ると **Artifacts** があ
 
 | 名前 | 中身 |
 |---|---|
-| `nashi-studio-<版>-<sha>` | 配る zip とまったく同じ（`nashi-studio.exe` / `README.md` / `CHANGELOG.md` / `LICENSE` / `docs`） |
+| `nashi-studio-2-<版>-<sha>` | 配る zip とまったく同じ（`nashi-studio-2.exe` / `README.md` / `CHANGELOG.md` / `LICENSE` / `docs`） |
 | `nashi-dll-<版>-<sha>` | `nashi.dll` だけ。自分でゴーストに入れる人むけ（エディタの exe にも同じものが入っています） |
 
 `LICENSE` を必ず添えるのは、同梱している WebView2 SDK が配るときに著作権表示を
@@ -148,6 +148,24 @@ blocks → model → player → lint → render → drag → app → shell / sea
 
 `node ui\test\modules.js` が、この決まりを守れているかを見ます
 （`N.Xxx.yyy()` の呼び先が無ければ、ファイルと行を名指しします）。
+
+---
+
+## スタジオの API は、別のスレッドで動きます
+
+画面からの `/api/…` は、ほとんどが **1 本の作業用スレッド**で、届いた順に処理されます
+（`studio/src/webview.cpp` の `WorkerLoop`）。SSP を探す・書き出すあいだに、ウィンドウを
+止めないためです。どれをその場（UI スレッド）で処理するかは、`studio/src/main.cpp` の
+`g_web.isSlow` が決めています。
+
+* **API を足すときは、作業用スレッドで動くものとして書いてください。**
+  `Api` の中の控え（`sspCache_`・`titles_`）は、作業用スレッドからしか触らない約束です。
+  UI スレッドで動く要求（`/api/shell`・`/api/shell/file`・`/api/shell/pick`）からは触らないこと。
+* 設定ファイル（`nashi-studio-2.json`）は両方のスレッドから読み書きするので、
+  `api.cpp` の `ReadConfig` / `WriteConfig` / `SaveConfig` を通してください（中で順番待ちをします）。
+* ダイアログを出す要求は、UI スレッドで処理するように `isSlow` で false を返してください。
+* WebView2 のもの（`ICoreWebView2…`）は、UI スレッドでしか触れません。作業用スレッドは
+  `Api::Handle` を呼ぶだけで、返事を渡すのは UI スレッド（`FinishJobs`）です。
 
 ---
 
@@ -184,7 +202,7 @@ SSP は **Windows 2000 以降**で動きます。栞は SSP に読みこまれ�
   栞は 32KB で頭打ちにしてあるので、ふつうは起きません。
 * `<random>` や 64bit 整数と小数の行き来は、CRT にしか無い関数を呼びます。
   避けかたは `util.cpp` の `NumToStr` と乱数のところにコメントで書いてあります。
-* **なしスタジオ（64bit）はふつうの CRT のままです。** 同じ `.cpp` を両方で組んでいますが、
+* **なしスタジオ 2（64bit）はふつうの CRT のままです。** 同じ `.cpp` を両方で組んでいますが、
   `tinycrt.cpp` をリンクするのは栞だけです。一致テストが、両方で同じ答えになることを見ています。
 
 ---
@@ -192,7 +210,7 @@ SSP は **Windows 2000 以降**で動きます。栞は SSP に読みこまれ�
 ## つまずきやすいところ
 
 **スマートアプリコントロールが、作りたてのファイルを止める。**
-`test_host.exe` や `nashi.dll` や `nashi-studio.exe` が
+`test_host.exe` や `nashi.dll` や `nashi-studio-2.exe` が
 「An Application Control policy has blocked this file」（エラー 4551）で
 読み込めないことがあります。**もう一度ビルドすると通る**ことが多いです。
 くわしくは README の「スマートアプリコントロールでブロックされたら」。
@@ -221,7 +239,7 @@ Defender のほうを疑うなら `Get-MpThreatDetection`（何も出なけれ�
 栞と同じ名前なので、中間ファイルを同じ場所に置くとリンクでぶつかります
 （`obj\x86\testbuild\` に分けてあります）。
 
-**`nashi-studio.exe` は画面つきです。** スクリプトから `& .\nashi-studio.exe` と書くと
+**`nashi-studio-2.exe` は画面つきです。** スクリプトから `& .\nashi-studio-2.exe` と書くと
 戻ってきません。動きを確かめたいときは自分の手で起動してください。
 
 **`ui/` を直したら exe を作りなおす。** ブラウザで `ui\index.html` を直接開くと
@@ -231,9 +249,9 @@ Defender のほうを疑うなら `Get-MpThreatDetection`（何も出なけれ�
 
 ## 版を上げて配る
 
-1. `VERSION`（ルートの 1 行）を直す。zip の名前と exe のプロパティは、ここだけを見ています。
+1. `VERSION`（ルートの 1 行）を直す。zip の名前・exe のプロパティ・栞が SSP に名乗る版は、ここだけを見ています。
 2. `CHANGELOG.md` に、変わったことを足す。
-3. `.\build.ps1 -Release` — きれいに作り直し、テストを通し、`dist\nashi-studio-<版>.zip` を作ります。
+3. `.\build.ps1 -Release` — きれいに作り直し、テストを通し、`dist\nashi-studio-2-<版>.zip` を作ります。
    （手元で見ておくためのものです。配るのは Actions が作ったほうです）
 4. `git tag -a v<版> -m "…"` して `git push origin v<版>`。
 5. **あとは Actions がやります。** タグを受けとると、ビルドしてテストを通し、

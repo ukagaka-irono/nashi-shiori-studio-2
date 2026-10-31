@@ -13,6 +13,19 @@
     'start', 'stop', 'import'];
   const ANIM_SHAPES = ['rect', 'ellipse', 'circle', 'polygon'];
 
+  // 当たり判定の並び（立ち絵にも、うごきにも使う）。名前の無いものは落とす。
+  function normalizeCollisions(list) {
+    return (Array.isArray(list) ? list : [])
+      .filter((c) => c && String(c.name || '').trim())
+      .map((c) => ({
+        name: String(c.name).trim(),
+        shape: ANIM_SHAPES.indexOf(c.shape) >= 0 ? c.shape : 'rect',
+        x1: Number(c.x1) || 0, y1: Number(c.y1) || 0,
+        x2: Number(c.x2) || 0, y2: Number(c.y2) || 0,
+        points: c.points ? String(c.points) : '',
+      }));
+  }
+
   let seq = 0;
   function uid(prefix) {
     seq++;
@@ -73,6 +86,8 @@
           id: Number(x.id), path: String(x.path),
           name: x.name ? String(x.name) : String(x.path).split(/[\/]/).pop(),
           w: Number(x.w) || 0, h: Number(x.h) || 0,
+          // この絵に描いた当たり判定（無ければ、書き出すときに自動で付ける）
+          collisions: normalizeCollisions(x.collisions),
         }))
         .sort((a, b) => a.id - b.id);
       out.variables = Array.isArray(out.variables) ? out.variables : [];
@@ -96,15 +111,7 @@
               file: p && p.file ? String(p.file) : '',
             })),
           // このうごきの間だけ有効な当たり判定
-          collisions: (Array.isArray(a && a.collisions) ? a.collisions : [])
-            .filter((c) => c && String(c.name || '').trim())
-            .map((c) => ({
-              name: String(c.name).trim(),
-              shape: ANIM_SHAPES.indexOf(c.shape) >= 0 ? c.shape : 'rect',
-              x1: Number(c.x1) || 0, y1: Number(c.y1) || 0,
-              x2: Number(c.x2) || 0, y2: Number(c.y2) || 0,
-              points: c.points ? String(c.points) : '',
-            })),
+          collisions: normalizeCollisions(a && a.collisions),
         }));
 
       out.scripts = Array.isArray(out.scripts) ? out.scripts : [];
@@ -122,6 +129,8 @@
         }
         if (script.kind === 'event') {
           if (!script.event) script.event = 'OnBoot';
+          // SSP に OnHourChange は無い。以前の版が書いていた名前を、本物に直す。
+          if (script.event === 'OnHourChange') script.event = 'OnHourTimeSignal';
           // マウス系イベントのしぼり込み（当たった場所・相手）
           if (typeof script.area !== 'string') script.area = '';
           if (typeof script.who !== 'number') script.who = -1;
@@ -154,17 +163,27 @@
 
     // --------------------------------------------------------------- events
     onChange(fn) { Model.listeners.push(fn); },
+    offChange(fn) {
+      const i = Model.listeners.indexOf(fn);
+      if (i >= 0) Model.listeners.splice(i, 1);
+    },
     emit() { Model.listeners.forEach((fn) => fn(Model.project)); },
+
+    /**
+     * Undo 用の控え。JSON の文字で持つ（オブジェクトのまま複製するより速く、メモリも小さい。
+     * 「変わったか」も文字どうしを比べるだけで分かる）。
+     */
+    snapshot() { return JSON.stringify(Model.project); },
 
     /** すべての変更はこれを通す（Undo 用のスナップショットを取る） */
     act(fn) {
-      const snap = clone(Model.project);
+      const snap = Model.snapshot();
       let result;
       try {
         result = fn();
       } catch (e) {
         console.error(e);
-        Model.project = snap;
+        Model.project = JSON.parse(snap);
         Model.emit();
         throw e;
       }
@@ -180,8 +199,10 @@
     /** 入力欄の編集など、すでに書き換えたあとで Undo 履歴だけ積みたいとき */
     pushUndo(snapshot) {
       if (!snapshot) return;
-      if (JSON.stringify(snapshot) === JSON.stringify(Model.project)) return;
-      Model.undoStack.push(snapshot);
+      // 控えは Model.snapshot() の文字。古い呼びかたのオブジェクトも受ける
+      const snap = typeof snapshot === 'string' ? snapshot : JSON.stringify(snapshot);
+      if (snap === Model.snapshot()) return;
+      Model.undoStack.push(snap);
       if (Model.undoStack.length > 80) Model.undoStack.shift();
       Model.redoStack = [];
       Model.dirty = true;
@@ -190,8 +211,8 @@
 
     undo() {
       if (!Model.undoStack.length) return false;
-      Model.redoStack.push(clone(Model.project));
-      Model.project = Model.undoStack.pop();
+      Model.redoStack.push(Model.snapshot());
+      Model.project = JSON.parse(Model.undoStack.pop());
       Model.dirty = true;
       Model.emit();
       return true;
@@ -199,8 +220,8 @@
 
     redo() {
       if (!Model.redoStack.length) return false;
-      Model.undoStack.push(clone(Model.project));
-      Model.project = Model.redoStack.pop();
+      Model.undoStack.push(Model.snapshot());
+      Model.project = JSON.parse(Model.redoStack.pop());
       Model.dirty = true;
       Model.emit();
       return true;

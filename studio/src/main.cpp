@@ -23,8 +23,9 @@
 
 using namespace nashi;
 
-static const wchar_t* kWindowClass = L"NashiStudioWindow";
-static const wchar_t* kMutexName = L"Local\\NashiStudioSingleInstance";
+// もとの「なしスタジオ」と同時に起動できるよう、名前を分けています。
+static const wchar_t* kWindowClass = L"NashiStudio2Window";
+static const wchar_t* kMutexName = L"Local\\NashiStudio2SingleInstance";
 static const UINT kSaveTimeoutTimer = 1;
 
 static Api g_api;
@@ -84,6 +85,16 @@ static void FinishClose(HWND hwnd) {
     DestroyWindow(hwnd);
 }
 
+// 保存できなかった（または返事が来なかった）とき。黙って閉じると変更が消えるので確かめる。
+static void SaveFailed(HWND hwnd, const wchar_t* why) {
+    g_waitingSave = false;
+    KillTimer(hwnd, kSaveTimeoutTimer);
+    std::wstring text = std::wstring(why) + L"\n保存せずに終了しますか？（変更は消えます）";
+    int answer = MessageBoxW(hwnd, text.c_str(), L"なしスタジオ 2",
+                             MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (answer == IDYES) FinishClose(hwnd);
+}
+
 static void AskThenClose(HWND hwnd) {
     if (g_closing || !g_web.ready()) { FinishClose(hwnd); return; }
 
@@ -95,13 +106,13 @@ static void AskThenClose(HWND hwnd) {
 
             int answer = MessageBoxW(hwnd,
                                      L"保存していない変更があります。\n保存して終了しますか？",
-                                     L"なしスタジオ",
+                                     L"なしスタジオ 2",
                                      MB_YESNOCANCEL | MB_ICONWARNING | MB_DEFBUTTON1);
             if (answer == IDCANCEL) return;
             if (answer == IDNO) { FinishClose(hwnd); return; }
 
             g_waitingSave = true;
-            SetTimer(hwnd, kSaveTimeoutTimer, 5000, NULL);   // 保存が終わらなくても閉じる
+            SetTimer(hwnd, kSaveTimeoutTimer, 5000, NULL);   // 返事が来なければ、確かめる
             g_web.ExecuteScript(L"NASHI.App.requestSaveAndClose()", NULL);
         });
 }
@@ -126,7 +137,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         case WM_TIMER:
-            if (wp == kSaveTimeoutTimer && g_waitingSave) FinishClose(hwnd);
+            if (wp == kSaveTimeoutTimer && g_waitingSave) {
+                SaveFailed(hwnd, L"保存が終わりませんでした。");
+            }
             return 0;
 
         case WM_CLOSE:
@@ -145,6 +158,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 // -------------------------------------------------------------------- main
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
+    // あとから読みこむ DLL を、作業フォルダから探さない（置かれた同じ名前の DLL を読まない）。
+    // exe が輸入している DLL のほうは、リンクの /DEPENDENTLOADFLAG で System32 に限っています。
+    SetDllDirectoryW(L"");
+
     // 二重起動したときは、すでに開いているウィンドウを前に出すだけ
     HANDLE mutex = CreateMutexW(NULL, TRUE, kMutexName);
     if (mutex && GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -176,17 +193,27 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
                                    16, 16, 0);
     RegisterClassExW(&wc);
 
-    g_hwnd = CreateWindowExW(0, kWindowClass, L"なしスタジオ", WS_OVERLAPPEDWINDOW,
+    g_hwnd = CreateWindowExW(0, kWindowClass, L"なしスタジオ 2", WS_OVERLAPPEDWINDOW,
                              CW_USEDEFAULT, CW_USEDEFAULT, 1440, 920,
                              NULL, NULL, hInstance, NULL);
     if (!g_hwnd) {
-        MessageBoxW(NULL, L"ウィンドウを作れませんでした。", L"なしスタジオ", MB_ICONERROR);
+        MessageBoxW(NULL, L"ウィンドウを作れませんでした。", L"なしスタジオ 2", MB_ICONERROR);
         return 1;
     }
     RestorePlacement(g_hwnd);
 
     g_web.onMessage = [](const std::wstring& message) {
         if (message == L"saved" && g_waitingSave) FinishClose(g_hwnd);
+        if (message == L"save-failed" && g_waitingSave) SaveFailed(g_hwnd, L"保存できませんでした。");
+    };
+
+    // API は別のスレッドで処理する（SSP を探す・書き出す・保存するあいだも、画面が固まらない）。
+    // その場で処理するのは、すぐ終わる画像と、ウィンドウを出すファイル選びだけ。
+    g_web.isSlow = [](const HttpRequest& req) {
+        if (req.path.compare(0, 5, "/api/") != 0) return false;           // 画面のファイル
+        if (req.path == "/api/shell" || req.path == "/api/shell/file") return false;
+        if (req.path == "/api/shell/pick") return false;                  // ダイアログは UI スレッドで
+        return true;
     };
 
     bool started = g_web.Create(
@@ -201,7 +228,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
             std::wstring text = message +
                 L"\n\nこのアプリは Microsoft Edge WebView2 ランタイムを使います。\n"
                 L"「OK」を押すと配布ページを開きます。";
-            if (MessageBoxW(g_hwnd, text.c_str(), L"なしスタジオ", MB_OKCANCEL | MB_ICONERROR) == IDOK) {
+            if (MessageBoxW(g_hwnd, text.c_str(), L"なしスタジオ 2", MB_OKCANCEL | MB_ICONERROR) == IDOK) {
                 ShellExecuteW(NULL, L"open",
                               L"https://developer.microsoft.com/microsoft-edge/webview2/",
                               NULL, NULL, SW_SHOWNORMAL);
@@ -210,7 +237,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
             DestroyWindow(g_hwnd);
         },
         [](const std::wstring& title) {
-            std::wstring t = title.empty() ? L"なしスタジオ" : title;
+            std::wstring t = title.empty() ? L"なしスタジオ 2" : title;
             SetWindowTextW(g_hwnd, t.c_str());
         });
 

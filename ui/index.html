@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>なしスタジオ - 伺かゴーストをブロックで作る</title>
+<!-- 画面に読みこめるのは exe の中のものだけ（外のスクリプト・枠・送信先を使わせない） -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+<title>なしスタジオ 2 - 伺かゴーストをブロックで作る</title>
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🍐</text></svg>">
 </head>
@@ -11,7 +13,7 @@
 
 <div id="app">
   <header id="topbar">
-    <div class="brand"><span class="brand-mark">🍐</span><span class="brand-name">なしスタジオ</span></div>
+    <div class="brand"><span class="brand-mark">🍐</span><span class="brand-name">なしスタジオ 2</span></div>
 
     <label class="proj-name" title="プロジェクト名（ゴーストの名前）">
       <input id="ghost-name" type="text" value="なしゴースト" spellcheck="false">
@@ -278,7 +280,7 @@
           </ul>
           <div class="panel-head"><h2>栞について</h2></div>
           <p class="hint">
-            書き出したゴーストは <b>nashi.dll</b>（なし栞）で動きます。会話データは
+            書き出したゴーストは <b>nashi.dll</b>（なし栞 2）で動きます。会話データは
             <b>ghost/master/ghost.json</b> に入っていて、SSP を動かしたまま書き出し直すと
             数秒で自動的に読み込み直されます。
           </p>

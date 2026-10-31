@@ -43,7 +43,12 @@
     const text = await res.text();
     let data = {};
     try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-    if (!res.ok) throw new Error(data.error || ('通信エラー (' + res.status + ')'));
+    if (!res.ok) {
+      const err = new Error(data.error || ('通信エラー (' + res.status + ')'));
+      err.status = res.status;
+      err.data = data;                 // 呼んだ側が、くわしい中身（foreign など）を見られるように
+      throw err;
+    }
     return data;
   }
 
@@ -57,6 +62,20 @@
     });
   }
 
+  // チェックタブ（プロジェクト全体を点検する）と、さがすタブは、ブロックを動かすたびに
+  // 走らせると重いので、手が止まったときにまとめて 1 回だけ描きなおす（遅くても 0.3 秒後）。
+  function scheduleSidePanels() {
+    if (App.sidePanelsQueued) return;
+    App.sidePanelsQueued = true;
+    const run = () => {
+      App.sidePanelsQueued = false;
+      N.Search.renderCheck();
+      N.Search.renderSearch();
+    };
+    if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 300 });
+    else setTimeout(run, 50);
+  }
+
   function renderAll() {
     const project = Model.project;
     Render.renderWorkspace($('#canvas'), project);
@@ -64,8 +83,7 @@
     $('#canvas-hint').style.display = project.scripts.length ? 'none' : '';
     renderVarList();
     renderRunTargets();
-    N.Search.renderCheck();
-    N.Search.renderSearch();
+    scheduleSidePanels();
     syncMetaFields();
     $('#btn-undo').disabled = !Model.undoStack.length;
     $('#btn-redo').disabled = !Model.redoStack.length;
@@ -74,7 +92,7 @@
 
   function updateTitle() {
     document.title = (Model.dirty ? '● ' : '') +
-      (Model.project.meta.name || 'なしゴースト') + ' - なしスタジオ';
+      (Model.project.meta.name || 'なしゴースト') + ' - なしスタジオ 2';
   }
 
   function switchTab(name) {
@@ -288,6 +306,16 @@
       // 相手の名前・言われたこと。空欄なら、ためすとき用の仮の値を入れる。
       return [script.from || 'ほかのゴースト', script.contains || 'こんにちは'];
     }
+    // よく使うイベントは、それらしい仮の値を入れておく
+    const samples = {
+      OnFileDrop2: ['C:\\Users\\user\\Desktop\\memo.txt', '0', 'text/plain'],
+      OnURLDropped: ['C:\\Users\\user\\Downloads\\page.html', 'https://example.com/', '0'],
+      OnKeyPress: ['a', '65', '0', '0', ''],
+      OnBatteryLow: ['15', '-1', 'offline', 'low'],
+      OnShellChanged: ['master', Model.project.meta.name || '', ''],
+      OnDarkTheme: ['1', '1'],
+    };
+    if (samples[script.event]) return samples[script.event];
     if (!N.MOUSE_EVENTS[script.event]) return [];
     const who = script.who >= 0 ? script.who : 0;
     return ['0', '0', '0', String(who), script.area || 'Head'];
@@ -307,7 +335,11 @@
         scriptId: script.id,
         refs: refsFor(script),
         vars: App.sessionVars,
-        sys: { ghostName: meta.name || '', shellName: 'master' },
+        // SSP が知らせてくる情報は、ためすときは仮の値（誕生日は今日にしておく）
+        sys: {
+          ghostName: meta.name || '', shellName: 'master', userName: 'ユーザー',
+          birthMonth: new Date().getMonth() + 1, birthDay: new Date().getDate(), baseware: '2.9',
+        },
       },
     });
   }
@@ -536,9 +568,9 @@
     const bind = (sel, apply, onLive) => {
       const el = $(sel);
       let snap = null;
-      el.addEventListener('focus', () => { snap = Model.clone(Model.project); });
+      el.addEventListener('focus', () => { snap = Model.snapshot(); });
       el.addEventListener('change', () => {
-        if (!snap) snap = Model.clone(Model.project);
+        if (!snap) snap = Model.snapshot();
         apply(el.type === 'checkbox' ? el.checked : el.value);
         if (onLive) onLive();
         Model.pushUndo(snap);
@@ -617,6 +649,8 @@
       try { loaded = await api('/api/project?name=' + encodeURIComponent(state.lastProject)); } catch { /* 新規 */ }
     }
     Model.init(loaded || sampleProject());
+    // 開いたファイルに上書き保存する（ゴーストの名前を変えても、別のファイルにはしない）
+    App.projectName = loaded ? state.lastProject : '';
     setZoom(1);
     switchTab('run');
     N.Shell.resetStage();
@@ -625,6 +659,7 @@
     $('#btn-new').addEventListener('click', () => {
       if (Model.dirty && !confirm('保存していない変更があります。新しく作りますか？')) return;
       Model.init(sampleProject());
+      App.projectName = '';
       App.sessionVars = {};
       App.toast('新しいゴーストを作りました');
     });
@@ -666,6 +701,7 @@
       try {
         const r = await api('/api/import', { method: 'POST', body: { path: p } });
         Model.init(r.project);
+        App.projectName = '';            // よそから来たものは、新しいプロジェクトとして保存する
         App.sessionVars = {};
         App.toast('読み込みました');
       } catch (e) { App.toast(e.message, true); }

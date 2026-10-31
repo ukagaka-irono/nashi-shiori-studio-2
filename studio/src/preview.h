@@ -28,6 +28,10 @@ struct PreviewRequest {
     std::string ghostName;
     std::string shellName;
     std::string lastTalk;
+    std::string userName;              // SSP が知らせてくる情報の、ためすとき用の値
+    int birthMonth = 0;
+    int birthDay = 0;
+    std::string baseware;
 };
 
 struct PreviewResult {

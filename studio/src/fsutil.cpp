@@ -72,13 +72,32 @@ bool ReadBinaryFile(const std::wstring& path, std::string& out) {
 
 bool WriteBinaryFile(const std::wstring& path, const std::string& data) {
     EnsureDir(ParentDir(path));
-    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+    std::wstring tmp = path + L".tmp";
+    HANDLE h = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE) return false;
     DWORD written = 0;
-    BOOL ok = data.empty() ? TRUE : WriteFile(h, data.c_str(), (DWORD)data.size(), &written, NULL);
+    BOOL ok = TRUE;
+    if (!data.empty()) {
+        ok = WriteFile(h, data.c_str(), (DWORD)data.size(), &written, NULL);
+        if (ok && written != (DWORD)data.size()) ok = FALSE;
+    }
     CloseHandle(h);
-    return ok != FALSE;
+    if (!ok || !MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        DeleteFileW(tmp.c_str());
+        return false;
+    }
+    return true;
+}
+
+bool IsLocalPath(const std::wstring& path) {
+    if (path.size() < 3) return false;
+    wchar_t d = path[0];
+    bool letter = (d >= L'A' && d <= L'Z') || (d >= L'a' && d <= L'z');
+    if (!letter || path[1] != L':' || (path[2] != L'\\' && path[2] != L'/')) return false;
+    // C:\x\..\..\ のような書きかたや、:ストリーム名 は受けない
+    if (path.find(L':', 2) != std::wstring::npos) return false;
+    return true;
 }
 
 bool DeleteFileIfExists(const std::wstring& path) {
@@ -115,6 +134,8 @@ static void ListDeepInto(const std::wstring& root, const std::wstring& rel,
         std::wstring name = fd.cFileName;
         if (name == L"." || name == L"..") continue;
         std::wstring next = rel.empty() ? name : (rel + L"\\" + name);
+        // ジャンクションやシンボリックリンクはたどらない（フォルダの外のものを拾わないため）
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) continue;
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
             ListDeepInto(root, next, depth + 1, out);
         } else {

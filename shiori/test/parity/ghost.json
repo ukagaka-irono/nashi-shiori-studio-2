@@ -381,6 +381,45 @@
         ] },
         { "type": "say", "who": 0, "text": "しっぽ", "nl": 0 }
       ]
+    },
+    {
+      "id": "p30", "kind": "event", "event": "OnP30",
+      "_": "文字の飾り。おかしな色・大きすぎる値は、どちらも同じように落とす／丸めるはず",
+      "blocks": [
+        { "type": "font_style", "style": "bold", "on": 1 },
+        { "type": "font_style", "style": "strike", "on": 0 },
+        { "type": "font_style", "style": "blink", "on": 1 },
+        { "type": "font_color", "color": "#d03030" },
+        { "type": "font_color", "color": "red]\\![open,file,x" },
+        { "type": "font_size", "size": 9999 },
+        { "type": "say", "who": 0, "text": "かざり", "nl": 0 },
+        { "type": "font_default" }
+      ]
+    },
+    {
+      "id": "p31", "kind": "event", "event": "OnP31",
+      "refs": ["わる]\\![open,file,x", "x]y"],
+      "_": "イベントを起こす選択肢・音・濃さ・移動。外から来た文字を混ぜても命令は増えないはず",
+      "blocks": [
+        { "type": "choice_event", "label": "はい", "event": "Answer", "a": { "type": "ref", "index": 0 } },
+        { "type": "choice_event", "label": { "type": "ref", "index": 1 }, "event": "OnAnswer", "a": "" },
+        { "type": "bgm", "file": "bgm.mp3", "mode": "loop", "volume": 40 },
+        { "type": "bgm", "file": "C:\\x.mp3", "mode": "play", "volume": 100 },
+        { "type": "sound_stop" },
+        { "type": "alpha", "who": 1, "alpha": 150, "ms": 300 },
+        { "type": "move", "who": 0, "x": 10, "y": -20, "ms": 0 }
+      ]
+    },
+    {
+      "id": "p32", "kind": "event", "event": "OnP32",
+      "_": "日付・時刻・スライダー・パスワードをたずねる（入れ先が空なら何も出ない）",
+      "blocks": [
+        { "type": "ask_kind", "kind": "dateinput", "into": "こたえ" },
+        { "type": "ask_kind", "kind": "sliderinput", "into": "こたえ", "min": 10, "max": 1 },
+        { "type": "ask_kind", "kind": "timeinput", "into": "" },
+        { "type": "ask_kind", "kind": "nosuch", "into": "こたえ" },
+        { "type": "say", "who": 0, "text": "きいた", "nl": 0 }
+      ]
     }
   ]
 }

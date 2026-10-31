@@ -10,10 +10,10 @@
 
 #include <shellapi.h>
 #include <algorithm>
+#include <cstdio>
+#include <mutex>
 
 namespace nashi {
-
-static const char* kStudioVersion = "1.0.0";
 
 // ------------------------------------------------------------------ 補助
 
@@ -29,6 +29,26 @@ static void JsonError(HttpResponse& res, int status, const std::string& message)
     Json(res, status, o);
 }
 
+static JValue ReadConfig(const std::wstring& path);
+
+// 書き出し先に別のゴーストがあったとき。画面はこれを見て、確かめてから呼びなおす。
+static void ForeignError(HttpResponse& res, const ExportResult& r) {
+    JValue o = JValue::makeObj();
+    o.set("error", JValue::makeStr(r.error));
+    o.set("foreign", JValue::makeBool(true));
+    o.set("folder", JValue::makeStr(r.folder));
+    Json(res, 409, o);
+}
+
+// \![change,ghost,…] にそのまま入れてよい名前か（] や \ で命令を足させない）
+static bool SafeGhostNameForTag(const std::string& name) {
+    for (size_t i = 0; i < name.size(); i++) {
+        char c = name[i];
+        if (c == '[' || c == ']' || c == '\\' || c == '"' || c == ',' || c == '\r' || c == '\n') return false;
+    }
+    return !name.empty();
+}
+
 static bool ParseBody(const HttpRequest& req, JValue& out) {
     std::string err;
     if (req.body.empty()) { out = JValue::makeObj(); return true; }
@@ -41,7 +61,7 @@ void Api::Init() {
     exeDir_ = ExeDir();
     projectsDir_ = PathJoin(exeDir_, L"projects");
     outputDir_ = PathJoin(exeDir_, L"output");
-    configPath_ = PathJoin(exeDir_, L"nashi-studio.json");
+    configPath_ = PathJoin(exeDir_, L"nashi-studio-2.json");
 
     EnsureDir(projectsDir_);
 
@@ -62,14 +82,38 @@ std::string Api::DllBytes() const {
     return std::string();
 }
 
-std::wstring Api::DefaultOutDir() const {
-    std::string text;
-    JValue cfg;
-    std::string err;
-    if (ReadBinaryFile(configPath_, text) && JsonParse(ToUtf8(text), cfg, err)) {
-        std::string last = cfg["lastOutDir"].asStr();
-        if (!last.empty()) return Utf8ToWide(last);
+std::string Api::DllSource() const {
+    if (PathExists(PathJoin(exeDir_, L"nashi.dll"))) return "nashi.dll (exe のとなり)";
+    if (HasEmbedded(IDR_NASHI_DLL)) return "nashi.dll (exe に同梱)";
+    return std::string();
+}
+
+std::string Api::ProjectTitle(const std::wstring& file, const FILETIME& modified,
+                              unsigned long long size) {
+    std::map<std::wstring, TitleCache>::iterator it = titles_.find(file);
+    if (it != titles_.end() && it->second.size == size &&
+        CompareFileTime(&it->second.modified, &modified) == 0) {
+        return it->second.title;
     }
+    std::string title;
+    std::string text;
+    if (ReadBinaryFile(PathJoin(projectsDir_, file), text)) {
+        JValue p;
+        std::string err;
+        if (JsonParse(ToUtf8(text), p, err)) title = p["meta"]["name"].asStr();
+    }
+    TitleCache c;
+    c.modified = modified;
+    c.size = size;
+    c.title = title;
+    titles_[file] = c;
+    return title;
+}
+
+std::wstring Api::DefaultOutDir() const {
+    JValue cfg = ReadConfig(configPath_);
+    std::string last = cfg["lastOutDir"].asStr();
+    if (!last.empty()) return Utf8ToWide(last);
     SspInfo ssp = Ssp();
     return ssp.ghostDir.empty() ? outputDir_ : ssp.ghostDir;
 }
@@ -78,13 +122,7 @@ SspInfo Api::Ssp() const {
     unsigned long now = GetTickCount();
     if (sspCacheTick_ != 0 && now - sspCacheTick_ < 2000) return sspCache_;
 
-    std::string text;
-    JValue cfg;
-    std::string err;
-    std::wstring hint;
-    if (ReadBinaryFile(configPath_, text) && JsonParse(ToUtf8(text), cfg, err)) {
-        hint = Utf8ToWide(cfg["sspPath"].asStr());
-    }
+    std::wstring hint = Utf8ToWide(ReadConfig(configPath_)["sspPath"].asStr());
     sspCache_ = DetectSsp(hint);
     sspCacheTick_ = now;
     return sspCache_;
@@ -100,7 +138,12 @@ static JValue SspToJson(const SspInfo& ssp) {
     return o;
 }
 
+// 設定ファイルは、API のスレッドと UI スレッド（ウィンドウの位置）の両方が読み書きする。
+// 「読んで、1 か所変えて、書く」の途中で割りこまれると片方の変更が消えるので、ひとつずつにする。
+static std::recursive_mutex g_configMu;
+
 static JValue ReadConfig(const std::wstring& path) {
+    std::lock_guard<std::recursive_mutex> lock(g_configMu);
     std::string text;
     JValue cfg = JValue::makeObj();
     std::string err;
@@ -112,6 +155,7 @@ static JValue ReadConfig(const std::wstring& path) {
 }
 
 static void WriteConfig(const std::wstring& path, const std::string& key, const std::string& value) {
+    std::lock_guard<std::recursive_mutex> lock(g_configMu);
     JValue cfg = ReadConfig(path);
     cfg.set(key, JValue::makeStr(value));
     WriteBinaryFile(path, cfg.dump(2));
@@ -120,6 +164,7 @@ static void WriteConfig(const std::wstring& path, const std::string& key, const 
 JValue Api::LoadConfig() const { return ReadConfig(configPath_); }
 
 void Api::SaveConfig(const std::string& key, const JValue& value) {
+    std::lock_guard<std::recursive_mutex> lock(g_configMu);
     JValue cfg = ReadConfig(configPath_);
     cfg.set(key, value);
     WriteBinaryFile(configPath_, cfg.dump(2));
@@ -159,10 +204,10 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
     // ---- 状態 ----------------------------------------------------------
     if (req.path == "/api/state" && req.method == "GET") {
         JValue o = JValue::makeObj();
-        std::string dll = DllBytes();
+        std::string dll = DllSource();         // 中身は読まない（毎回 140KB 読むことになる）
         o.set("dllFound", JValue::makeBool(!dll.empty()));
-        o.set("dll", JValue::makeStr(dll.empty() ? "" : "nashi.dll (exe に同梱)"));
-        o.set("version", JValue::makeStr(kStudioVersion));
+        o.set("dll", JValue::makeStr(dll));
+        o.set("version", JValue::makeStr(StudioVersion()));
 
         JValue list = JValue::makeArr();
         std::vector<FileInfo> files = ListFiles(projectsDir_, L"*.json");
@@ -171,16 +216,8 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         });
         for (size_t i = 0; i < files.size(); i++) {
             std::wstring stem = files[i].name.substr(0, files[i].name.size() - 5);
-            std::string title = WideToUtf8(stem);
-            std::string text;
-            if (ReadBinaryFile(PathJoin(projectsDir_, files[i].name), text)) {
-                JValue p;
-                std::string err;
-                if (JsonParse(ToUtf8(text), p, err)) {
-                    std::string name = p["meta"]["name"].asStr();
-                    if (!name.empty()) title = name;
-                }
-            }
+            std::string title = ProjectTitle(files[i].name, files[i].modified, files[i].size);
+            if (title.empty()) title = WideToUtf8(stem);
             JValue one = JValue::makeObj();
             one.set("file", JValue::makeStr(WideToUtf8(stem)));
             one.set("title", JValue::makeStr(title));
@@ -243,7 +280,8 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         std::wstring path = it == req.query.end() ? std::wstring() : Utf8ToWide(it->second);
         std::string data;
         int w = 0, h = 0;
-        if (path.empty() || !ReadBinaryFile(path, data) || !PngSize(data, &w, &h)) {
+        // プロジェクトに \\host\… と書かれていても、よそへはつなぎに行かない
+        if (path.empty() || !IsLocalPath(path) || !ReadBinaryFile(path, data) || !PngSize(data, &w, &h)) {
             JsonError(res, 404, "画像が読めません");
             return;
         }
@@ -278,6 +316,18 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         if (name.empty()) { JsonError(res, 400, "名前がありません"); return; }
         EnsureDir(projectsDir_);
         std::wstring file = PathJoin(projectsDir_, Utf8ToWide(name) + L".json");
+        // 新しく作ったプロジェクトのはじめての保存では、同じ名前の別のプロジェクトを
+        // 上書きしない。「名前 (2)」のように、空いている名前を使う。
+        if (body["create"].asBool(false) && PathExists(file)) {
+            std::string base = name;
+            for (int n = 2; n < 1000 && PathExists(file); n++) {
+                char suffix[16];
+                sprintf_s(suffix, " (%d)", n);
+                name = base + suffix;
+                file = PathJoin(projectsDir_, Utf8ToWide(name) + L".json");
+            }
+            if (PathExists(file)) { JsonError(res, 409, "空いている名前が見つかりません"); return; }
+        }
         if (!WriteBinaryFile(file, body["project"].dump(2))) {
             JsonError(res, 500, "保存できませんでした");
             return;
@@ -330,6 +380,10 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         pr.ghostName = sys.has("ghostName") ? sys["ghostName"].asStr()
                                             : pr.project["meta"]["name"].asStr();
         pr.shellName = sys.has("shellName") ? sys["shellName"].asStr() : "master";
+        pr.userName = sys["userName"].asStr();
+        pr.birthMonth = sys["birthMonth"].asInt(0);
+        pr.birthDay = sys["birthDay"].asInt(0);
+        pr.baseware = sys["baseware"].asStr();
 
         PreviewResult r = RunPreview(pr);
         if (!r.ok) { JsonError(res, 400, r.error); return; }
@@ -357,7 +411,9 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         bool nar = body["mode"].asStr() == "nar";
 
         ExportResult r = nar ? ExportToNar(project, outDir, dll, includeShell)
-                             : ExportToDir(project, outDir, dll, includeShell, overwriteShell);
+                             : ExportToDir(project, outDir, dll, includeShell, overwriteShell,
+                                           body["overwriteForeign"].asBool(false));
+        if (r.foreign) { ForeignError(res, r); return; }
         if (!r.ok) { JsonError(res, 500, r.error.empty() ? "書き出しに失敗しました" : r.error); return; }
         WriteConfig(configPath_, "lastOutDir", WideToUtf8(outDir));
 
@@ -416,7 +472,11 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         std::wstring path = Utf8ToWide(body["path"].asStr());
         if (path.empty() || !PathExists(path)) { JsonError(res, 404, "見つかりません"); return; }
         if (!IsDirectory(path)) path = ParentDir(path);
-        ShellExecuteW(NULL, L"open", L"explorer.exe", (L"\"" + path + L"\"").c_str(), NULL, SW_SHOWNORMAL);
+        // explorer.exe は Windows のフォルダから呼ぶ（exe のとなりに置かれた同名のものを動かさない）
+        wchar_t winDir[MAX_PATH];
+        UINT n = GetWindowsDirectoryW(winDir, MAX_PATH);
+        std::wstring explorer = (n > 0 && n < MAX_PATH) ? PathJoin(winDir, L"explorer.exe") : L"explorer.exe";
+        ShellExecuteW(NULL, L"open", explorer.c_str(), (L"\"" + path + L"\"").c_str(), NULL, SW_SHOWNORMAL);
         JValue o = JValue::makeObj();
         o.set("ok", JValue::makeBool(true));
         Json(res, 200, o);
@@ -463,7 +523,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         if (!ParseBody(req, body)) { JsonError(res, 400, "JSON が壊れています"); return; }
         std::string script = body["script"].asStr();
         if (script.empty()) { JsonError(res, 400, "スクリプトがありません"); return; }
-        SstpResult r = SstpSend(script, "なしスタジオ");
+        SstpResult r = SstpSend(script, "なしスタジオ 2");
         if (!r.ok) { JsonError(res, 502, r.error); return; }
         JValue o = JValue::makeObj();
         o.set("ok", JValue::makeBool(true));
@@ -480,7 +540,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         std::vector<std::string> refs;
         const JValue& list = body["refs"];
         for (size_t i = 0; i < list.size(); i++) refs.push_back(list.at(i).asStr());
-        SstpResult r = SstpNotify(eventName, refs, "なしスタジオ");
+        SstpResult r = SstpNotify(eventName, refs, "なしスタジオ 2");
         if (!r.ok) { JsonError(res, 502, r.error); return; }
         JValue o = JValue::makeObj();
         o.set("ok", JValue::makeBool(true));
@@ -597,7 +657,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         std::string sentence = body["sentence"].asStr();
         if (sentence.empty()) { JsonError(res, 400, "話しかける内容がありません"); return; }
         std::string sender = body["sender"].asStr();
-        if (sender.empty()) sender = "なしスタジオ";
+        if (sender.empty()) sender = "なしスタジオ 2";
         SstpResult r = SstpCommunicate(sentence, sender);
         if (!r.ok) { JsonError(res, 502, r.error); return; }
         JValue o = JValue::makeObj();
@@ -622,18 +682,23 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         std::string dll = DllBytes();
         ExportResult r = ExportToDir(project, ssp.ghostDir, dll,
                                      body["includeShell"].asBool(true),
-                                     body["overwriteShell"].asBool(false));
+                                     body["overwriteShell"].asBool(false),
+                                     body["overwriteForeign"].asBool(false));
+        if (r.foreign) { ForeignError(res, r); return; }
         if (!r.ok) { JsonError(res, 500, r.error.empty() ? "書き出しに失敗しました" : r.error); return; }
 
         std::string name = project["meta"]["name"].asStr();
         std::string action = "none";
-        if (ssp.sstp && body["activate"].asBool(true) && !name.empty()) {
+        if (!name.empty() && !SafeGhostNameForTag(name)) {
+            // 名前に [ ] \ " , が入っていると、切り替えの命令に別の命令を足せてしまう
+            action = "unsafe-name";
+        } else if (ssp.sstp && body["activate"].asBool(true) && !name.empty()) {
             bool already = !ssp.ghostName.empty() &&
                            (ssp.ghostName == name ||
                             ssp.ghostName == project["meta"]["sakuraName"].asStr());
             SstpResult sent = already
-                ? SstpSend("\\![reload,shiori]", "なしスタジオ")
-                : SstpSend("\\![change,ghost," + name + "]", "なしスタジオ");
+                ? SstpSend("\\![reload,shiori]", "なしスタジオ 2")
+                : SstpSend("\\![change,ghost," + name + "]", "なしスタジオ 2");
             if (sent.ok) action = already ? "reload" : "change";
             else action = "failed";
         }

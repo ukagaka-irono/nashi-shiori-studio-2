@@ -56,6 +56,74 @@ std::string TakeCoStr(LPWSTR s) {
 
 } // namespace
 
+static const UINT kJobsDone = WM_APP + 1;
+
+void WebView::Respond(void* rawArgs, const HttpResponse& res) {
+    ICoreWebView2WebResourceRequestedEventArgs* args =
+        (ICoreWebView2WebResourceRequestedEventArgs*)rawArgs;
+    ComPtr<IStream> stream;
+    stream.Attach(SHCreateMemStream((const BYTE*)res.body.data(), (UINT)res.body.size()));
+    std::wstring resHeaders =
+        L"Content-Type: " + Utf8ToWide(res.contentType) +
+        (res.cacheable ? L"\r\nCache-Control: max-age=86400" : L"\r\nCache-Control: no-store");
+
+    ComPtr<ICoreWebView2WebResourceResponse> response;
+    ICoreWebView2Environment* env = (ICoreWebView2Environment*)environment_;
+    if (env && SUCCEEDED(env->CreateWebResourceResponse(stream.Get(), res.status,
+                                                        Utf8ToWide(StatusText(res.status)).c_str(),
+                                                        resHeaders.c_str(), &response))) {
+        args->put_Response(response.Get());
+    }
+}
+
+// 別のスレッド。要求を 1 つずつ処理して、終わったら UI スレッドに知らせる。
+// ここでは WebView2 のものには触らない（触ってよいのは UI スレッドだけ）。
+void WebView::WorkerLoop() {
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);   // ShellExecute（フォルダを開く・SSP を起動）のため
+    for (;;) {
+        Job* job = NULL;
+        {
+            std::unique_lock<std::mutex> lock(mu_);
+            cv_.wait(lock, [this] { return stopping_ || !todo_.empty(); });
+            if (todo_.empty()) break;                    // 止める合図で、残りも無い
+            job = todo_.front();
+            todo_.pop_front();
+        }
+        if (resource_) resource_(job->req, job->res);
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            done_.push_back(job);
+        }
+        if (msgWnd_) PostMessageW(msgWnd_, kJobsDone, 0, 0);
+    }
+    CoUninitialize();
+}
+
+void WebView::FinishJobs() {
+    std::deque<Job*> jobs;
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        jobs.swap(done_);
+    }
+    for (size_t i = 0; i < jobs.size(); i++) {
+        Job* job = jobs[i];
+        if (webview_) Respond(job->args, job->res);
+        ((ICoreWebView2Deferral*)job->deferral)->Complete();
+        ((ICoreWebView2Deferral*)job->deferral)->Release();
+        ((ICoreWebView2WebResourceRequestedEventArgs*)job->args)->Release();
+        delete job;
+    }
+}
+
+LRESULT CALLBACK WebView::MsgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == kJobsDone) {
+        WebView* self = (WebView*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+        if (self) self->FinishJobs();
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
 bool WebView::Create(HWND parent,
                      const std::wstring& userDataDir,
                      ResourceFn resource,
@@ -63,6 +131,21 @@ bool WebView::Create(HWND parent,
                      std::function<void(const std::wstring&)> onTitle) {
     resource_ = resource;
     onTitle_ = onTitle;
+
+    // 別のスレッドで処理した要求の返事を、UI スレッドに戻すための見えない窓
+    WNDCLASSEXW wc;
+    ZeroMemory(&wc, sizeof(wc));
+    wc.cbSize = sizeof(wc);
+    wc.lpfnWndProc = MsgProc;
+    wc.hInstance = GetModuleHandleW(NULL);
+    wc.lpszClassName = L"NashiStudio2WebViewJobs";
+    RegisterClassExW(&wc);
+    msgWnd_ = CreateWindowExW(0, wc.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL,
+                              wc.hInstance, NULL);
+    if (msgWnd_) {
+        SetWindowLongPtrW(msgWnd_, GWLP_USERDATA, (LONG_PTR)this);
+        worker_ = std::thread([this] { WorkerLoop(); });
+    }
 
     HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
         nullptr, userDataDir.c_str(), nullptr,
@@ -102,8 +185,19 @@ bool WebView::Create(HWND parent,
                                 settings->put_AreDefaultContextMenusEnabled(FALSE);
                                 settings->put_IsStatusBarEnabled(FALSE);
                                 settings->put_IsZoomControlEnabled(FALSE);
-                                settings->put_AreDefaultScriptDialogsEnabled(TRUE);
-                                settings->put_AreDevToolsEnabled(TRUE);
+                                settings->put_AreDefaultScriptDialogsEnabled(TRUE);   // confirm() を使う
+                                // 開発者ツールは、環境変数 NASHI_STUDIO_DEVTOOLS=1 のときだけ。
+                                // ふだん開けると、画面から exe の API を好きに呼べてしまうため。
+                                wchar_t dev[8] = { 0 };
+                                DWORD devLen = GetEnvironmentVariableW(L"NASHI_STUDIO_DEVTOOLS", dev, 8);
+                                bool devtools = devLen > 0 && devLen < 8 && dev[0] == L'1';
+                                settings->put_AreDevToolsEnabled(devtools ? TRUE : FALSE);
+                                // F5 での読みなおし（保存していない変更が消える）や印刷などの
+                                // ブラウザ用のキーを切る。文字の編集（Ctrl+C / V / Z）は残る。
+                                ComPtr<ICoreWebView2Settings3> settings3;
+                                if (SUCCEEDED(settings.As(&settings3)) && settings3) {
+                                    settings3->put_AreBrowserAcceleratorKeysEnabled(devtools ? TRUE : FALSE);
+                                }
                             }
 
                             std::wstring filter = std::wstring(kVirtualOrigin) + L"/*";
@@ -162,25 +256,28 @@ bool WebView::Create(HWND parent,
                                             req.body = ReadStream(content.Get());
                                         }
 
+                                        // 時間のかかる要求（SSP を探す・書き出す・保存する…）は
+                                        // 別のスレッドに回す。その場で処理すると、終わるまで
+                                        // ウィンドウが固まる（SSP を探すだけで数秒かかることがある）。
+                                        ComPtr<ICoreWebView2Deferral> deferral;
+                                        if (isSlow && isSlow(req) && worker_.joinable() &&
+                                            SUCCEEDED(args->GetDeferral(&deferral)) && deferral) {
+                                            Job* job = new Job();
+                                            job->req = req;
+                                            args->AddRef();
+                                            job->args = args;
+                                            job->deferral = deferral.Detach();
+                                            {
+                                                std::lock_guard<std::mutex> lock(mu_);
+                                                todo_.push_back(job);
+                                            }
+                                            cv_.notify_one();
+                                            return S_OK;
+                                        }
+
                                         HttpResponse res;
                                         if (resource_) resource_(req, res);
-
-                                        ComPtr<IStream> stream;
-                                        stream.Attach(SHCreateMemStream(
-                                            (const BYTE*)res.body.data(), (UINT)res.body.size()));
-                                        std::wstring resHeaders =
-                                            L"Content-Type: " + Utf8ToWide(res.contentType) +
-                                            (res.cacheable ? L"\r\nCache-Control: max-age=86400"
-                                                           : L"\r\nCache-Control: no-store");
-
-                                        ComPtr<ICoreWebView2WebResourceResponse> response;
-                                        ICoreWebView2Environment* env = (ICoreWebView2Environment*)environment_;
-                                        if (env && SUCCEEDED(env->CreateWebResourceResponse(
-                                                stream.Get(), res.status,
-                                                Utf8ToWide(StatusText(res.status)).c_str(),
-                                                resHeaders.c_str(), &response))) {
-                                            args->put_Response(response.Get());
-                                        }
+                                        Respond(args, res);
                                         return S_OK;
                                     })
                                     .Get(),
@@ -309,6 +406,20 @@ void WebView::ExecuteScript(const std::wstring& script, std::function<void(const
 
 void WebView::Shutdown() {
     ready_ = false;
+    // 別のスレッドを止める。いま動いている要求（保存など）は、終わるまで待つ。
+    if (worker_.joinable()) {
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            stopping_ = true;
+        }
+        cv_.notify_one();
+        worker_.join();
+    }
+    FinishJobs();                              // 終わったものの後片づけ（WebView2 が無ければ返事は渡さない）
+    if (msgWnd_) {
+        DestroyWindow(msgWnd_);
+        msgWnd_ = NULL;
+    }
     if (controller_) {
         ((ICoreWebView2Controller*)controller_)->Close();
         ((ICoreWebView2Controller*)controller_)->Release();

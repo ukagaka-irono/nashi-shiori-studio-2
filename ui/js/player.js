@@ -24,6 +24,24 @@
       : typeof v === 'boolean' ? (v ? '1' : '0')
         : typeof v === 'number' ? fmtNum(v) : String(v));
 
+  // \![…] のうち、プレビューで「こうなります」と見せたいもの。ほかは何も出さない。
+  const INPUT_KINDS = {
+    inputbox: '文字', dateinput: '日付', timeinput: '時刻', sliderinput: '数', passwordinput: 'パスワード',
+  };
+  function describeCommand(a) {
+    if (a[0] === 'sound') {
+      if (a[1] === 'stop') return '♪ 音を止める';
+      if (a[1] === 'loop') return `♪ ${a[2] || ''} をくりかえし鳴らす`;
+      if (a[1] === 'play') return `♪ ${a[2] || ''} を鳴らす`;
+      return '';
+    }
+    if (a[0] === 'set' && a[1] === 'alpha') return `濃さ ${a[2]}％`;
+    if (a[0] === 'move') return 'キャラが動く';
+    if (a[0] === 'open' && INPUT_KINDS[a[1]]) return `（${INPUT_KINDS[a[1]]}の入力欄が開く）`;
+    if (a[0] === 'open' && a[1] === 'browser') return `（ブラウザで ${a[2] || ''} を開く）`;
+    return '';
+  }
+
   // ------------------------------------------------------- SakuraScript 解析
   /** プレビュー再生のために、さくらスクリプトを操作の列に分解する */
   function parseSakura(s) {
@@ -31,13 +49,34 @@
     let i = 0;
     let text = '';
     const flush = () => { if (text) { ops.push({ op: 'text', text }); text = ''; } };
+    // [ … ] の中身。\] と \\ は 1 文字として読む（SSP と同じ）。
     const readBracket = () => {
       if (s[i] !== '[') return null;
-      const end = s.indexOf(']', i);
-      if (end < 0) return null;
-      const body = s.slice(i + 1, end);
-      i = end + 1;
+      let j = i + 1;
+      let body = '';
+      while (j < s.length && s[j] !== ']') {
+        if (s[j] === '\\' && (s[j + 1] === ']' || s[j + 1] === '\\')) { body += s[j + 1]; j += 2; continue; }
+        body += s[j++];
+      }
+      if (j >= s.length) return null;
+      i = j + 1;
       return body;
+    };
+    // , で分ける。"…" でくくった中の , は区切りにしない（"" は " 1 つ）。
+    const splitArgs = (a) => {
+      const out = [''];
+      let quoted = false;
+      for (let k = 0; k < a.length; k++) {
+        const ch = a[k];
+        if (ch === '"') {
+          if (quoted && a[k + 1] === '"') { out[out.length - 1] += '"'; k++; continue; }
+          quoted = !quoted;
+          continue;
+        }
+        if (ch === ',' && !quoted) { out.push(''); continue; }
+        out[out.length - 1] += ch;
+      }
+      return out;
     };
 
     while (i < s.length) {
@@ -65,14 +104,10 @@
         case 'x': flush(); ops.push({ op: 'clickwait' }); break;
         case 'b': { readBracket(); break; }
         case 'q': {
-          const a = readBracket() || '';
-          const comma = a.lastIndexOf(',');
+          // \q[見出し,行き先,Reference…]。行き先のあとに続く引数は、見出しに入れない。
+          const a = splitArgs(readBracket() || '');
           flush();
-          ops.push({
-            op: 'choice',
-            label: comma >= 0 ? a.slice(0, comma) : a,
-            id: comma >= 0 ? a.slice(comma + 1) : '',
-          });
+          ops.push({ op: 'choice', label: a[0], id: a.length > 1 ? a[1] : '' });
           break;
         }
         case 'w': {
@@ -81,14 +116,33 @@
           break;
         }
         case '_': {
-          const kind = s[i]; i++;
+          let kind = s[i]; i++;
+          // \__w[…] / \__q[…] のように _ が 2 つ続くもの
+          if (kind === '_') { kind = '_' + s[i]; i++; }
           const a = readBracket();
-          if (kind === 'w') { flush(); ops.push({ op: 'wait', ms: Number(a) || 0 }); }
+          if (kind === 'w' || kind === '__w') {
+            // \__w[animation,ID] はアニメーションを待つ。プレビューでは待たない。
+            const ms = Number(a);
+            if (Number.isFinite(ms)) { flush(); ops.push({ op: 'wait', ms }); }
+          }
           else if (kind === 'a') { flush(); ops.push({ op: 'link', url: a }); }
           else if (kind === 'v') { flush(); ops.push({ op: 'sound', file: a }); }
           break;
         }
-        case '!': { readBracket(); break; }
+        case 'f': {
+          // 文字の飾り。\f[bold,1] / \f[color,#d03030] / \f[height,150%] / \f[default]
+          const a = splitArgs(readBracket() || '');
+          flush();
+          ops.push({ op: 'style', name: a[0], value: a.length > 1 ? a.slice(1).join(',') : '' });
+          break;
+        }
+        case '!': {
+          // 画面のプレビューでは再現しないものを、吹き出しに小さく書いておく
+          const a = splitArgs(readBracket() || '');
+          const note = describeCommand(a);
+          if (note) { flush(); ops.push({ op: 'note', text: note }); }
+          break;
+        }
         default: {
           if (s[i] === '[') readBracket();
           break;

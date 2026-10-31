@@ -45,9 +45,22 @@ extern "C" {
 extern "C" int _fltused = 0x9875;
 
 // リンカが PE に載せたがる「読みこみ時の設定表」。ふだんは CRT が持っています。
-// 中身は空で構いませんが、大きさだけは正しく書いておきます。
+// 大きさと、SafeSEH の表（/SAFESEH でリンカが作る「呼んでよい例外の受け口」の一覧）だけを書きます。
+// SafeSEH は、積み場所をはみ出して受け口を書きかえる攻撃を、OS がはねるためのものです
+// （Windows XP SP2 から効きます。2000 はこの欄を見ないので、そのまま読みこめます）。
+extern "C" PVOID __safe_se_handler_table[];
+extern "C" BYTE  __safe_se_handler_count;
 extern "C" IMAGE_LOAD_CONFIG_DIRECTORY32 _load_config_used = {
     sizeof(IMAGE_LOAD_CONFIG_DIRECTORY32),
+    0,                                          // TimeDateStamp
+    0, 0,                                       // MajorVersion / MinorVersion
+    0, 0, 0, 0, 0,                              // GlobalFlagsClear … DeCommitTotalFreeThreshold
+    0, 0, 0, 0, 0,                              // LockPrefixTable … ProcessAffinityMask
+    0, 0,                                       // CSDVersion / DependentLoadFlags
+    0,                                          // EditList
+    0,                                          // SecurityCookie（帯は下の NashiInitCookie で配る）
+    (DWORD)__safe_se_handler_table,
+    (DWORD)&__safe_se_handler_count,
 };
 
 // --------------------------------------------------------------- 置き場
@@ -198,9 +211,17 @@ extern "C" void __stdcall NashiThrowStub(void*, void*) {
     Die("nashi: 例外が投げられました（起きないはずです）\n");
 }
 #pragma comment(linker, "/alternatename:__CxxThrowException@8=_NashiThrowStub@8")
-extern "C" int __cdecl __CxxFrameHandler3(void*, void*, void*, void*) {
-    Die("nashi: 例外の巻きもどしが起きました（起きないはずです）\n");
-    return 0;
+
+// こちらは「片づけが要る関数」すべての SEH の受け口として呼ばれます。
+// C++ の throw は上で止めているので、ここに来るのは SAORI の中のアクセス違反のような
+// OS の例外です。以前はここで ExitProcess していたため、SSP ごと落ちていました。
+// いまは「ここでは扱わない」と返し、SSP（呼んだ側）の受け口に任せます。
+// 巻きもどしで栞の関数が途中で捨てられるので、「呼び出しの中にいる」印だけは下ろします。
+namespace nashi { void AbandonCalls(); }
+extern "C" int __cdecl __CxxFrameHandler3(void* record, void*, void*, void*) {
+    const DWORD kUnwinding = 0x2 | 0x4;          // EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND
+    if (record && (((EXCEPTION_RECORD*)record)->ExceptionFlags & kUnwinding)) nashi::AbandonCalls();
+    return 1;                                     // ExceptionContinueSearch
 }
 extern "C" void __cdecl __std_terminate() { Die("nashi: terminate\n"); }
 

@@ -20,9 +20,13 @@ inline std::wstring AcpToWide(const std::string& s) { return MbToWide(s, CP_ACP)
 bool LooksUtf8(const std::string& s);
 // normalise arbitrary bytes (UTF-8 / CP932) into UTF-8, BOM stripped
 std::string ToUtf8(const std::string& raw);
+// every byte that is not part of a well-formed UTF-8 sequence becomes '?'
+std::string RepairUtf8(const std::string& s);
 
 // ---- files ----------------------------------------------------------------
-bool ReadTextFile(const std::wstring& path, std::string& outUtf8);
+// allowSjis = false: never guess Shift_JIS (for files the shiori wrote itself)
+bool ReadTextFile(const std::wstring& path, std::string& outUtf8, bool allowSjis = true);
+// writes beside the file, then swaps it in (a crash never leaves half a file)
 bool WriteTextFile(const std::wstring& path, const std::string& utf8);
 bool FileExists(const std::wstring& path);
 
