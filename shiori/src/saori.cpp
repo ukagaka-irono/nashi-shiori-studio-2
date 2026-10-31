@@ -357,7 +357,7 @@ static DWORD WINAPI SaoriThreadMain(void* param) {
     if (!gone) {
         SaoriResult r = ExecuteOn(core, job->file, job->args);   // 中で順番待ちをする
         if (!r.ok) {
-            Log(r.error);
+            d.error = r.error;           // ここは別のスレッドなので、知らせるのは受けとる側（DrainSaori）
         } else if (job->valueIndex < 0) {
             d.value = r.result;
         } else if ((size_t)job->valueIndex < r.values.size()) {
@@ -400,7 +400,7 @@ bool Saori::ExecuteAsync(const std::string& file, const std::vector<std::string>
     LeaveCriticalSection(&core_->doneCs);
 
     if (tooMany) {
-        Log("saori async: 同時に呼びすぎです（" + file + "）");
+        Report(kProblemWarning, "SAORI を、答えを待たずに同時に呼びすぎたので、呼びませんでした: " + file);
         return false;
     }
 
@@ -424,7 +424,7 @@ bool Saori::ExecuteAsync(const std::string& file, const std::vector<std::string>
         EnterCriticalSection(&core_->doneCs);
         core_->running--;
         LeaveCriticalSection(&core_->doneCs);
-        Log("saori async: スレッドを作れませんでした（" + file + "）");
+        Report(kProblemWarning, "SAORI を呼ぶスレッドを作れなかったので、呼びませんでした: " + file);
         return false;
     }
 

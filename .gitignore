@@ -10,6 +10,7 @@ webview-data/
 projects/
 output/
 **/nashi_save.json
+**/nashi_save.*.json
 **/nashi_debug.txt
 .vs/
 
@@ -22,6 +23,8 @@ shiori/test/*/nashi.dll
 shiori/test/*/*/nashi.dll
 shiori/test/*/slow_saori.dll
 shiori/test/*/*/slow_saori.dll
+# 読めない ghost.json のテストで、ghost.broken.txt から作るもの
+shiori/test/behavior/broken/ghost.json
 # 名前を一つずつ書くと、テスト用の exe を増やしたとき書き忘れます
 studio/test/*_host.exe
 studio/test/render_out/

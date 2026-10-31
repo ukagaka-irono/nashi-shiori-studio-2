@@ -87,17 +87,26 @@ bool Program::Load(const std::wstring& dir) {
 
     const wchar_t* names[] = { L"ghost.json", L"nashi.json" };
     std::string text;
-    bool found = false;
+    // 読めなかったわけは、人が直せるように日本語で残す（起動のときにしゃべり、SSP のエラーログにも出る）
+    const char* shown[] = { "ghost.json", "nashi.json" };
+    int why = kReadMissing;
+    int at = 0;
     for (int i = 0; i < 2; i++) {
-        if (ReadTextFile(dir + names[i], text)) { found = true; break; }
+        int r = ReadTextFileWhy(dir + names[i], text);
+        if (r == kReadOk) { why = kReadOk; at = i; break; }
+        if (r != kReadMissing && why == kReadMissing) { why = r; at = i; }   // 見つかったのに読めないほうを伝える
     }
-    if (!found) {
-        error_ = "ghost.json not found";
+    if (why != kReadOk) {
+        std::string name = shown[at];
+        if (why == kReadMissing) error_ = "ghost.json が見つかりません";
+        else if (why == kReadTooBig) error_ = name + " が大きすぎます（16MB まで）";
+        else if (why == kReadLocked) error_ = name + " を、ほかのプログラムが使っていて開けません";
+        else error_ = name + " を開けません（読む権限が無い、などのわけで）";
         return false;
     }
     std::string err;
     if (!JsonParse(text, root_, err)) {
-        error_ = "ghost.json parse error: " + err;
+        error_ = std::string(shown[at]) + " の " + err;
         return false;
     }
     return Adopt(root_);
@@ -108,7 +117,7 @@ bool Program::Adopt(const JValue& root) {
     error_.clear();
     if (&root != &root_) root_ = root;
     if (!root_.isObj()) {
-        error_ = "ghost.json must contain an object";
+        error_ = "ghost.json の中身が { … } のかたちではありません";
         BuildIndex();
         return false;
     }

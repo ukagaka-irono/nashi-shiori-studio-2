@@ -8,6 +8,7 @@
     "description": "入力ボックスで名前をたずねて、覚えて呼びかけます。"
   },
   "settings": {
+    "autoWait": true,
     "randomTalkEnabled": true,
     "randomTalkInterval": 120
   },

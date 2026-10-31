@@ -1,0 +1,5 @@
+{
+  "format": "nashi/1",
+  "meta": { "name": "こわれ" }
+  "scripts": []
+}

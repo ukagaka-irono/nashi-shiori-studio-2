@@ -7,7 +7,7 @@
     "version": "1.0.0",
     "description": "起動・終了・ダブルクリックだけの、いちばん小さいゴーストです。"
   },
-  "settings": { "randomTalkEnabled": true, "randomTalkInterval": 180 },
+  "settings": { "autoWait": true, "randomTalkEnabled": true, "randomTalkInterval": 180 },
   "variables": [],
   "scripts": [
     {

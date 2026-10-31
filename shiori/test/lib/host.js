@@ -33,9 +33,9 @@ function prepare(dir) {
   // テスト用のおそい SAORI も、ゴーストのフォルダに置く（あれば）
   const saori = path.join(root, 'shiori', 'dist', 'slow_saori.dll');
   if (fs.existsSync(saori)) fs.copyFileSync(saori, path.join(dir, 'slow_saori.dll'));
-  for (const junk of ['nashi_save.json', 'nashi_debug.txt']) {
-    const p = path.join(dir, junk);
-    if (fs.existsSync(p)) fs.unlinkSync(p);
+  // 保存データ・その控え・読めなかったものをよけたもの・記録は、場面ごとに消してから始める
+  for (const junk of fs.readdirSync(dir)) {
+    if (/^nashi_save\..*json$/.test(junk) || junk === 'nashi_debug.txt') fs.unlinkSync(path.join(dir, junk));
   }
 }
 
@@ -57,6 +57,15 @@ function parse(raw) {
     else if (line.startsWith('Value: ')) cur.value = line.slice(7);
     else if (line.startsWith('Reference0: ')) cur.commTo = line.slice(12);
     else if (line.startsWith('Age: ')) cur.age = line.slice(5);
+    else if (line.startsWith('ErrorLevel: ')) cur.errorLevel = line.slice(12);
+    else if (line.startsWith('ErrorDescription: ')) cur.errorDescription = line.slice(18);
+  }
+  // 作者むけの知らせを「level 内容」の並びにする（いくつもあるときは、バイト値 1 で区切られている）
+  for (const r of out) {
+    const levels = r.errorLevel ? r.errorLevel.split('\x01') : [];
+    const texts = r.errorDescription ? r.errorDescription.split('\x01') : [];
+    r.errors = levels.map((lv, i) => `${lv} ${texts[i] === undefined ? '（内容なし）' : texts[i]}`);
+    if (texts.length !== levels.length) r.errors.push(`（数がちがう: ErrorLevel ${levels.length} / ErrorDescription ${texts.length}）`);
   }
   return out;
 }
@@ -71,8 +80,10 @@ function noSpaces(specs, who) {
  * 32bit の栞（SSP に入るもの）にイベントを順に投げる。
  * specs は "OnBoot" か "OnMouseClick:0,0,0,0,Head" の形。
  */
-function run(dir, specs) {
+// setup(dir) … 片づけたあと、動かす前に呼ぶ（壊れた保存データを置いておく、など）
+function run(dir, specs, setup) {
   prepare(dir);
+  if (setup) setup(dir);
   noSpaces(specs, 'test_host');
   return parse(execFileSync(testHost, [dir, ...specs], { encoding: 'utf8', maxBuffer: 1 << 24 }));
 }

@@ -587,6 +587,9 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
             }
             if (dup) continue;
             if (DeleteFileIfExists(p)) deleted.arr.push_back(JValue::makeStr(WideToUtf8(p)));
+            // ひとつ前の控えも消す（残すと、つぎの起動で栞が控えから読みなおしてしまう）
+            std::wstring bak = p.substr(0, p.size() - 5) + L".bak.json";
+            if (DeleteFileIfExists(bak)) deleted.arr.push_back(JValue::makeStr(WideToUtf8(bak)));
         }
 
         JValue o = JValue::makeObj();

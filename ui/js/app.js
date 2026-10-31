@@ -746,6 +746,7 @@
     setVal('#set-talk-interval', s.randomTalkInterval);
     setVal('#set-no-repeat', s.noRepeatCount == null ? 0 : s.noRepeatCount);
     $('#set-talk-enabled').checked = s.randomTalkEnabled !== false;
+    $('#set-auto-wait').checked = !!s.autoWait;
     setVal('#shell-balloon-color', sh.balloonColor);
     $('#shell-balloon-on').checked = !!sh.balloonEnabled;
     setVal('#shell-sakura-color', sh.sakuraColor);
@@ -796,6 +797,7 @@
     bind('#set-talk-interval', (v) => { Model.project.settings.randomTalkInterval = Number(v) || 0; });
     bind('#set-no-repeat', (v) => { Model.project.settings.noRepeatCount = Math.max(0, Number(v) || 0); });
     bind('#set-talk-enabled', (v) => { Model.project.settings.randomTalkEnabled = !!v; });
+    bind('#set-auto-wait', (v) => { Model.project.settings.autoWait = !!v; });
     bind('#shell-balloon-on', (v) => { Model.project.shell.balloonEnabled = !!v; });
     bind('#shell-balloon-color', (v) => { Model.project.shell.balloonColor = v; });
     bind('#shell-sakura-color', (v) => { Model.project.shell.sakuraColor = v; }, N.Shell.refreshShell);

@@ -76,11 +76,26 @@ bool ParseRequest(const std::string& utf8, ShioriRequest& out) {
     return !out.id.empty();
 }
 
+// 作者むけの知らせを、ヘッダに置ける 1 行にする。改行・区切りのバイト値 1 などの制御文字ははずし、
+// 長すぎるものは切る（UTF-8 の文字のとちゅうでは切らない）
+static std::string HeaderSafe(const std::string& s) {
+    const size_t kMaxText = 1024;
+    std::string t;
+    for (size_t i = 0; i < s.size(); i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c < 0x20 || c == 0x7F) continue;
+        if (t.size() >= kMaxText && (c & 0xC0) != 0x80) { t += "…"; break; }
+        t += (char)c;
+    }
+    return t;
+}
+
 // commTo に相手の名前（ゴーストの \0 側の名前）を入れると、
 // Value のスクリプトがそのゴーストへの「通信」として届く（SHIORI/3.0 の Reference0）。
 static std::string BuildResponse(const std::string& value,
                                  const std::string& commTo = std::string(),
-                                 int commAge = 0) {
+                                 int commAge = 0,
+                                 const std::vector<Problem>* problems = NULL) {
     std::string body;
     if (value.empty()) {
         body = "SHIORI/3.0 204 No Content\r\n";
@@ -117,6 +132,20 @@ static std::string BuildResponse(const std::string& value,
         }
         body += "Value: " + v + "\r\n";
     }
+    // 作者むけの知らせ（SSP はエラーログに残す）。いくつもあるときは、バイト値 1 で区切って同じ数だけ並べる
+    if (problems && !problems->empty()) {
+        static const char* kLevels[] = { "info", "notice", "warning", "error" };
+        std::string levels, texts;
+        for (size_t i = 0; i < problems->size(); i++) {
+            const Problem& p = (*problems)[i];
+            int lv = (p.level >= kProblemInfo && p.level <= kProblemError) ? p.level : kProblemWarning;
+            if (i) { levels += '\x01'; texts += '\x01'; }
+            levels += kLevels[lv];
+            texts += HeaderSafe(p.text);
+        }
+        body += "ErrorLevel: " + levels + "\r\n";
+        body += "ErrorDescription: " + texts + "\r\n";
+    }
     body += "\r\n";
     return body;
 }
@@ -140,6 +169,10 @@ bool Shiori::Load(const std::wstring& moduleDir) {
     }
     SeedRandom();
     SetLogPath(dir_);
+    // 同じ DLL がもう一度 load されたとき、前の回の知らせを持ちこさない
+    std::vector<Problem> stale;
+    TakeProblems(stale);
+    ResetProblems();
     saori_.SetBaseDir(dir_);
 
     prog_.Load(dir_);
@@ -153,7 +186,8 @@ bool Shiori::Load(const std::wstring& moduleDir) {
     secondsSinceTalk_ = 0;
     lastSaveSec_ = 0;
     ready_ = true;
-    Log(prog_.loaded() ? "loaded" : ("load failed: " + prog_.error()));
+    if (prog_.loaded()) Log("loaded");
+    else Report(kProblemError, prog_.error());      // つぎの応答で SSP に渡る（起動のセリフでも言う）
     return true;
 }
 
@@ -163,15 +197,62 @@ void Shiori::Unload() {
     ready_ = false;
 }
 
+// 保存データ（nashi_save.json）と、そのひとつ前の控え（nashi_save.bak.json）。
+// 読めないものは捨てずに nashi_save.broken-日時.json へよけて、控えから読みなおす
+// （黙って初めからにすると、つぎの保存で好感度や名前がまるごと上書きされてしまうので）。
 void Shiori::LoadSave() {
+    std::wstring path = dir_ + L"nashi_save.json";
+    int r = LoadSaveFrom(path);
+    if (r == kSaveOk || (r == kSaveMissing && !FileExists(dir_ + L"nashi_save.bak.json"))) return;
+    if (r == kSaveLocked) {
+        // ほかのプログラムが開いているだけ（中身はたぶん無事）。よけたり控えから読んだりせず、
+        // この回は保存もしない（読めていない古い値で、無事な本体を上書きしないように）。
+        saveBlocked_ = true;
+        Report(kProblemNotice, "nashi_save.json を開けませんでした（ほかのプログラムが使っているかもしれません）。この回は保存しません");
+        return;
+    }
+    if (r == kSaveBroken) {
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        char stamp[32];
+        sprintf_s(stamp, "%04d%02d%02d-%02d%02d%02d", st.wYear, st.wMonth, st.wDay,
+                  st.wHour, st.wMinute, st.wSecond);
+        std::wstring aside = dir_ + L"nashi_save.broken-" + Utf8ToWide(stamp) + L".json";
+        if (!MoveFileExW(path.c_str(), aside.c_str(), MOVEFILE_WRITE_THROUGH)) {
+            // よけられなかった。このまま保存すると、こわれた本体が控えにまわって、無事な控えを消してしまう
+            saveBlocked_ = true;
+            Report(kProblemNotice, "nashi_save.json が読めず、よけることもできませんでした。この回は保存しません");
+        } else {
+            Report(kProblemNotice, std::string("nashi_save.json が読めなかったので、nashi_save.broken-") + stamp + ".json によけました");
+        }
+    }
+    // 本体が無い・読めなかったときは、ひとつ前の控えから
+    int b = LoadSaveFrom(dir_ + L"nashi_save.bak.json");
+    if (b == kSaveOk) {
+        Report(kProblemInfo, "nashi_save.bak.json（ひとつ前の控え）から読みました");
+        dirty_ = true;                               // つぎの保存で、本体を書きなおす
+    } else if (b == kSaveLocked) {
+        // 控えも開けない。初めからの値で保存すると、つぎの回に無事な控えを上書きしてしまう
+        saveBlocked_ = true;
+        Report(kProblemNotice, "nashi_save.bak.json も開けませんでした。この回は保存しません");
+    }
+}
+
+int Shiori::LoadSaveFrom(const std::wstring& path) {
     std::string text;
     // 自分で UTF-8 で書いたファイルなので、Shift_JIS かもしれないとは考えない
-    if (!ReadTextFile(dir_ + L"nashi_save.json", text, false)) return;
+    int r = ReadTextFileWhy(path, text, false);
+    if (r == kReadMissing) return kSaveMissing;
+    // 開いているだけ・アクセス権が無いときは、こわれているのとは区別する（よけたり上書きしたりしない）
+    if (r == kReadLocked || r == kReadDenied) return kSaveLocked;
+    if (r != kReadOk) return kSaveBroken;            // 大きすぎる
     JValue v;
     std::string err;
-    if (!JsonParse(text, v, err) || !v.isObj()) return;
+    if (!JsonParse(text, v, err) || !v.isObj()) return kSaveBroken;
     vars_.fromJson(v["vars"]);                       // saved values win over defaults
     sys_.bootCount = v["boots"].asInt(0);
+    sys_.firstBoot = v["firstBoot"].asStr();
+    sys_.lastBoot = v["lastBoot"].asStr();
 
     // 前回どのトークを出したかも覚えておく（起動しなおした直後の重複を防ぐ）
     const JValue& recent = v["recentTalks"];
@@ -180,12 +261,20 @@ void Shiori::LoadSave() {
         if (!id.empty()) sys_.recentTalks.push_back(id);
     }
     if (!sys_.recentTalks.empty()) sys_.lastTalk = sys_.recentTalks[0];
+    sys_.lastSeen = v["lastSeen"].asStr();
+    return kSaveOk;
 }
 
 void Shiori::SaveSave() {
+    if (saveBlocked_) return;                        // 読めなかった回は、上書きしない（LoadSave）
+    sys_.lastSeen = TodayYmd();
     JValue root = JValue::makeObj();
+    root.set("format", JValue::makeStr("nashi-save/1"));   // あとで形を変えたときに、見分けられるように
     root.set("vars", vars_.toJson());
     root.set("boots", JValue::makeNum(sys_.bootCount));
+    root.set("firstBoot", JValue::makeStr(sys_.firstBoot));
+    root.set("lastBoot", JValue::makeStr(sys_.lastBoot));
+    root.set("lastSeen", JValue::makeStr(sys_.lastSeen));
     JValue recent = JValue::makeArr();
     for (size_t i = 0; i < sys_.recentTalks.size(); i++) {
         recent.arr.push_back(JValue::makeStr(sys_.recentTalks[i]));
@@ -198,7 +287,18 @@ void Shiori::SaveSave() {
     sprintf_s(buf, "%04d-%02d-%02d %02d:%02d:%02d", st.wYear, st.wMonth, st.wDay,
               st.wHour, st.wMinute, st.wSecond);
     root.set("savedAt", JValue::makeStr(buf));
-    WriteTextFile(dir_ + L"nashi_save.json", root.dump(2));
+    // この回はじめての保存のときだけ、いまの本体（前の回の中身）を控え（nashi_save.bak.json）にまわす。
+    // 2 回目からは本体だけを書きかえるので、控えにはいつも「前の回」が残る。
+    // 本体の書きかえは、となりに書いてから差しかえる（WriteTextFile）ので、途中で落ちても前の中身が残る。
+    std::wstring path = dir_ + L"nashi_save.json";
+    if (!rotatedThisSession_ && FileExists(path)) {
+        if (!MoveFileExW(path.c_str(), (dir_ + L"nashi_save.bak.json").c_str(),
+                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            Log("nashi_save.json を控えにまわせませんでした（控えは前のまま）");
+        }
+    }
+    rotatedThisSession_ = true;
+    WriteTextFile(path, root.dump(2));
     dirty_ = false;
 }
 
@@ -210,7 +310,11 @@ void Shiori::MaybeReload() {
     if (stamp == progStamp_) return;
     progStamp_ = stamp;
     Program fresh;
-    if (!fresh.Load(dir_)) { Log("reload failed: " + fresh.error()); return; }
+    if (!fresh.Load(dir_)) {
+        // 書きかえたのに動きが変わらない、と迷わないように知らせる（同じ中身のあいだは、1 回だけ）
+        Report(kProblemWarning, "書きかえた ghost.json を読めなかったので、前の中身のまま動いています。" + fresh.error());
+        return;
+    }
     prog_ = fresh;
     // add variables that appeared in the new program, keep existing values
     Vars defaults;
@@ -219,15 +323,18 @@ void Shiori::MaybeReload() {
         if (!vars_.exists(defaults.at(i).first)) vars_.set(defaults.at(i).first, defaults.at(i).second);
     }
     Log("reloaded ghost.json");
+    ResetProblems();                 // 直したあとに、また起きたら知らせる
 }
 
 int Shiori::TalkInterval() const {
+    // 書いた人が「自動でしゃべる」を切にしたら、使う人がメニューで選んだ多さより先にそれを守る
+    const JValue& s = prog_.settings();
+    if (!s["randomTalkEnabled"].asBool(true)) return 0;
+    // 使う人がメニューで選んだ多さ（-1 は「いつもどおり」＝設定の間隔にしたがう）
     if (vars_.exists("@talkInterval")) {
         int v = (int)vars_.get("@talkInterval").asNum();
         if (v >= 0) return v;
     }
-    const JValue& s = prog_.settings();
-    if (!s["randomTalkEnabled"].asBool(true)) return 0;
     int iv = s["randomTalkInterval"].asInt(180);
     return iv < 0 ? 0 : iv;
 }
@@ -402,6 +509,15 @@ int Shiori::NoRepeatCount(size_t talkCount) const {
 std::string Shiori::PlayRandomTalk(const ShioriRequest& req) {
     std::vector<const JValue*> all = prog_.talkScripts();
     if (all.empty()) return std::string();
+    // えらばれやすさが 0 以下のトークは出さない（全部ためすようになったので、ここで外しておく）。
+    // ただし全部が 0 なら、これまでどおり、その中から選ぶ。
+    {
+        std::vector<const JValue*> positive;
+        for (size_t i = 0; i < all.size(); i++) {
+            if ((*all[i])["weight"].asNum(1.0) > 0) positive.push_back(all[i]);
+        }
+        if (!positive.empty()) all = positive;
+    }
 
     // 直近に出したものを候補から外す。外しすぎて空になったら、古いほうから戻す。
     int avoid = NoRepeatCount(all.size());
@@ -421,17 +537,37 @@ std::string Shiori::PlayRandomTalk(const ShioriRequest& req) {
     }
     if (talks.empty()) talks = all;
 
-    for (int attempt = 0; attempt < 5 && !talks.empty(); attempt++) {
-        const JValue* pick = PickWeighted(talks);
-        if (!pick) break;
-        std::string out = RunOne(*pick, req);
-        if (!out.empty()) {
-            RememberTalk((*pick)["id"].asStr());
-            sys_.talkCount++;
-            return out;
+    // 「もし」で分けてあって今は何も言わないトークもあるので、言うものが見つかるまで全部ためす
+    // （以前は 5 回であきらめて、その回はまるごと黙っていた）。
+    // 何も言わなかったトークが変えた変数は、これまでどおり残す（「1 ずつ数えて 3 回目だけ話す」のような
+    // トークがあるので）。「◯秒後によぶ」の予約だけは捨てる。直近に出したもので外したトークは、
+    // ほかが全部だまったときだけ、最後にためす。
+    for (int pass = 0; pass < 2; pass++) {
+        while (!talks.empty()) {
+            const JValue* pick = PickWeighted(talks);
+            if (!pick) break;
+            size_t timersBefore = timers_.size();
+            std::string out = RunOne(*pick, req);
+            if (!out.empty()) {
+                RememberTalk((*pick)["id"].asStr());
+                sys_.talkCount++;
+                return out;
+            }
+            // 何も言わなかったトークの「◯秒後によぶ」は捨てる（だまる回が続くと予約がたまり、
+            // 上限 32 をこえて、選択肢などからの本当の予約が入らなくなるので）
+            if (timers_.size() > timersBefore) timers_.resize(timersBefore);
+            for (size_t i = 0; i < talks.size(); i++) {
+                if (talks[i] == pick) { talks.erase(talks.begin() + (long)i); break; }
+            }
         }
-        for (size_t i = 0; i < talks.size(); i++) {
-            if (talks[i] == pick) { talks.erase(talks.begin() + (long)i); break; }
+        if (pass == 0 && avoid > 0) {
+            // 直近に出したもの（さっき外したもの）だけを、もう一度並べる
+            for (size_t i = 0; i < all.size(); i++) {
+                std::string id = (*all[i])["id"].asStr();
+                for (int k = 0; k < avoid && k < (int)sys_.recentTalks.size(); k++) {
+                    if (sys_.recentTalks[(size_t)k] == id) { talks.push_back(all[i]); break; }
+                }
+            }
         }
     }
     return std::string();
@@ -456,6 +592,7 @@ void Shiori::DrainSaori() {
     saori_.TakeDone(got);
     const size_t kKeep = 32;
     for (size_t i = 0; i < got.size(); i++) {
+        if (!got[i].error.empty()) Report(kProblemWarning, got[i].error);
         if (!got[i].into.empty()) {
             vars_.set(got[i].into, Value::Str(got[i].value));
             dirty_ = true;
@@ -464,6 +601,69 @@ void Shiori::DrainSaori() {
         // 知らせきれないほど溜まったら、古いものから捨てる
         if (saoriDone_.size() > kKeep) saoriDone_.erase(saoriDone_.begin());
     }
+}
+
+// さくらスクリプトから \-（ゴーストを終了する）をはずす。\\（文字の \）のあとの - は残す
+static std::string WithoutCloseTag(const std::string& script) {
+    std::string out;
+    out.reserve(script.size());
+    for (size_t i = 0; i < script.size(); i++) {
+        if (script[i] == '\\' && i + 1 < script.size()) {
+            if (script[i + 1] == '-') { i++; continue; }
+            out += script[i];
+            out += script[++i];          // \\ や \n などは、2 文字ごとそのまま
+            continue;
+        }
+        out += script[i];
+    }
+    return out;
+}
+
+// 「N 分ごと」「N 秒ごと」の言いかた
+static std::string IntervalWords(long sec) {
+    if (sec % 60 == 0) return NumToStr((double)(sec / 60)) + " 分ごと";
+    return NumToStr((double)sec) + " 秒ごと";
+}
+
+// 書いていないときのダブルクリックのメニュー（BuiltinDefault の OnMouseDoubleClick）から選ばれたもの。
+// 話す多さは @talkInterval に入れる（保存されるので、つぎに起動しても続く。TalkInterval が見る）。
+std::string Shiori::BuiltinMenu(const std::string& target, const ShioriRequest& req) {
+    if (target == "nashi.menu.talk") {
+        std::string out = PlayRandomTalk(req);
+        if (out.empty()) return "\\0\\s[0]……いまは、話すことを思いつかないや。";
+        talkWait_ = 0;
+        return out;
+    }
+    if (target == "nashi.menu.interval") {
+        long now = TalkInterval();
+        long usual = prog_.settings()["randomTalkInterval"].asInt(180);
+        if (usual <= 0) usual = 180;
+        std::string out = "\\0\\s[0]どれくらい話そうか？\\n";
+        out += now > 0 ? "（いまは、だいたい " + IntervalWords(now) + "）" : std::string("（いまは、静かにしてるよ）");
+        out += "\\n\\n\\q[たくさん（1 分ごと）,nashi.menu.iv.60]\\n";
+        out += "\\q[いつもどおり（" + IntervalWords(usual) + "）,nashi.menu.iv.usual]\\n";
+        out += "\\q[ときどき（10 分ごと）,nashi.menu.iv.600]\\n";
+        out += "\\q[しばらく静かに,nashi.menu.iv.0]";
+        return out;
+    }
+    if (target == "nashi.menu.iv.usual") {
+        // 数をおぼえず、設定の間隔にもどす（書いた人があとで間隔を変えたら、それにしたがう）
+        vars_.set("@talkInterval", Value::Num(-1));
+        dirty_ = true;
+        talkWait_ = 0;
+        return "\\0\\s[0]わかった。いつもどおりに話すね。";
+    }
+    if (target.compare(0, 14, "nashi.menu.iv.") == 0) {
+        long sec = (long)atoi(target.c_str() + 14);
+        if (sec < 0) sec = 0;
+        if (sec > 86400) sec = 86400;
+        vars_.set("@talkInterval", Value::Num((double)sec));
+        dirty_ = true;
+        talkWait_ = 0;                                       // つぎの間隔は、新しい多さで決めなおす
+        if (sec == 0) return "\\0\\s[0]わかった。しばらく静かにしてるね。\\n（ダブルクリックで、また変えられるよ）";
+        return "\\0\\s[0]わかった。だいたい " + IntervalWords(sec) + "に話すね。";
+    }
+    return "\\0\\s[0]そう？";                                 // nashi.menu.cancel
 }
 
 std::string Shiori::BuiltinDefault(const std::string& id, const ShioriRequest& req) {
@@ -491,7 +691,13 @@ std::string Shiori::BuiltinDefault(const std::string& id, const ShioriRequest& r
     }
     if (id == "OnMouseDoubleClick") {
         static const char* lines[] = { "なに？", "呼んだ？", "どうしたの？" };
-        return std::string("\\0\\s[0]") + lines[RandInt(0, 2)];
+        std::string head = std::string("\\0\\s[0]") + lines[RandInt(0, 2)];
+        // ランダムトークがあるゴーストなら、メニューを出す（使う人が、話してもらう・話す多さを変える）。
+        // 行き先の ID は nashi.menu.〜（Dispatch の BuiltinMenu で受ける。出した選択肢だけを受け付ける）
+        if (prog_.talkScripts().empty()) return head;
+        std::string menu = head + "\\n\\n\\q[なにか話して,nashi.menu.talk]\\n";
+        if (prog_.settings()["randomTalkEnabled"].asBool(true)) menu += "\\q[話す多さを変える,nashi.menu.interval]\\n";
+        return menu + "\\q[なんでもない,nashi.menu.cancel]";
     }
     if (id == "OnNadeNade") {
         std::string area = req.refs.size() > 4 ? req.refs[4] : std::string();
@@ -500,7 +706,10 @@ std::string Shiori::BuiltinDefault(const std::string& id, const ShioriRequest& r
             static const char* lines[] = { "えへへ。", "くすぐったいよ。", "なでなでされちゃった。" };
             return std::string("\\0\\s[1]") + lines[RandInt(0, 2)];
         }
-        return "\\0\\s[2]……あんまり触らないで。";
+        // むねは、いやがる。それ以外（手や服など）は、書いた人が決めていなければ何も言わない
+        // （どこをなでても「触らないで」と言われると、さわってみる気がなくなる）
+        if (low == "bust") return "\\0\\s[2]……あんまり触らないで。";
+        return std::string();
     }
     // ネットワーク更新。ブロックを書いていなくても、結果だけは知らせる。
     // 途中経過（OnUpdateBegin / OnUpdateReady / OnUpdate.On…）は毎回しゃべると
@@ -589,11 +798,26 @@ bool Shiori::TakeOffered(const std::string& key, bool consume) {
 }
 
 // 起動・ゴーストの切り替え・呼び出し。どれも「このゴーストが動きはじめた」ところ。
+// shell が空なら、シェル名は変えない（はじめての起動では、SSP はシェル名を知らせてこない）。
+// 何日ぶりか・出会った日も、ここで記録する。
 void Shiori::NoteBoot(const ShioriRequest& req, const std::string& shell) {
     (void)req;
     sys_.bootCount++;
-    sys_.shellName = shell;
+    if (!shell.empty()) sys_.shellName = shell;
     sys_.ghostName = prog_.meta()["name"].asStr();
+    // 何日ぶりか。さいごに会った日（保存した日。動かしたままの日もふくむ）から数える。
+    // 前の版の保存データには lastSeen が無いので、そのときは前に起動した日から。
+    std::string today = TodayYmd();
+    long now = DayNumber(today);
+    long last = DayNumber(sys_.lastSeen.empty() ? sys_.lastBoot : sys_.lastSeen);
+    // 時計がおかしかった回の日付（2026 年より前・きょうより先）からは数えない
+    const long kFloor = DayNumber("2026-01-01");
+    sys_.daysSinceLast = (last < kFloor || now < last) ? 0 : (int)(now - last);
+    // 出会った日。時計がおかしい（2026 年より前・きょうより先）ものは信じず、きょうにする。
+    // きょう自体がおかしいときは、決めずにおく（つぎに時計が正しいときに決まる）。
+    long first = DayNumber(sys_.firstBoot);
+    if (now >= kFloor && (first < kFloor || first > now)) sys_.firstBoot = today;
+    sys_.lastBoot = today;
     dirty_ = true;
 }
 
@@ -601,10 +825,51 @@ static std::string RefAt(const ShioriRequest& req, size_t i) {
     return req.refs.size() > i ? req.refs[i] : std::string();
 }
 
+// SSP は要求に Status: を付けて、いまのようすを知らせてくる（talking,choosing,minimizing など）。
+// しゃべっている途中・選択肢を出している途中に割りこむと、出ているセリフや選択肢を消してしまう。
+static bool StatusHas(const ShioriRequest& req, const char* word) {
+    std::string s = LowerAscii(req.header("status"));
+    return s.find(word) != std::string::npos;
+}
+static bool StatusBusy(const ShioriRequest& req) {
+    return StatusHas(req, "talking") || StatusHas(req, "choosing") || StatusHas(req, "timecritical");
+}
+
+// いま、こちらからしゃべりだしてよいか。
+// OnSecondChange / OnMinuteChange は Reference3 にも入れてくる（1 = よい）。
+// OnHourTimeSignal の Reference3 はいつも 1 なので、Status: だけを見る。
+static bool CanTalkNow(const ShioriRequest& req) {
+    if (StatusBusy(req)) return false;
+    if ((req.id == "OnSecondChange" || req.id == "OnMinuteChange") &&
+        req.refs.size() > 3 && !req.refs[3].empty()) {
+        return req.refs[3] == "1";
+    }
+    return true;
+}
+
+// しゃべれないあいだに出たセリフを取っておく（古すぎるものは出さない）
+static const long kHeldTalkSec = 60;
+
+// 取っておく。いま取ってあるものより大事でなければ（「◯秒ごと」が時報を）上書きしない。
+// 話しかける相手（ゴースト間通信）もいっしょに取っておき、この応答には付けない。
+void Shiori::HoldTalk(const std::string& out, int priority) {
+    if (out.empty()) return;
+    bool free = heldTalk_.empty() || sys_.uptimeSec - heldAtSec_ > kHeldTalkSec;
+    if (free || priority >= heldPriority_) {
+        heldTalk_ = out;
+        heldAtSec_ = sys_.uptimeSec;
+        heldPriority_ = priority;
+        heldCommTo_ = commTo_;
+    }
+    commTo_.clear();
+}
+
 std::string Shiori::Dispatch(const ShioriRequest& req) {
     const std::string& id = req.id;
 
-    if (id == "OnBoot" || id == "OnFirstBoot") NoteBoot(req, RefAt(req, 0));
+    // OnBoot の Reference0 はシェル名。OnFirstBoot の Reference0 は消滅した回数なので、シェル名にはしない
+    if (id == "OnBoot") NoteBoot(req, RefAt(req, 0));
+    if (id == "OnFirstBoot") NoteBoot(req, std::string());
     // ほかのゴーストから切り替わって来たとき・呼ばれたときは OnBoot が来ない。
     // シェルの名前は Reference7 に入っている（SSP）。
     if (id == "OnGhostChanged" || id == "OnGhostCalled") NoteBoot(req, RefAt(req, 7));
@@ -626,13 +891,20 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
 
     if (id == "OnSecondChange") {
         sys_.uptimeSec++;
-        secondsSinceTalk_++;
 
         // いましゃべってよいか。SSP は Reference3 に入れてくる（1 = よい）。
         // しゃべっている途中・選択肢を待っている途中などは 0 になる。
         // ここで割りこむと、出ている選択肢やセリフを消してしまう。
-        bool canTalk = true;
-        if (req.refs.size() > 3 && !req.refs[3].empty()) canTalk = (req.refs[3] == "1");
+        bool canTalk = CanTalkNow(req);
+        // 最小化されているあいだは、ひとりでにはしゃべらない（ランダムトークの時計も止める）
+        bool minimized = StatusHas(req, "minimizing");
+
+        // ランダムトークの時計は、しゃべれるあいだだけ進める（長いセリフの最中は数えない）。
+        // 使う人がしばらくさわっていない（Reference4 が 10 分以上）ときは、半分の速さにして控えめに。
+        if (canTalk && !minimized) {
+            long idle = (long)atoi(RefAt(req, 4).c_str());
+            if (idle < 600 || (sys_.uptimeSec % 2) == 0) secondsSinceTalk_++;
+        }
 
         // 待たずに呼んだ SAORI の答えが届いていたら、まずそれを知らせる。
         // SSP は毎秒たたいてくるので、ここを受け取り口にしている。
@@ -660,25 +932,63 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
             timers_.erase(timers_.begin() + (long)i);
             const JValue* fn = prog_.functionByName(name);
             if (!fn) fn = prog_.scriptById(name);
-            if (!fn) { Log("later: そんな名前のトークはありません: " + name); break; }
+            if (!fn) {
+                Report(kProblemWarning, "「◯秒後によぶ」の「" + name + "」が、その名前のトークがないので動きませんでした");
+                break;
+            }
             std::string out = RunOne(*fn, req);
             if (!out.empty()) { secondsSinceTalk_ = 0; return out; }
             break;
         }
 
+        // 「◯秒ごと」のかたまりは、しゃべれなくても動かす（変数を変えるだけのものもあるので）。
+        // しゃべれないときに出たセリフは、取っておいて、しゃべれるようになってから出す。
         bool found = false;
         std::string out = RunHandlers(id, req, &found);
-        if (!out.empty()) { secondsSinceTalk_ = 0; return out; }
+        if (!heldTalk_.empty() && sys_.uptimeSec - heldAtSec_ > kHeldTalkSec) heldTalk_.clear();   // 古すぎる
+        if (canTalk && !heldTalk_.empty()) {
+            // しゃべれるようになったので、取っておいたものを出す。この秒の「◯秒ごと」は動かしたうえで、
+            // 出たセリフがあれば、こんどはそれを取っておく（変数の変化は失わない）
+            std::string held = heldTalk_;
+            std::string heldComm = heldCommTo_;
+            heldTalk_.clear();
+            HoldTalk(out, 0);
+            commTo_ = heldComm;
+            secondsSinceTalk_ = 0;
+            return held;
+        }
+        if (!out.empty()) {
+            if (canTalk) { secondsSinceTalk_ = 0; return out; }
+            HoldTalk(out, 0);
+        }
 
         if (dirty_ && sys_.uptimeSec - lastSaveSec_ > 120) {
             lastSaveSec_ = sys_.uptimeSec;
             SaveSave();
         }
 
+        // ランダムトーク。間隔は毎回 ±20% ゆらがせて、時計じかけのように聞こえないようにする
         int interval = TalkInterval();
-        if (canTalk && interval > 0 && secondsSinceTalk_ >= interval) {
-            secondsSinceTalk_ = 0;
-            return PlayRandomTalk(req);
+        if (interval > 0 && (talkWait_ <= 0 || talkWaitBase_ != interval)) {
+            talkWaitBase_ = interval;
+            talkWait_ = (long)interval * RandInt(80, 120) / 100;
+            if (talkWait_ < 1) talkWait_ = 1;
+        }
+        if (canTalk && !minimized && interval > 0 && secondsSinceTalk_ >= talkWait_) {
+            std::string talk = PlayRandomTalk(req);
+            if (!talk.empty()) {
+                secondsSinceTalk_ = 0;
+                talkWait_ = 0;                              // つぎの間隔は、つぎに決めなおす
+                talkFailStreak_ = 0;
+                return talk;
+            }
+            // どのトークも、いまは何も言わなかった（時間や変数で分けてあるなど）。
+            // 間隔をまるごと待たずに、少ししてからもう一度ためす。続けてだまるたびに 15 秒・30 秒・60 秒…と
+            // のばし、間隔そのものより長くはしない（何度もためして SAORI などを何度も動かさないように）。
+            long retry = 15L << (talkFailStreak_ < 6 ? talkFailStreak_ : 6);
+            if (retry > talkWait_) retry = talkWait_;
+            talkFailStreak_++;
+            secondsSinceTalk_ = talkWait_ - retry;
         }
         return std::string();
     }
@@ -686,8 +996,11 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
     // 同じ場所の上でマウスが動きつづけたら「なでられた」ことにする。
     // SSP は OnMouseMove を細かく送ってくるので、ここで数えて OnNadeNade を作る。
     if (id == "OnMouseMove") {
-        const int kStrokesNeeded = 8;
+        // 8 回だと、マウスが上を通っただけで「なでられた」になっていたので、しっかりなでたときだけにする。
+        // 反応したあと 5 秒は、続けて反応しない。しゃべっている途中にも割りこまない。
+        const int kStrokesNeeded = 20;
         const unsigned long kResetMs = 1500;
+        const unsigned long kCooldownMs = 5000;
         std::string scope = req.refs.size() > 3 ? req.refs[3] : std::string();
         std::string area = req.refs.size() > 4 ? req.refs[4] : std::string();
         unsigned long now = GetTickCount();
@@ -701,10 +1014,14 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
         // 当たり判定の外（服のすき間など）はなでたことにしない
         if (!area.empty() && strokeCount_ >= kStrokesNeeded) {
             strokeCount_ = 0;
-            bool nadeFound = false;
-            std::string out = RunHandlers("OnNadeNade", req, &nadeFound);
-            if (out.empty() && !nadeFound) out = BuiltinDefault("OnNadeNade", req);
-            if (!out.empty()) { secondsSinceTalk_ = 0; return out; }
+            bool cooling = lastNadeTick_ != 0 && now - lastNadeTick_ < kCooldownMs;
+            if (!cooling && !StatusBusy(req)) {
+                bool nadeFound = false;
+                std::string out = RunHandlers("OnNadeNade", req, &nadeFound);
+                if (out.empty() && !nadeFound) out = BuiltinDefault("OnNadeNade", req);
+                // 休むのは、反応したときだけ（何も言わない場所をなでたあとは、すぐほかの場所で反応してよい）
+                if (!out.empty()) { lastNadeTick_ = now; secondsSinceTalk_ = 0; return out; }
+            }
         }
     }
 
@@ -735,6 +1052,11 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
     // 選択肢・リンクの行き先。こちらが出したものだけを動かす。
     if (id == "OnChoiceSelect" || id == "OnAnchorSelect") {
         std::string target = RefAt(req, 0);
+        // 書いていないときのダブルクリックのメニュー（BuiltinDefault）。こちらが出したものだけ
+        if (target.compare(0, 11, "nashi.menu.") == 0 && TakeOffered("c:" + target, false)) {
+            secondsSinceTalk_ = 0;
+            return BuiltinMenu(target, req);
+        }
         const JValue* fn = NULL;
         if (TakeOffered("c:" + target, false)) {
             fn = prog_.functionByName(target);
@@ -752,8 +1074,18 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
         bool hourFound = false;
         std::string out = RunHandlers(id, req, &hourFound);
         if (!hourFound) out = RunHandlers("OnHourChange", req, &hourFound);
+        // しゃべっている途中・選択肢を出している途中なら、時報はあとで（つぎの OnSecondChange で）出す
+        if (!out.empty() && !CanTalkNow(req)) { HoldTalk(out, 2); return std::string(); }
         if (!out.empty()) secondsSinceTalk_ = 0;
         return out;
+    }
+
+    // 「毎分」も同じく、しゃべれないときはあとで出す
+    if (id == "OnMinuteChange" && !CanTalkNow(req)) {
+        bool minFound = false;
+        std::string out = RunHandlers(id, req, &minFound);
+        HoldTalk(out, 1);
+        return std::string();
     }
 
     bool found = false;
@@ -763,6 +1095,14 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
     if (!found && (id == "OnGhostChanged" || id == "OnGhostCalled")) {
         out = RunHandlers("OnBoot", req, &found);
         if (!found) out = BuiltinDefault("OnBoot", req);
+        found = true;
+    }
+    // ほかのゴーストへ切りかわるときに専用のブロックが無ければ、「終了するとき」であいさつする。
+    // ただし \-（ゴーストを終了する）ははずす（終了ではなく、SSP が切りかえるので）。
+    if (!found && id == "OnGhostChanging") {
+        out = RunHandlers("OnClose", req, &found);
+        if (!found) out = "\\0\\s[0]またね。";
+        out = WithoutCloseTag(out);
         found = true;
     }
     if (out.empty() && !found) out = BuiltinDefault(id, req);
@@ -796,12 +1136,15 @@ std::string Shiori::Request(const std::string& rawRequest) {
     MaybeReload();
     DrainSaori();
 
+    // 作者むけの知らせ。前からたまっていたもの（読みこみ・保存データ・SAORI の答えなど）はそのまま、
+    // このイベントの中で起きたものには、イベントの名前を付けて SSP に渡す
     std::string value;
     commTo_.clear();
+    SetProblemPlace(req.id);
     try {
         value = Dispatch(req);
     } catch (...) {
-        Log("exception while handling " + req.id);
+        Report(kProblemError, "栞の中で思わぬことが起きたので、このイベントには答えませんでした");
         value.clear();
     }
 
@@ -828,10 +1171,15 @@ std::string Shiori::Request(const std::string& rawRequest) {
     }
 
     value = CloseScript(value, req.id == "OnClose" || req.id == "OnCloseAll");
-    if (req.method == "NOTIFY") return BuildResponse("");
+
+    SetProblemPlace(std::string());
+    std::vector<Problem> problems;
+    TakeProblems(problems);
+
+    if (req.method == "NOTIFY") return BuildResponse("", std::string(), 0, &problems);
     RememberOffered(value);
     // commChain_ は「何回目のやりとりか」なので、世代数はその 1 つ手前
-    return BuildResponse(value, commTo_, commChain_ > 0 ? commChain_ - 1 : 0);
+    return BuildResponse(value, commTo_, commChain_ > 0 ? commChain_ - 1 : 0, &problems);
 }
 
 } // namespace nashi

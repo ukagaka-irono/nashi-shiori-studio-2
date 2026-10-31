@@ -1,0 +1,57 @@
+{
+  "format": "nashi/1",
+  "_comment": "ランダムトークの時計が、しゃべれないあいだ止まることのテスト用。間隔 10 秒（ゆらぎで 8〜12 秒）。",
+  "meta": {
+    "name": "まちテスト",
+    "sakuraName": "さくら",
+    "keroName": "うにゅう"
+  },
+  "settings": {
+    "randomTalkEnabled": true,
+    "randomTalkInterval": 10,
+    "noRepeatCount": 0
+  },
+  "variables": [
+    {
+      "name": "話した",
+      "value": 0
+    }
+  ],
+  "scripts": [
+    {
+      "id": "t_one",
+      "kind": "talk",
+      "name": "ひとつ",
+      "weight": 1,
+      "blocks": [
+        {
+          "type": "set",
+          "name": "話した",
+          "value": 1
+        },
+        {
+          "type": "say",
+          "who": 0,
+          "text": "はなす",
+          "nl": 0
+        }
+      ]
+    },
+    {
+      "id": "e_check",
+      "kind": "event",
+      "event": "OnCheck",
+      "blocks": [
+        {
+          "type": "say",
+          "who": 0,
+          "text": {
+            "type": "var",
+            "name": "話した"
+          },
+          "nl": 0
+        }
+      ]
+    }
+  ]
+}

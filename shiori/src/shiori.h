@@ -40,8 +40,11 @@ private:
     std::string RunHandlers(const std::string& eventId, const ShioriRequest& req, bool* found);
     std::string PlayRandomTalk(const ShioriRequest& req);
     std::string BuiltinDefault(const std::string& eventId, const ShioriRequest& req);
+    std::string BuiltinMenu(const std::string& target, const ShioriRequest& req);
     void MaybeReload();
     void LoadSave();
+    enum { kSaveOk = 0, kSaveMissing = 1, kSaveLocked = 2, kSaveBroken = 3 };
+    int LoadSaveFrom(const std::wstring& path);
     void SaveSave();
     bool Matches(const JValue& script, const ShioriRequest& req) const;
     std::string RunOne(const JValue& script, const ShioriRequest& req);
@@ -50,6 +53,7 @@ private:
     void RememberTalk(const std::string& id);
     void DrainSaori();          // 待たずに呼んだ SAORI の答えを受け取る
     void RememberOffered(const std::string& script);
+    void HoldTalk(const std::string& out, int priority);
     bool TakeOffered(const std::string& key, bool consume);
     void NoteBoot(const ShioriRequest& req, const std::string& shell);
 
@@ -68,11 +72,28 @@ private:
     };
     std::vector<Timer> timers_;
     bool ready_ = false;
+    // ランダムトークまでの、しゃべれるあいだに数えた秒数と、つぎに話すまでの秒数
+    // （設定の間隔に ±20% のゆらぎを付けて、毎回決めなおす。talkWaitBase_ はそのもとにした間隔）
     long secondsSinceTalk_ = 0;
+    long talkWait_ = 0;
+    long talkWaitBase_ = 0;
+    // しゃべれないあいだに「◯秒ごと」「毎分」「1時間ごと」が出したセリフ。しゃべれるようになったら出す
+    // heldPriority_ は 2 = 1時間ごと、1 = 毎分、0 = ◯秒ごと（大事なほうを、あとから来たもので消さない）。
+    // heldCommTo_ は、そのセリフを話しかける相手（ゴースト間通信）
+    std::string heldTalk_;
+    long heldAtSec_ = 0;
+    int heldPriority_ = 0;
+    std::string heldCommTo_;
+    // ランダムトークが続けて何も言わなかった回数（もう一度ためすまでを、だんだん長くする）
+    int talkFailStreak_ = 0;
     long lastSaveSec_ = 0;
     unsigned long long progStamp_ = 0;
     unsigned long lastCheckTick_ = 0;
     bool dirty_ = false;
+    // 保存データを読めなかった（ほかのプログラムが開いている・よけられなかった）回は、保存しない
+    bool saveBlocked_ = false;
+    // この回、もう本体を控えにまわしたか（控えには「前の回」の中身を残したいので、まわすのは最初の保存だけ）
+    bool rotatedThisSession_ = false;
 
     // 同じイベントで直前に選んだブロック（続けて同じ反応にならないように）
     std::map<std::string, std::string> lastEventPick_;
@@ -91,6 +112,7 @@ private:
     std::string strokeKey_;
     int strokeCount_ = 0;
     unsigned long strokeTick_ = 0;
+    unsigned long lastNadeTick_ = 0;   // さいごになでられた時刻（すぐ続けて反応しないように）
 };
 
 // exposed for the test host

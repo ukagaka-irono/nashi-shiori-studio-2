@@ -4,6 +4,7 @@
 #include <ctime>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 namespace nashi {
 
@@ -49,6 +50,81 @@ static bool IsNumericStr(const std::string& s) {
     char* end = NULL;
     strtod(t.c_str(), &end);
     return end && *end == '\0';
+}
+
+// 1970-01-01 からの日数（グレゴリオ暦）。月の長さやうるう年を、表を持たずに計算する
+static long DaysFromCivil(long y, long m, long d) {
+    y -= m <= 2 ? 1 : 0;
+    long era = (y >= 0 ? y : y - 399) / 400;
+    long yoe = y - era * 400;
+    long doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + doe - 719468;
+}
+
+long DayNumber(const std::string& ymd) {
+    if (ymd.size() < 10 || ymd[4] != '-' || ymd[7] != '-') return -1;
+    long y = atoi(ymd.substr(0, 4).c_str()), m = atoi(ymd.substr(5, 2).c_str()), d = atoi(ymd.substr(8, 2).c_str());
+    if (y < 1900 || m < 1 || m > 12 || d < 1 || d > 31) return -1;
+    return DaysFromCivil(y, m, d);
+}
+
+std::string TodayYmd() {
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    char buf[16];
+    sprintf_s(buf, "%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
+    return buf;
+}
+
+// 句読点のあとに、少し間を置く（設定の autoWait。句読点で区切って話すように聞こえる）。
+// 「、」は短く（100 ミリ秒）、「。」「！」「？」は長く（300 ミリ秒）。「！？」「……」のように続くときは、
+// 最後のあとに 1 回だけ。セリフのいちばん終わりには置かない（改行やつぎのセリフに任せる）。
+// text は EscapeText をすませたもの（句読点は全角だけを見るので、\ のエスケープとはぶつからない）。
+std::string AddAutoWaits(const std::string& text) {
+    static const char* kShort[] = { "、", "，" };
+    static const char* kLong[] = { "。", "！", "？", "…", "．" };
+    static const char* kClose[] = { "」", "』", "）", "】", "〕" };
+    std::string out;
+    out.reserve(text.size() + 32);
+    size_t i = 0;
+    int pending = 0;                                  // 0 = なし、1 = 短く、2 = 長く
+    while (i < text.size()) {
+        int kind = 0;
+        size_t len = 0;
+        for (size_t k = 0; k < sizeof(kLong) / sizeof(kLong[0]) && !kind; k++) {
+            size_t n = strlen(kLong[k]);
+            if (text.compare(i, n, kLong[k]) == 0) { kind = 2; len = n; }
+        }
+        for (size_t k = 0; k < sizeof(kShort) / sizeof(kShort[0]) && !kind; k++) {
+            size_t n = strlen(kShort[k]);
+            if (text.compare(i, n, kShort[k]) == 0) { kind = 1; len = n; }
+        }
+        if (kind) {
+            out.append(text, i, len);
+            if (kind > pending) pending = kind;
+            i += len;
+            continue;
+        }
+        // 句読点のすぐあとの閉じかっこ（「うん。」）は、間の前に入れる
+        if (pending) {
+            for (size_t k = 0; k < sizeof(kClose) / sizeof(kClose[0]) && !len; k++) {
+                size_t n = strlen(kClose[k]);
+                if (text.compare(i, n, kClose[k]) == 0) len = n;
+            }
+            if (len) {
+                out.append(text, i, len);
+                i += len;
+                continue;
+            }
+        }
+        if (pending) {
+            out += pending == 2 ? "\\_w[300]" : "\\_w[100]";
+            pending = 0;
+        }
+        out += text[i++];
+    }
+    return out;
 }
 
 // -1 / 0 / +1
@@ -246,6 +322,13 @@ static Value SysValue(const std::string& key, RunCtx& ctx) {
     if (key == "uptime")    return Value::Num((double)ctx.sys->uptimeSec);
     if (key == "uptimemin") return Value::Num((double)(ctx.sys->uptimeSec / 60));
     if (key == "boots")     return Value::Num(ctx.sys->bootCount);
+    // 前に会ってから（さいごに保存した日から）何日ぶりか（起動したときに決まる）。
+    // 出会ってから何日か（はじめて起動した日を 0 日目として、いま）
+    if (key == "dayssince") return Value::Num(ctx.sys->daysSinceLast);
+    if (key == "daysmet") {
+        long first = DayNumber(ctx.sys->firstBoot), today = DayNumber(TodayYmd());
+        return Value::Num(first < 0 || today < first ? 0 : (double)(today - first));
+    }
     if (key == "talks")     return Value::Num(ctx.sys->talkCount);
     if (key == "ghostname") return Value::Str(ctx.sys->ghostName);
     if (key == "shellname") return Value::Str(ctx.sys->shellName);
@@ -402,7 +485,7 @@ Value EvalExpr(const JValue& node, RunCtx& ctx) {
             args.push_back(EvalExpr(node[keys[i]], ctx).asStr());
         }
         SaoriResult r = ctx.saori->Execute(file, args);
-        if (!r.ok) { Log(r.error); return Value::Str(""); }
+        if (!r.ok) { Report(kProblemWarning, r.error); return Value::Str(""); }
         int want = node["value"].asInt(-1);      // -1 なら Result、0 以降なら ValueN
         if (want < 0) return Value::Str(r.result);
         if ((size_t)want < r.values.size()) return Value::Str(r.values[(size_t)want]);
@@ -433,33 +516,52 @@ static void RunBlock(const JValue& b, RunCtx& ctx);
 
 void RunBlocks(const JValue& blocks, RunCtx& ctx) {
     if (!blocks.isArr()) return;
-    if (ctx.depth > kMaxDepth) return;
+    if (ctx.depth > kMaxDepth) {
+        Report(kProblemWarning, "ブロックの入れ子が深すぎる（48 段より下）ので、その先は動かしませんでした");
+        return;
+    }
     ctx.depth++;
     for (size_t i = 0; i < blocks.size(); i++) {
         if (ctx.stopped || ctx.steps > kMaxSteps) break;
         RunBlock(blocks.at(i), ctx);
     }
     ctx.depth--;
+    // 回数の上限で止まったら知らせる（入れ子のどの段でも同じ知らせなので、1 つにまとまる）
+    if (ctx.steps > kMaxSteps) {
+        Report(kProblemWarning, "ブロックを 40000 回動かしても終わらなかったので、とちゅうで止めました"
+                                "（「◯の間くりかえす」などから出られなくなっていませんか）");
+        ctx.stopped = true;
+    }
 }
 
 void RunScript(const JValue& script, RunCtx& ctx) {
     RunBlocks(script["blocks"], ctx);
 }
 
+// スクリプトに \<c> のタグがあるか。\\（文字としての \）のあとの c は数えない（「\\-」は \- ではない）
+static bool HasTag(const std::string& s, char c) {
+    for (size_t i = 0; i + 1 < s.size(); i++) {
+        if (s[i] != '\\') continue;
+        if (s[i + 1] == c) return true;
+        i++;                             // \\ や \n などは、2 文字ごと飛ばす
+    }
+    return false;
+}
+
 std::string CloseScript(const std::string& out, bool isCloseEvent) {
     if (out.empty()) return out;
     std::string s = out;
     if (isCloseEvent) {
-        if (s.find("\\-") == std::string::npos) s += "\\-";
+        if (!HasTag(s, '-')) s += "\\-";
         return s;
     }
-    if (s.find("\\e") == std::string::npos && s.find("\\-") == std::string::npos) s += "\\e";
+    if (!HasTag(s, 'e') && !HasTag(s, '-')) s += "\\e";
     return s;
 }
 
 static void RunBlock(const JValue& b, RunCtx& ctx) {
     if (!b.isObj()) return;
-    if (ctx.steps++ > kMaxSteps) { ctx.stopped = true; return; }
+    if (ctx.steps++ > kMaxSteps) return;                            // 止めて知らせるのは RunBlocks
     if (b["disabled"].asBool(false)) return;
 
     const std::string type = BlockType(b);
@@ -474,7 +576,9 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
             sprintf_s(buf, "\\s[%d]", EvalInt(b["surface"], ctx, 0));
             Emit(ctx, buf);
         }
-        Emit(ctx, EscapeText(EvalStr(b["text"], ctx)));
+        std::string said = EscapeText(EvalStr(b["text"], ctx));
+        if (ctx.prog && ctx.prog->settings()["autoWait"].asBool(false)) said = AddAutoWaits(said);
+        Emit(ctx, said);
         if (b["nl"].asBool(true)) Emit(ctx, "\\n");
         return;
     }
@@ -674,7 +778,9 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
     if (type == "communicate") {
         int who = EvalInt(b["who"], ctx, 0);
         EmitScope(ctx, who);
-        Emit(ctx, EscapeText(EvalStr(b["text"], ctx)));
+        std::string said = EscapeText(EvalStr(b["text"], ctx));
+        if (ctx.prog && ctx.prog->settings()["autoWait"].asBool(false)) said = AddAutoWaits(said);
+        Emit(ctx, said);
         std::string to = Trim(EvalStr(b["to"], ctx));
         if (!to.empty()) ctx.commTo = to;
         return;
@@ -833,7 +939,10 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
 
     if (type == "repeat") {
         int n = EvalInt(b["count"], ctx, 1);
-        if (n > kMaxLoop) n = kMaxLoop;
+        if (n > kMaxLoop) {
+            Report(kProblemWarning, "「◯回くりかえす」は 5000 回までなので、5000 回で止めました");
+            n = kMaxLoop;
+        }
         for (int i = 0; i < n && !ctx.stopped; i++) {
             if (ctx.steps > kMaxSteps) break;
             RunBlocks(b["body"], ctx);
@@ -843,10 +952,16 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
 
     if (type == "while") {
         int guard = 0;
+        bool ended = false;
         while (!ctx.stopped && guard++ < kMaxLoop) {
-            if (ctx.steps > kMaxSteps) break;
-            if (!EvalExpr(b["cond"], ctx).asBool()) break;
+            if (ctx.steps > kMaxSteps) { ended = true; break; }
+            if (!EvalExpr(b["cond"], ctx).asBool()) { ended = true; break; }
             RunBlocks(b["body"], ctx);
+        }
+        // 5000 回ちょうどで終わるはずだったものは、知らせない（もう一度だけ条件を見る）
+        if (!ended && !ctx.stopped && EvalExpr(b["cond"], ctx).asBool()) {
+            Report(kProblemWarning, "「◯の間くりかえす」が 5000 回をこえても終わらなかったので、止めました"
+                                    "（条件が、いつまでも成り立ったままになっていませんか）");
         }
         return;
     }
@@ -912,11 +1027,22 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
         if (name.empty()) name = EvalStr(b["target"], ctx);
         const JValue* fn = ctx.prog->functionByName(name);
         if (!fn) fn = ctx.prog->scriptById(name);
-        if (!fn) return;
-        for (size_t i = 0; i < ctx.stack.size(); i++) {
-            if (ctx.stack[i] == fn) return;             // already running: stop recursion
+        if (!fn) {
+            Report(kProblemWarning, name.empty() ? std::string("「よぶ」ブロックに、トークの名前が入っていません")
+                                                 : "「" + name + "」をよぼうとしましたが、その名前のトークがありません");
+            return;
         }
-        if (ctx.stack.size() > 16) return;
+        for (size_t i = 0; i < ctx.stack.size(); i++) {
+            if (ctx.stack[i] == fn) {                   // already running: stop recursion
+                Report(kProblemWarning, "「" + name + "」は、いまよんでいる途中なので、もう一度はよびませんでした"
+                                        "（自分をよんだり、よび合いがひとまわりしたりしていませんか）");
+                return;
+            }
+        }
+        if (ctx.stack.size() > 16) {
+            Report(kProblemWarning, "よぶ・よばれるが 16 段より深くなったので、「" + name + "」はよびませんでした");
+            return;
+        }
         ctx.stack.push_back(fn);
         RunBlocks((*fn)["blocks"], ctx);
         ctx.stack.pop_back();

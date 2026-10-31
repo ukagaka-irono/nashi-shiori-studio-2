@@ -23,6 +23,13 @@ struct SysInfo {
     int birthMonth = 0;     // 誕生日（分からなければ 0）
     int birthDay = 0;
     std::string baseware;   // SSP の版（例: 2.9.26）
+
+    // はじめて起動した日・さいごに起動した日（YYYY-MM-DD。保存データに記録）と、
+    // 今回の起動が前の起動から何日ぶりか（「久しぶり」のトーク用）
+    std::string firstBoot;
+    std::string lastBoot;
+    std::string lastSeen;   // さいごに保存した日（動かしたままの日も入る。「何日ぶり」はここから数える）
+    int daysSinceLast = 0;
 };
 
 // 「N 秒後によぶ」の予約。栞がためておき、時間が来たら動かします。
@@ -51,6 +58,13 @@ struct RunCtx {
 
 // Escapes plain text for SakuraScript (\\ and newlines -> \n tag).
 std::string EscapeText(const std::string& text);
+// 句読点のあとに、少し間（\_w[…]）を足す（設定の autoWait）
+std::string AddAutoWaits(const std::string& text);
+
+// "YYYY-MM-DD" を、日のかぞえ番号にする（2 つの日付の差が、あいだの日数になる）。読めなければ -1
+long DayNumber(const std::string& ymd);
+// きょうの日付（"YYYY-MM-DD"）
+std::string TodayYmd();
 
 // Cuts text to the per-value limit (never inside a UTF-8 sequence).
 std::string CapText(const std::string& s);

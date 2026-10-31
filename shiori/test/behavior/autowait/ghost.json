@@ -1,0 +1,93 @@
+{
+  "format": "nashi/1",
+  "_comment": "句読点のあとの自動の間（settings.autoWait）と、終わりの印（\\-）のあつかいのテスト用。",
+  "meta": {
+    "name": "まあいテスト",
+    "sakuraName": "さくら",
+    "keroName": "うにゅう"
+  },
+  "settings": {
+    "randomTalkEnabled": false,
+    "autoWait": true
+  },
+  "variables": [],
+  "scripts": [
+    {
+      "id": "e_boot",
+      "kind": "event",
+      "event": "OnBoot",
+      "blocks": [
+        {
+          "type": "say",
+          "who": 0,
+          "text": "はい、そうです。ほんと！？……うん。",
+          "nl": 0
+        }
+      ]
+    },
+    {
+      "id": "e_quote",
+      "kind": "event",
+      "event": "OnKeyPress",
+      "blocks": [
+        {
+          "type": "say",
+          "who": 0,
+          "text": "「うん。」そう、",
+          "nl": 1
+        },
+        {
+          "type": "say",
+          "who": 0,
+          "text": "a!b?c",
+          "nl": 0
+        }
+      ]
+    },
+    {
+      "id": "e_comm",
+      "kind": "event",
+      "event": "OnCommunicate",
+      "blocks": [
+        {
+          "type": "communicate",
+          "who": 0,
+          "text": "うん、いいよ",
+          "to": "あいて"
+        }
+      ]
+    },
+    {
+      "id": "e_close",
+      "kind": "event",
+      "event": "OnClose",
+      "_": "セリフの中の文字の \\ と - は、終わりの印 \\- ではない。ほんものの \\- は raw で",
+      "blocks": [
+        {
+          "type": "say",
+          "who": 0,
+          "text": "またね、/\\-/",
+          "nl": 0
+        },
+        {
+          "type": "raw",
+          "text": "\\-"
+        }
+      ]
+    },
+    {
+      "id": "e_closeall",
+      "kind": "event",
+      "event": "OnCloseAll",
+      "_": "文字の \\ と - しか無いので、栞が \\- を足すはず",
+      "blocks": [
+        {
+          "type": "say",
+          "who": 0,
+          "text": "/\\-/",
+          "nl": 0
+        }
+      ]
+    }
+  ]
+}

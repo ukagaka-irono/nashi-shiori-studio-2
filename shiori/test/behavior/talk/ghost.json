@@ -1,0 +1,66 @@
+{
+  "format": "nashi/1",
+  "_comment": "ランダムトークのふるまいテスト用。間隔 1 秒なので、ゆらぎを付けても毎秒ためす。",
+  "meta": {
+    "name": "トークテスト",
+    "sakuraName": "さくら",
+    "keroName": "うにゅう"
+  },
+  "settings": {
+    "randomTalkEnabled": true,
+    "randomTalkInterval": 1,
+    "noRepeatCount": 0
+  },
+  "variables": [
+    {
+      "name": "回数",
+      "value": 0
+    }
+  ],
+  "scripts": [
+    {
+      "id": "t_never",
+      "kind": "talk",
+      "name": "だまる",
+      "weight": 100,
+      "blocks": [
+        {
+          "type": "change",
+          "name": "回数",
+          "value": 1
+        },
+        {
+          "type": "if",
+          "cond": {
+            "type": "compare",
+            "op": "=",
+            "a": 1,
+            "b": 0
+          },
+          "then": [
+            {
+              "type": "say",
+              "who": 0,
+              "text": "でない",
+              "nl": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t_ok",
+      "kind": "talk",
+      "name": "はなす",
+      "weight": 1,
+      "blocks": [
+        {
+          "type": "say",
+          "who": 0,
+          "text": "はなす",
+          "nl": 0
+        }
+      ]
+    }
+  ]
+}

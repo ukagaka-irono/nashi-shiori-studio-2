@@ -77,7 +77,8 @@ SSP は毎秒たたいてくるので、そのまま処理を積むと毎秒全�
 （`◯ミリ秒待つ` は `\_w` ＝**セリフの再生を止める**ブロックで、次のループを遅らせるものではありません）。
 
 `OnNadeNade`（なでられたとき）は SSP のイベントではありません。
-`OnMouseMove` が同じ場所で 8 回続いたときに、栞が自分で作って実行しています。
+`OnMouseMove` が同じ場所で 20 回続いたときに、栞が自分で作って実行しています
+（反応したあと 5 秒は続けて反応せず、しゃべっている途中にも割りこみません）。
 
 **話しかけられたとき**（`OnCommunicate`）を選ぶと、帽子ブロックが
 「**◯ に □ と話しかけられたとき**」の形に変わります。左が相手の名前、右が言われたことで、
@@ -283,7 +284,8 @@ SSP から返ってきた `OnChoiceSelect` / `OnAnchorSelect` / `OnUserInput` �
 `file` はゴーストのフォルダからの相対パスで、`..` や絶対パスは使えません。
 **栞と同じ 32bit** の DLL である必要があります。`value` は `-1` なら `Result:`、
 `0` 以降なら `Value0:` 以降を取り出します。呼べなかったときは空文字を返し、
-理由は `nashi_debug.txt` に残ります（`nashi.dll` のとなりに空のファイルを作ると記録されます）。
+理由は SSP のエラーログに出ます（[ghost.json の「デバッグ」](ghost-json.md#デバッグ)）。
+`nashi_debug.txt` にも残ります（`nashi.dll` のとなりに空のファイルを作ると記録されます）。
 読み込んだ DLL はゴーストが終わるまで保ちます。
 プレビューでは本物の DLL を読めないので、**いつも空**が返ります。SSP に入れて確かめてください。
 
@@ -305,6 +307,8 @@ SSP から返ってきた `OnChoiceSelect` / `OnAnchorSelect` / `OnUserInput` �
 | いまの時 など | `{"type":"sys","key":"hour"}` | `hour` `minute` `second` `year` `month` `day` `weekday`(0=日) |
 | 起動してからの秒数 / 分数 | `{"type":"sys","key":"uptime"}` / `uptimemin` | |
 | 起動した回数 | `{"type":"sys","key":"boots"}` | 保存データに記録 |
+| 前に会ってから何日ぶりか | `{"type":"sys","key":"dayssince"}` | 起動したときに、さいごに保存した日（動かしたままの日もふくむ）から数える。同じ日なら 0。ためすときは 0 |
+| 出会ってから何日か | `{"type":"sys","key":"daysmet"}` | はじめて起動した日を 0 日目として数える。この版より前の保存データでは、この版ではじめて起動した日から。時計がおかしい日付（2026 年より前・先の日付）は使わない。ためすときは 0 |
 | 今回のトーク回数 | `{"type":"sys","key":"talks"}` | |
 | ゴースト名 / シェル名 | `{"type":"sys","key":"ghostname"}` / `shellname` | |
 | 話しかけてきた相手 / 言われたこと | `{"type":"sys","key":"commfrom"}` / `commtext` | `OnCommunicate` の `Reference0` / `Reference1` |
