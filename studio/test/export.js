@@ -101,6 +101,63 @@ for (const [fixture, want, expected] of cases) {
   compare(expected, run([path.join(fixtureDir, fixture), want]));
 }
 
+// ------------------------------------------------- 自分の絵に描いた当たり判定
+//
+// 画像は「このコンピュータの中の絶対パス」でないと読まないので、その場で作ります。
+// 書き出しが見るのは PNG の頭（大きさ）だけなので、IHDR までの小さな PNG で足ります。
+console.log('  ---- 自分の絵に描いた当たり判定 (surfaces.txt)');
+{
+  const tmpHit = fs.mkdtempSync(path.join(os.tmpdir(), 'nashi-hit-'));
+  try {
+    const png = (w, h) => {
+      const b = Buffer.alloc(8 + 8 + 13 + 4);
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0);
+      b.writeUInt32BE(13, 8); b.write('IHDR', 12, 'ascii');
+      b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); b[24] = 8; b[25] = 6;
+      return b;
+    };
+    fs.writeFileSync(path.join(tmpHit, 'a.png'), png(200, 300));
+    fs.writeFileSync(path.join(tmpHit, 'b.png'), png(200, 300));
+    const project = {
+      meta: { name: 'あたりテスト', sakuraName: 'さくら', keroName: 'うにゅう' },
+      shell: {
+        images: [
+          { id: 0, path: path.join(tmpHit, 'a.png'), collisions: [
+            { name: 'Head', shape: 'rect', x1: 10, y1: 20, x2: 110, y2: 90 },
+            { name: 'Face,x', shape: 'ellipse', x1: 30, y1: 80, x2: 90, y2: 130 },
+            { name: '', shape: 'rect', x1: 0, y1: 0, x2: 5, y2: 5 },
+          ] },
+          { id: 1, path: path.join(tmpHit, 'b.png'), collisions: [] },
+        ],
+      },
+      scripts: [],
+    };
+    const fixture = path.join(tmpHit, 'project.json');
+    fs.writeFileSync(fixture, JSON.stringify(project));
+    const out = run([fixture, 'shell/master/surfaces.txt']).toString('utf8');
+    const block = (id) => {
+      const m = new RegExp(`surface${id}\\r\\n\\{\\r\\n([\\s\\S]*?)\\}`).exec(out);
+      return m ? m[1] : '';
+    };
+    const checks = [
+      ['描いた四角が collision で出る', block(0).includes('collision0,10,20,110,90,Head\r\n')],
+      ['描いただ円が collisionex で出る（名前の , は空白に）', block(0).includes('collisionex0,Face x,ellipse,30,80,90,130\r\n')],
+      ['名前の無いものは出ない／自動の判定はまざらない', !/Skirt|Bust|,5,5,/.test(block(0))],
+      ['描いていない自分の絵には、自動の判定が付く', block(1).includes(',Head\r\n') && block(1).includes(',Skirt\r\n')],
+      ['自動生成の絵にも、自動の判定が付く', block(10).includes(',Head\r\n')],
+    ];
+    for (const [label, ok] of checks) {
+      checked++;
+      if (ok) { console.log(`${green}  OK  ${off}${label}`); continue; }
+      failed++;
+      console.log(`${red}  だめ ${label}${off}`);
+      console.log(`        ${dim}${JSON.stringify(out.slice(0, 600))}${off}`);
+    }
+  } finally {
+    fs.rmSync(tmpHit, { recursive: true, force: true });
+  }
+}
+
 // ------------------------------------------------- ネットワーク更新の照合表
 //
 // 中身を作るところから確かめたいので、その場でフォルダを組み立てます。

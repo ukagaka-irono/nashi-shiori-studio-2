@@ -44,10 +44,13 @@
     if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(ok ? 'saved' : 'save-failed');
   };
 
-  function modal(title, bodyEl, buttons) {
+  // opts.wide … 絵を大きく見せたいときの広いダイアログ（当たり判定の編集など）
+  // opts.onClose … どの閉じかたでも、閉じたあとに呼ぶ
+  function modal(title, bodyEl, buttons, opts) {
     const root = $('#modal-root');
     root.textContent = '';
-    const box = Render.div('modal');
+    modalOnClose = (opts && opts.onClose) || null;
+    const box = Render.div('modal' + (opts && opts.wide ? ' wide' : ''));
     box.appendChild(Render.el('h3', null, title));
     const body = Render.div('modal-body');
     body.appendChild(bodyEl);
@@ -63,7 +66,13 @@
     root.classList.add('open');
     root.onclick = (e) => { if (e.target === root) closeModal(); };
   }
-  function closeModal() { $('#modal-root').classList.remove('open'); }
+  let modalOnClose = null;
+  function closeModal() {
+    $('#modal-root').classList.remove('open');
+    const fn = modalOnClose;
+    modalOnClose = null;
+    if (fn) fn();
+  }
 
   async function openProjectDialog() {
     let state;

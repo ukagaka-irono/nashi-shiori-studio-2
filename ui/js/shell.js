@@ -358,6 +358,14 @@
       row.appendChild(pickBtn);
 
       if (img) {
+        const n = (img.collisions || []).length;
+        const hitBtn = Render.el('button', 'btn tiny', n ? `当たり判定（${n}）` : '当たり判定');
+        hitBtn.title = n ? 'この絵に描いた当たり判定を直す' : 'この絵に当たり判定を描く（描かなければ自動で付けます）';
+        hitBtn.addEventListener('click', () => openHitAreaEditor(id, `${label}（${id} 番）`));
+        row.appendChild(hitBtn);
+      }
+
+      if (img) {
         const clear = Render.el('button', 'btn tiny', 'もどす');
         clear.title = '自動生成にもどす';
         clear.addEventListener('click', () => {
@@ -372,6 +380,322 @@
       }
       box.appendChild(row);
     }
+  }
+
+  // ------------------------------------------------- 立ち絵の当たり判定を描く
+  // 四角は絵の上をドラッグして描く（つかんで動かす・かどで大きさを変える）。
+  // 丸・だ円・多角形は、うごきの当たり判定と同じ数字の欄で入れて、絵の上には形だけ見せる。
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  // 当たり判定の名前の見せかた。触れたときのブロックの「どこ」と同じ言葉にする（Head → あたま）。
+  const areaLabel = (name) => ((N.AREAS.find(([, v]) => v && v === name) || [])[0]) || name;
+
+  function openHitAreaEditor(surfaceId, title) {
+    let img = shellImageOf(surfaceId);
+    if (!img) return;
+    if (!Array.isArray(img.collisions)) img.collisions = [];
+    let selected = img.collisions.length ? 0 : -1;
+    let natW = Number(img.w) || 0;
+    let natH = Number(img.h) || 0;
+
+    const body = Render.div('hit-editor');
+    body.appendChild(Render.el('p', 'hint',
+      '絵の上をドラッグすると、四角の当たり判定を足せます。1 つも作らなければ、書き出すときに自動で付けます。'));
+
+    const stage = Render.div('hit-stage');
+    const pic = Render.el('img');
+    pic.src = shellUrl(surfaceId);
+    pic.alt = title;
+    pic.draggable = false;
+    stage.appendChild(pic);
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'hit-overlay');
+    stage.appendChild(svg);
+    body.appendChild(stage);
+
+    const rows = Render.div('anim-cols');
+    body.appendChild(rows);
+
+    // ---- 絵の上の形
+    const shapeEl = (c) => {
+      let el;
+      if (c.shape === 'ellipse') {
+        el = document.createElementNS(SVG_NS, 'ellipse');
+        el.setAttribute('cx', (c.x1 + c.x2) / 2);
+        el.setAttribute('cy', (c.y1 + c.y2) / 2);
+        el.setAttribute('rx', Math.abs(c.x2 - c.x1) / 2);
+        el.setAttribute('ry', Math.abs(c.y2 - c.y1) / 2);
+      } else if (c.shape === 'circle') {
+        el = document.createElementNS(SVG_NS, 'circle');
+        el.setAttribute('cx', c.x1);
+        el.setAttribute('cy', c.y1);
+        el.setAttribute('r', Math.max(0, c.x2));
+      } else if (c.shape === 'polygon') {
+        el = document.createElementNS(SVG_NS, 'polygon');
+        const nums = String(c.points || '').match(/-?\d+/g) || [];
+        const pts = [];
+        for (let k = 0; k + 1 < nums.length; k += 2) pts.push(nums[k] + ',' + nums[k + 1]);
+        el.setAttribute('points', pts.join(' '));
+      } else {
+        el = document.createElementNS(SVG_NS, 'rect');
+        el.setAttribute('x', Math.min(c.x1, c.x2));
+        el.setAttribute('y', Math.min(c.y1, c.y2));
+        el.setAttribute('width', Math.abs(c.x2 - c.x1));
+        el.setAttribute('height', Math.abs(c.y2 - c.y1));
+      }
+      return el;
+    };
+
+    function drawShapes() {
+      svg.textContent = '';
+      if (natW && natH) svg.setAttribute('viewBox', `0 0 ${natW} ${natH}`);
+      // 線の太さと文字の大きさは、表示の倍率に合わせる（小さく見せても細くなりすぎない）
+      const scale = natW && pic.clientWidth ? natW / pic.clientWidth : 1;
+      img.collisions.forEach((c, k) => {
+        const g = document.createElementNS(SVG_NS, 'g');
+        g.setAttribute('class', 'hit-shape' + (k === selected ? ' is-selected' : ''));
+        const el = shapeEl(c);
+        el.setAttribute('stroke-width', 2 * scale);
+        el.dataset.index = String(k);
+        g.appendChild(el);
+        const tx = document.createElementNS(SVG_NS, 'text');
+        tx.setAttribute('x', Math.min(c.x1, c.shape === 'rect' || c.shape === 'ellipse' ? c.x2 : c.x1) + 4 * scale);
+        tx.setAttribute('y', Math.min(c.y1, c.shape === 'rect' || c.shape === 'ellipse' ? c.y2 : c.y1) + 14 * scale);
+        tx.setAttribute('font-size', 12 * scale);
+        tx.textContent = areaLabel(c.name);
+        g.appendChild(tx);
+        if (k === selected && c.shape === 'rect') {
+          for (const [hx, hy] of [[c.x1, c.y1], [c.x2, c.y1], [c.x1, c.y2], [c.x2, c.y2]]) {
+            const h = document.createElementNS(SVG_NS, 'rect');
+            const s = 8 * scale;
+            h.setAttribute('class', 'hit-handle');
+            h.setAttribute('x', hx - s / 2);
+            h.setAttribute('y', hy - s / 2);
+            h.setAttribute('width', s);
+            h.setAttribute('height', s);
+            h.dataset.corner = (hx === c.x1 ? 'l' : 'r') + (hy === c.y1 ? 't' : 'b');
+            g.appendChild(h);
+          }
+        }
+        svg.appendChild(g);
+      });
+    }
+
+    // ---- 下の欄（うごきの当たり判定と同じ並び）
+    const mk = (label, value, onInput, opts) => {
+      const f = Render.el('label', 'field row');
+      f.appendChild(Render.el('span', null, label));
+      const inp = Render.el('input');
+      inp.type = (opts && opts.type) || 'number';
+      inp.value = value;
+      if (opts && opts.min != null) inp.min = String(opts.min);
+      inp.addEventListener('change', () => {
+        const snap = Model.snapshot();
+        onInput(inp.value);
+        Model.pushUndo(snap);
+        redraw();
+      });
+      f.appendChild(inp);
+      return f;
+    };
+    const pick = (label, list, value, onPick) => {
+      const f = Render.el('label', 'field row');
+      f.appendChild(Render.el('span', null, label));
+      const s = Render.el('select');
+      for (const [text, v] of list) {
+        const o = Render.el('option', null, text);
+        o.value = v;
+        s.appendChild(o);
+      }
+      s.value = value;
+      s.addEventListener('change', () => {
+        const snap = Model.snapshot();
+        onPick(s.value);
+        Model.pushUndo(snap);
+        redraw();
+      });
+      f.appendChild(s);
+      return f;
+    };
+
+    function renderRows() {
+      rows.textContent = '';
+      img.collisions.forEach((c, k) => {
+        const cr = Render.div('anim-pat' + (k === selected ? ' is-selected' : ''));
+        // クリックでも、Tab で欄に入っても、その形をえらんだことにする
+        const choose = () => { if (selected !== k) { selected = k; drawShapes(); markRows(); } };
+        cr.addEventListener('pointerdown', choose);
+        cr.addEventListener('focusin', choose);
+        cr.appendChild(Render.el('span', 'anim-step', 'あたり'));
+        // 名前は、触れたときのブロックの「どこ」と同じ言葉でえらぶ。ほかの名前は自分で書ける。
+        const known = N.AREAS.some(([, v]) => v && v === c.name);
+        const nameOpts = N.AREAS.filter(([, v]) => v).concat(
+          known ? [] : [[c.name, c.name]], [['その他（自分で書く）', '__custom__']]);
+        cr.appendChild(pick('名前', nameOpts, c.name, (v) => {
+          if (v !== '__custom__') { c.name = v; return; }
+          const typed = prompt('当たり判定の名前は？（英数字がおすすめです）', known ? '' : c.name);
+          // 空にすると、書き出しでも読みなおしでも消えてしまうので、前の名前のままにする
+          if (typed != null && typed.trim()) c.name = typed.trim().replace(/,/g, ' ');
+        }));
+        cr.appendChild(pick('かたち', ANIM_SHAPES, c.shape || 'rect', (v) => { c.shape = v; }));
+        const int = (v) => Math.round(Number(v) || 0);
+        if (c.shape === 'circle') {
+          cr.appendChild(mk('中心よこ', c.x1, (v) => { c.x1 = int(v); }));
+          cr.appendChild(mk('中心たて', c.y1, (v) => { c.y1 = int(v); }));
+          cr.appendChild(mk('半径', c.x2, (v) => { c.x2 = Math.max(0, int(v)); }, { min: 0 }));
+        } else if (c.shape === 'polygon') {
+          cr.appendChild(mk('かどの位置', c.points || '', (v) => { c.points = String(v); }, { type: 'text' }));
+          cr.appendChild(Render.el('span', 'hint', 'x,y を空白でならべます（3 つ以上）'));
+        } else {
+          cr.appendChild(mk('左', c.x1, (v) => { c.x1 = int(v); }));
+          cr.appendChild(mk('上', c.y1, (v) => { c.y1 = int(v); }));
+          cr.appendChild(mk('右', c.x2, (v) => { c.x2 = int(v); }));
+          cr.appendChild(mk('下', c.y2, (v) => { c.y2 = int(v); }));
+        }
+        const rm = Render.el('button', 'btn tiny', '−');
+        rm.title = 'この当たり判定を消す';
+        rm.addEventListener('click', () => {
+          Model.act(() => { img.collisions.splice(k, 1); });
+          if (selected >= img.collisions.length) selected = img.collisions.length - 1;
+          redraw();
+        });
+        cr.appendChild(rm);
+        rows.appendChild(cr);
+      });
+      const add = Render.el('button', 'btn tiny', '＋ 当たり判定を足す');
+      add.addEventListener('click', () => {
+        const w = natW || 100, h = natH || 100;
+        addCollision({ x1: Math.round(w * 0.25), y1: Math.round(h * 0.1),
+          x2: Math.round(w * 0.75), y2: Math.round(h * 0.3) });
+      });
+      rows.appendChild(add);
+    }
+    function markRows() {
+      [...rows.querySelectorAll('.anim-pat')].forEach((r, k) => r.classList.toggle('is-selected', k === selected));
+    }
+    function redraw() { drawShapes(); renderRows(); }
+
+    // まだ使われていない「どこ」の名前（あたま → かお → …）。全部使っていれば Area1, Area2 …
+    function nextName() {
+      const used = new Set(img.collisions.map((c) => c.name));
+      for (const [, value] of N.AREAS) if (value && !used.has(value)) return value;
+      let n = 1;
+      while (used.has('Area' + n)) n++;
+      return 'Area' + n;
+    }
+    function addCollision(box) {
+      Model.act(() => {
+        img.collisions.push(Object.assign({ name: nextName(), shape: 'rect', points: '' }, box));
+      });
+      selected = img.collisions.length - 1;
+      redraw();
+    }
+
+    // ---- ドラッグ（画面の座標 → 絵の画素）
+    const toImage = (e) => {
+      const r = pic.getBoundingClientRect();
+      const sx = natW / Math.max(1, r.width), sy = natH / Math.max(1, r.height);
+      const clamp = (v, max) => Math.max(0, Math.min(max, Math.round(v)));
+      return { x: clamp((e.clientX - r.left) * sx, natW), y: clamp((e.clientY - r.top) * sy, natH) };
+    };
+    let drag = null;
+    svg.addEventListener('pointerdown', (e) => {
+      if (!natW || !natH || e.button !== 0) return;
+      e.preventDefault();
+      const p = toImage(e);
+      const t = e.target;
+      const snap = Model.snapshot();
+      if (t.dataset && t.dataset.corner && selected >= 0) {
+        drag = { mode: 'resize', corner: t.dataset.corner, c: img.collisions[selected], snap };
+      } else if (t.dataset && t.dataset.index != null) {
+        selected = Number(t.dataset.index);
+        const c = img.collisions[selected];
+        drag = c.shape === 'rect' ? { mode: 'move', c, from: p, start: Object.assign({}, c), snap } : null;
+      } else {
+        drag = { mode: 'new', from: p, temp: { name: nextName(), shape: 'rect', x1: p.x, y1: p.y, x2: p.x, y2: p.y, points: '' } };
+        img.collisions.push(drag.temp);   // ドラッグ中だけ仮に入れる（離したときに 1 回の操作として積む）
+        selected = img.collisions.length - 1;
+      }
+      // 先につかんでから描きなおす（押した形を消してからつかむと、ドラッグが届かなくなる）
+      if (drag) svg.setPointerCapture(e.pointerId);
+      drawShapes();
+      markRows();
+    });
+    svg.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const p = toImage(e);
+      if (drag.mode === 'new') {
+        drag.temp.x2 = p.x; drag.temp.y2 = p.y;
+      } else if (drag.mode === 'move') {
+        const dx = p.x - drag.from.x, dy = p.y - drag.from.y;
+        const w = drag.start.x2 - drag.start.x1, h = drag.start.y2 - drag.start.y1;
+        const x1 = Math.max(0, Math.min(natW - Math.abs(w), drag.start.x1 + dx));
+        const y1 = Math.max(0, Math.min(natH - Math.abs(h), drag.start.y1 + dy));
+        drag.c.x1 = x1; drag.c.y1 = y1; drag.c.x2 = x1 + w; drag.c.y2 = y1 + h;
+      } else if (drag.mode === 'resize') {
+        if (drag.corner[0] === 'l') drag.c.x1 = p.x; else drag.c.x2 = p.x;
+        if (drag.corner[1] === 't') drag.c.y1 = p.y; else drag.c.y2 = p.y;
+      }
+      drawShapes();
+    });
+    const endDrag = () => {
+      if (!drag) return;
+      const d = drag;
+      drag = null;
+      if (d.mode === 'new') {
+        img.collisions.pop();
+        const box = {
+          x1: Math.min(d.temp.x1, d.temp.x2), y1: Math.min(d.temp.y1, d.temp.y2),
+          x2: Math.max(d.temp.x1, d.temp.x2), y2: Math.max(d.temp.y1, d.temp.y2),
+        };
+        // 小さすぎるもの（ただのクリック）は足さない
+        if (box.x2 - box.x1 >= 4 && box.y2 - box.y1 >= 4) addCollision(box);
+        else { selected = Math.min(selected, img.collisions.length - 1); redraw(); }
+        return;
+      }
+      // 左上・右下の順にそろえる
+      const c = d.c;
+      [c.x1, c.x2] = [Math.min(c.x1, c.x2), Math.max(c.x1, c.x2)];
+      [c.y1, c.y2] = [Math.min(c.y1, c.y2), Math.max(c.y1, c.y2)];
+      Model.pushUndo(d.snap);
+      redraw();
+    };
+    svg.addEventListener('pointerup', endDrag);
+    svg.addEventListener('pointercancel', endDrag);
+
+    pic.addEventListener('load', () => {
+      natW = pic.naturalWidth || natW;
+      natH = pic.naturalHeight || natH;
+      drawShapes();
+    });
+    pic.addEventListener('error', () => {
+      // 立ち絵の行と同じ文と色で知らせる
+      const msg = Render.div('hint', 'ファイルが見つかりません');
+      msg.style.color = '#e2664a';
+      stage.replaceChildren(msg);
+    });
+
+    // 元にもどす／やり直すと、プロジェクトがまるごと入れかわる。開いている間はそれに付いていく
+    const follow = () => {
+      const fresh = shellImageOf(surfaceId);
+      if (!fresh || fresh === img) return;
+      img = fresh;
+      if (!Array.isArray(img.collisions)) img.collisions = [];
+      if (selected >= img.collisions.length) selected = img.collisions.length - 1;
+      redraw();
+    };
+    Model.onChange(follow);
+
+    renderRows();
+    drawShapes();
+    N.Dialog.modal(`${title}の当たり判定`, body, [{ label: '閉じる' }], {
+      wide: true,
+      // 閉じたら、ボタンの「（3）」などを描きなおす
+      onClose: () => {
+        Model.offChange(follow);
+        refreshShell();
+      },
+    });
+    requestAnimationFrame(drawShapes);   // 大きさが決まってから、線の太さを合わせなおす
   }
 
   async function pickShellImage(surfaceId) {
@@ -396,9 +720,12 @@
           if (at < 0 || at + n >= order.length) id = Number(surfaceId) + n;
           else id = order[at + n];
         }
-        const one = { id, path: f.path, name: f.name, w: f.width, h: f.height, stamp: String(Date.now()) };
+        const one = {
+          id, path: f.path, name: f.name, w: f.width, h: f.height, stamp: String(Date.now()), collisions: [],
+        };
         const i = list.findIndex((x) => Number(x.id) === id);
-        if (i >= 0) list[i] = one; else list.push(one);
+        // 絵を描きなおしただけのことが多いので、描いた当たり判定は引きつぐ
+        if (i >= 0) { one.collisions = list[i].collisions || []; list[i] = one; } else list.push(one);
       });
       list.sort((a, b) => Number(a.id) - Number(b.id));
     });

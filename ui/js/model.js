@@ -13,6 +13,19 @@
     'start', 'stop', 'import'];
   const ANIM_SHAPES = ['rect', 'ellipse', 'circle', 'polygon'];
 
+  // 当たり判定の並び（立ち絵にも、うごきにも使う）。名前の無いものは落とす。
+  function normalizeCollisions(list) {
+    return (Array.isArray(list) ? list : [])
+      .filter((c) => c && String(c.name || '').trim())
+      .map((c) => ({
+        name: String(c.name).trim(),
+        shape: ANIM_SHAPES.indexOf(c.shape) >= 0 ? c.shape : 'rect',
+        x1: Number(c.x1) || 0, y1: Number(c.y1) || 0,
+        x2: Number(c.x2) || 0, y2: Number(c.y2) || 0,
+        points: c.points ? String(c.points) : '',
+      }));
+  }
+
   let seq = 0;
   function uid(prefix) {
     seq++;
@@ -73,6 +86,8 @@
           id: Number(x.id), path: String(x.path),
           name: x.name ? String(x.name) : String(x.path).split(/[\/]/).pop(),
           w: Number(x.w) || 0, h: Number(x.h) || 0,
+          // この絵に描いた当たり判定（無ければ、書き出すときに自動で付ける）
+          collisions: normalizeCollisions(x.collisions),
         }))
         .sort((a, b) => a.id - b.id);
       out.variables = Array.isArray(out.variables) ? out.variables : [];
@@ -96,15 +111,7 @@
               file: p && p.file ? String(p.file) : '',
             })),
           // このうごきの間だけ有効な当たり判定
-          collisions: (Array.isArray(a && a.collisions) ? a.collisions : [])
-            .filter((c) => c && String(c.name || '').trim())
-            .map((c) => ({
-              name: String(c.name).trim(),
-              shape: ANIM_SHAPES.indexOf(c.shape) >= 0 ? c.shape : 'rect',
-              x1: Number(c.x1) || 0, y1: Number(c.y1) || 0,
-              x2: Number(c.x2) || 0, y2: Number(c.y2) || 0,
-              points: c.points ? String(c.points) : '',
-            })),
+          collisions: normalizeCollisions(a && a.collisions),
         }));
 
       out.scripts = Array.isArray(out.scripts) ? out.scripts : [];
@@ -156,6 +163,10 @@
 
     // --------------------------------------------------------------- events
     onChange(fn) { Model.listeners.push(fn); },
+    offChange(fn) {
+      const i = Model.listeners.indexOf(fn);
+      if (i >= 0) Model.listeners.splice(i, 1);
+    },
     emit() { Model.listeners.forEach((fn) => fn(Model.project)); },
 
     /**

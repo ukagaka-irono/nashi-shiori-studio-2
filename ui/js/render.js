@@ -139,6 +139,14 @@
         const opts = N.AREAS.slice();
         const seen = {};
         for (const [, v] of opts) seen[v] = 1;
+        // 自分の絵に描いた当たり判定の名前も、えらべるようにする
+        for (const im of ((Model.project.shell || {}).images || [])) {
+          for (const c of (im.collisions || [])) {
+            if (!c.name || seen[c.name]) continue;
+            seen[c.name] = 1;
+            opts.push([c.name + '（立ち絵 ' + im.id + '）', c.name]);
+          }
+        }
         for (const a of (Model.project.animations || [])) {
           for (const c of (a.collisions || [])) {
             if (!c.name || seen[c.name]) continue;

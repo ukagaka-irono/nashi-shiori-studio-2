@@ -137,6 +137,65 @@ static std::string DrawCharacter(int w, int h, const std::string& hairHex,
     return c.ToPng();
 }
 
+// 当たり判定の行。立ち絵（prefix ""）にも、うごき（prefix "animationN."）にも使います。
+// 四角は collision、それ以外の形は collisionex で書きます。
+//
+//   collision0,10,20,110,90,Head
+//   collisionex0,Face,ellipse,30,80,90,130
+static std::string CollisionDefLines(const JValue& cols, const std::string& prefix) {
+    std::string out;
+    int c = 0, cx = 0;
+    for (size_t k = 0; k < cols.size() && k < 64; k++) {
+        const JValue& one = cols.at(k);
+        if (!one.isObj()) continue;
+        std::string name = Trim(one["name"].asStr());
+        if (name.empty()) continue;
+        for (size_t n = 0; n < name.size(); n++) {         // 1 行に収める
+            if (name[n] == ',' || name[n] == '\r' || name[n] == '\n') name[n] = ' ';
+        }
+        if (name.size() > 64) name.resize(64);
+        std::string shape = one["shape"].asStr("rect");
+        int x1 = one["x1"].asInt(0), y1 = one["y1"].asInt(0);
+        int x2 = one["x2"].asInt(0), y2 = one["y2"].asInt(0);
+        char cbuf[320];
+
+        if (shape == "ellipse") {
+            sprintf_s(cbuf, "%scollisionex%d,%s,ellipse,%d,%d,%d,%d\r\n",
+                      prefix.c_str(), cx++, name.c_str(), x1, y1, x2, y2);
+            out += cbuf;
+        } else if (shape == "circle") {
+            if (x2 <= 0) continue;                         // 半径 0 は触れない
+            sprintf_s(cbuf, "%scollisionex%d,%s,circle,%d,%d,%d\r\n",
+                      prefix.c_str(), cx++, name.c_str(), x1, y1, x2);
+            out += cbuf;
+        } else if (shape == "polygon") {
+            // "100,100 200,300 50,200" のように書いてもらったものを数だけ取り出す
+            std::vector<int> nums;
+            std::string src = one["points"].asStr();
+            for (size_t n = 0; n < src.size(); ) {
+                if ((src[n] >= '0' && src[n] <= '9') || src[n] == '-') {
+                    size_t e = n + 1;
+                    while (e < src.size() && src[e] >= '0' && src[e] <= '9') e++;
+                    nums.push_back(atoi(src.substr(n, e - n).c_str()));
+                    n = e;
+                } else {
+                    n++;
+                }
+            }
+            if (nums.size() < 6 || nums.size() % 2 != 0) continue;   // かどは 3 つ以上
+            if (nums.size() > 64) nums.resize(64);
+            std::string line = prefix + "collisionex" + NumToStr(cx++) + "," + name + ",polygon";
+            for (size_t n = 0; n < nums.size(); n++) line += "," + NumToStr(nums[n]);
+            out += line + "\r\n";
+        } else {
+            sprintf_s(cbuf, "%scollision%d,%d,%d,%d,%d,%s\r\n",
+                      prefix.c_str(), c++, x1, y1, x2, y2, name.c_str());
+            out += cbuf;
+        }
+    }
+    return out;
+}
+
 // SERIKO のアニメーション定義。
 //
 //   animationN.interval,sometimes
@@ -225,58 +284,8 @@ static std::string AnimationLines(const JValue& project, int surfaceId) {
         // 絵の指定が 1 つも無ければ、動かしようがないので何も書かない
         if (m == 0) continue;
 
-        // このうごきが動いている間だけ有効な当たり判定。
-        // 四角は collision、それ以外の形は collisionex で書きます。
-        const JValue& cols = a["collisions"];
-        int c = 0, cx = 0;
-        for (size_t k = 0; k < cols.size(); k++) {
-            const JValue& one = cols.at(k);
-            if (!one.isObj()) continue;
-            std::string name = Trim(one["name"].asStr());
-            if (name.empty()) continue;
-            for (size_t n = 0; n < name.size(); n++) {         // 1 行に収める
-                if (name[n] == ',' || name[n] == '\r' || name[n] == '\n') name[n] = ' ';
-            }
-            std::string shape = one["shape"].asStr("rect");
-            int x1 = one["x1"].asInt(0), y1 = one["y1"].asInt(0);
-            int x2 = one["x2"].asInt(0), y2 = one["y2"].asInt(0);
-            char cbuf[320];
-
-            if (shape == "ellipse") {
-                sprintf_s(cbuf, "animation%d.collisionex%d,%s,ellipse,%d,%d,%d,%d\r\n",
-                          id, cx++, name.c_str(), x1, y1, x2, y2);
-                body += cbuf;
-            } else if (shape == "circle") {
-                if (x2 <= 0) continue;                         // 半径 0 は触れない
-                sprintf_s(cbuf, "animation%d.collisionex%d,%s,circle,%d,%d,%d\r\n",
-                          id, cx++, name.c_str(), x1, y1, x2);
-                body += cbuf;
-            } else if (shape == "polygon") {
-                // "100,100 200,300 50,200" のように書いてもらったものを数だけ取り出す
-                std::vector<int> nums;
-                std::string src = one["points"].asStr();
-                for (size_t n = 0; n < src.size(); ) {
-                    if ((src[n] >= '0' && src[n] <= '9') || src[n] == '-') {
-                        size_t e = n + 1;
-                        while (e < src.size() && src[e] >= '0' && src[e] <= '9') e++;
-                        nums.push_back(atoi(src.substr(n, e - n).c_str()));
-                        n = e;
-                    } else {
-                        n++;
-                    }
-                }
-                if (nums.size() < 6 || nums.size() % 2 != 0) continue;   // かどは 3 つ以上
-                if (nums.size() > 64) nums.resize(64);
-                std::string line = "animation" + NumToStr(id) + ".collisionex" +
-                                   NumToStr(cx++) + "," + name + ",polygon";
-                for (size_t n = 0; n < nums.size(); n++) line += "," + NumToStr(nums[n]);
-                body += line + "\r\n";
-            } else {
-                sprintf_s(cbuf, "animation%d.collision%d,%d,%d,%d,%d,%s\r\n",
-                          id, c++, x1, y1, x2, y2, name.c_str());
-                body += cbuf;
-            }
-        }
+        // このうごきが動いている間だけ有効な当たり判定
+        body += CollisionDefLines(a["collisions"], "animation" + NumToStr(id) + ".");
 
         char head2[96];
         sprintf_s(head2, "animation%d.interval,", id);
@@ -338,6 +347,16 @@ std::string ShellImagePath(const JValue& project, int surfaceId) {
     return std::string();
 }
 
+// プロジェクトで、その番号の絵に描いた当たり判定（無ければ空の配列ではなく Null）
+static const JValue& ShellImageCollisions(const JValue& project, int surfaceId) {
+    const JValue& list = project["shell"]["images"];
+    for (size_t i = 0; i < list.size(); i++) {
+        const JValue& one = list.at(i);
+        if (one["id"].asInt(-1) == surfaceId) return one["collisions"];
+    }
+    return JValue::Null();
+}
+
 static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
     const JValue& shell = project["shell"];
     const JValue& meta = project["meta"];
@@ -347,7 +366,10 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
     std::string keroCloth = shell["keroCloth"].asStr("#e8b45c");
 
     const int SW = 190, SH = 320, KW = 140, KH = 230;
-    struct Surface { int id; int w, h; const std::string* hair; const std::string* cloth; int face; };
+    struct Surface {
+        int id; int w, h; const std::string* hair; const std::string* cloth; int face;
+        bool custom = false;   // 自分でえらんだ絵を使う
+    };
     std::vector<Surface> list;
     const int stdIds[6] = { 0, 1, 2, 10, 11, 12 };
     for (int i = 0; i < 6; i++) {
@@ -397,6 +419,7 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
             ReadBinaryFile(Utf8ToWide(path), data) && PngSize(data, &w, &h)) {
             f.data = data;
             f.shell = false;   // 自分でえらんだ絵は、既存があっても書きこむ
+            list[i].custom = true;
             list[i].w = w;
             list[i].h = h;
         } else {
@@ -425,7 +448,11 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
         char head[32];
         sprintf_s(head, "surface%d\r\n{\r\n", list[i].id);
         s.data += head;
-        s.data += CollisionLines(list[i].w, list[i].h);   // 画像を使うときはその大きさで
+        // 自分の絵に当たり判定を描いてあれば、それを使う。無ければ、仮の立ち絵の
+        // 割合で付ける（画像を使うときはその大きさで）。
+        const JValue& own = ShellImageCollisions(project, list[i].id);
+        if (list[i].custom && own.size() > 0) s.data += CollisionDefLines(own, "");
+        else s.data += CollisionLines(list[i].w, list[i].h);
         s.data += AnimationLines(project, list[i].id);    // SERIKO のアニメーション
         s.data += "}\r\n\r\n";
     }
