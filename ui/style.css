@@ -385,6 +385,11 @@ button, input, select, textarea { font-family: inherit; }
   filter: drop-shadow(0 2px 3px rgba(40,70,110,.18));
 }
 #stage .chara.small { left: auto; right: 10px; height: 96px; }
+/* 着せ替えの部品。立ち絵と同じ倍率で、その上に重ねる（位置と倍率は shell.js が決める） */
+#stage .dress-layer {
+  position: absolute; transform-origin: 0 0; pointer-events: none; user-select: none;
+  filter: drop-shadow(0 2px 3px rgba(40,70,110,.18));   /* 立ち絵と同じ影 */
+}
 .shell-slots { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .shell-slot {
   display: flex; align-items: center; gap: 8px;
@@ -397,11 +402,11 @@ button, input, select, textarea { font-family: inherit; }
 .shell-slot .thumb img { max-width: 100%; max-height: 100%; display: block; }
 .shell-slot .info { flex: 1 1 auto; min-width: 0; }
 .shell-slot .slot-name { font-size: 12px; font-weight: 600; }
-.shell-slot .slot-file {
+.shell-slot .slot-file, .anim-head .slot-file, .anim-pat .slot-file {
   display: block; font-size: 10.5px; color: #7c8b9e; margin-top: 1px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.shell-slot .slot-file.is-auto { color: #a3b0c0; }
+.shell-slot .slot-file.is-auto, .anim-head .slot-file.is-auto, .anim-pat .slot-file.is-auto { color: #a3b0c0; }
 .shell-slot .btn { flex: 0 0 auto; }
 .shell-slot input.slot-id {
   width: 46px; border: 1px solid var(--line); border-radius: 5px; padding: 3px 5px; font-size: 12px;
@@ -509,7 +514,7 @@ button, input, select, textarea { font-family: inherit; }
 .modal.wide .modal-body { max-height: 78vh; }
 
 /* 立ち絵の当たり判定 */
-.hit-editor .hint { margin-bottom: 8px; }
+.hit-editor .hint, .compose-editor > .hint { margin-bottom: 8px; }
 .hit-stage {
   position: relative; display: inline-block; max-width: 100%; margin-bottom: 10px;
   background: linear-gradient(#eaf2fb, #dce8f6); border: 1px solid var(--line); border-radius: 8px;
@@ -540,6 +545,9 @@ button, input, select, textarea { font-family: inherit; }
 .anim-id { font-weight: 600; margin-right: 4px; }
 .anim-head .field.row { margin: 0; }
 .anim-head .field.row input, .anim-head .field.row select { width: 8em; }
+.anim-head .field.row input[type=checkbox] { width: 17px; }
+/* 着せ替えの部品の絵の名前（見せかたは立ち絵の行と同じ。横にならぶので長さだけ決める） */
+.anim-head .slot-file, .anim-pat .slot-file { max-width: 12em; }
 .anim-pats { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-left: 10px; }
 .anim-pat { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .anim-pat .field.row { margin: 0; }

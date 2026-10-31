@@ -55,6 +55,11 @@ std::string EscapeText(const std::string& text);
 // Cuts text to the per-value limit (never inside a UTF-8 sequence).
 std::string CapText(const std::string& s);
 
+// 「SSP に ◯ をたずねる」の答えが届くイベント名と、その名前から変数名をもどすもの。
+// OnNashiProp_ + 変数名（UTF-8）の 16 進。ASCII だけになるので、どの SSP でも通る。
+std::string PropertyEventFor(const std::string& var);
+bool VarFromPropertyEvent(const std::string& ev, std::string& var);
+
 // Runs a stack of blocks, appending SakuraScript to ctx.out.
 void RunBlocks(const JValue& blocks, RunCtx& ctx);
 

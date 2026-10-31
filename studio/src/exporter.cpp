@@ -357,6 +357,156 @@ static const JValue& ShellImageCollisions(const JValue& project, int surfaceId) 
     return JValue::Null();
 }
 
+// 着せ替え（MAYUNA）。部品ごとに
+//   ・絵を shell/master/dress<ID>.png に入れ、それだけを描く surface<10000+ID> を作る
+//   ・そのキャラのすべての表情に、animation<ID>.interval,bind と pattern0,add を足す（surface.append）
+//   ・シェルの descript.txt に bindgroup（カテゴリと名前・はじめからつけるか）と bindoption を書く
+// ID はうごき（0〜127）とぶつからないよう 200 から。bindgroup の番号は animation の番号と同じ。
+static std::string DressText(const std::string& s) {
+    std::string t = Trim(s);
+    for (size_t i = 0; i < t.size(); i++) {
+        if (t[i] == ',' || t[i] == '\r' || t[i] == '\n') t[i] = ' ';
+    }
+    if (t.size() > 64) t.resize(64);
+    return t;
+}
+
+static void AppendDressup(const JValue& project, const std::vector<int>& surfaceIds,
+                          std::vector<OutFile>& files, std::string& surfaces, std::string& descript) {
+    const JValue& parts = project["dressup"]["parts"];
+    const JValue& rules = project["dressup"]["rules"];
+    std::string appends[2], surfs;
+    bool any[2] = { false, false };
+    for (size_t i = 0; i < parts.size() && i < 256; i++) {
+        const JValue& p = parts.at(i);
+        int id = p["id"].asInt(-1);
+        int who = p["who"].asInt(0) == 1 ? 1 : 0;
+        std::string cat = DressText(p["category"].asStr());
+        std::string name = DressText(p["name"].asStr());
+        if (id < 200 || id > 9999 || cat.empty() || name.empty()) continue;
+
+        // 絵が読めない部品は、書いても何も出ないので丸ごと書かない
+        std::string path = p["path"].asStr(), data;
+        int w = 0, h = 0;
+        if (path.empty() || !IsLocalPath(Utf8ToWide(path)) ||
+            !ReadBinaryFile(Utf8ToWide(path), data) || !PngSize(data, &w, &h)) {
+            continue;
+        }
+        OutFile f;
+        f.name = "shell/master/dress" + NumToStr(id) + ".png";
+        f.data = data;
+        f.shell = false;
+        files.push_back(f);
+
+        int x = p["x"].asInt(0), y = p["y"].asInt(0);
+        if (x < -9999) x = -9999; if (x > 9999) x = 9999;
+        if (y < -9999) y = -9999; if (y > 9999) y = 9999;
+        char buf[256];
+        sprintf_s(buf, "surface%d\r\n{\r\nelement0,overlay,dress%d.png,0,0\r\n}\r\n\r\n", 10000 + id, id);
+        surfs += buf;
+        sprintf_s(buf, "animation%d.interval,bind\r\nanimation%d.pattern0,add,%d,0,%d,%d\r\n",
+                  id, id, 10000 + id, x, y);
+        appends[who] += buf;
+        any[who] = true;
+
+        const char* chr = who == 1 ? "kero" : "sakura";
+        descript += Line((std::string(chr) + ".bindgroup" + NumToStr(id) + ".name").c_str(), cat + "," + name);
+        if (p["on"].asBool(false)) {
+            descript += Line((std::string(chr) + ".bindgroup" + NumToStr(id) + ".default").c_str(), "1");
+        }
+    }
+
+    // カテゴリの決まり（必ず 1 つ／いくつでも）。キーは "キャラ/カテゴリ"
+    int opt[2] = { 0, 0 };
+    for (size_t i = 0; i < rules.obj.size(); i++) {
+        const std::string& key = rules.obj[i].first;
+        std::string rule = rules.obj[i].second.asStr();
+        if (rule != "mustselect" && rule != "multiple") continue;
+        size_t slash = key.find('/');
+        if (slash == std::string::npos) continue;
+        int who = key.substr(0, slash) == "1" ? 1 : 0;
+        std::string cat = DressText(key.substr(slash + 1));
+        if (cat.empty() || !any[who]) continue;
+        const char* chr = who == 1 ? "kero" : "sakura";
+        descript += Line((std::string(chr) + ".bindoption" + NumToStr(opt[who]++) + ".group").c_str(),
+                         cat + "," + rule);
+    }
+    // 着せ替えメニューは SSP にまかせて出してもらう
+    if (any[0]) descript += Line("sakura.menu", "auto");
+    if (any[1]) descript += Line("kero.menu", "auto");
+
+    // 部品だけの surface は、表情の surface のあとに。append はさらにそのあと（SSP の約束）。
+    surfaces += surfs;
+    for (int who = 0; who < 2; who++) {
+        if (!any[who]) continue;
+        std::string ids;
+        for (size_t k = 0; k < surfaceIds.size(); k++) {
+            bool kero = surfaceIds[k] >= 10;
+            if ((who == 1) != kero) continue;
+            if (!ids.empty()) ids += ",";
+            ids += NumToStr(surfaceIds[k]);
+        }
+        if (ids.empty()) continue;
+        surfaces += "surface.append" + ids + "\r\n{\r\n" + appends[who] + "}\r\n\r\n";
+    }
+}
+
+// 絵を重ねて作る立ち絵（element）。そのキャラ共通の土台（shell.base["0"|"1"]）を下に、
+// その立ち絵の layers を上に重ねる。絵は 1 つのパスにつき 1 回だけ shell/master/elem<K>.png に入れる
+// （同じ体の絵を、いくつもの表情で使いまわすため）。element0 があると surface<N>.png は使われない。
+// 重ねる絵が 1 つも読めなければ false（ふつうの立ち絵として書く）。
+struct ElementFiles {
+    std::vector<std::string> paths;   // 入れた順。番号が elem<K>.png の K
+};
+
+static bool ComposeSurface(const JValue& project, int surfaceId, std::vector<OutFile>& files,
+                           ElementFiles& names, std::string& lines, int* outW, int* outH) {
+    const JValue* own = NULL;
+    const JValue& images = project["shell"]["images"];
+    for (size_t i = 0; i < images.size(); i++) {
+        if (images.at(i)["id"].asInt(-1) == surfaceId) { own = &images.at(i)["layers"]; break; }
+    }
+    if (!own || own->size() == 0) return false;
+    const JValue& base = project["shell"]["base"][surfaceId >= 10 ? "1" : "0"];
+
+    lines.clear();
+    int n = 0, w = 0, h = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        const JValue& layers = pass == 0 ? base : *own;
+        for (size_t k = 0; k < layers.size() && n < 64; k++) {
+            const JValue& L = layers.at(k);
+            std::string path = L["path"].asStr(), data;
+            int lw = 0, lh = 0;
+            if (path.empty() || !IsLocalPath(Utf8ToWide(path)) ||
+                !ReadBinaryFile(Utf8ToWide(path), data) || !PngSize(data, &lw, &lh)) {
+                continue;                                  // 読めない絵は飛ばす
+            }
+            size_t idx = 0;
+            while (idx < names.paths.size() && names.paths[idx] != path) idx++;
+            if (idx == names.paths.size()) {
+                names.paths.push_back(path);
+                OutFile f;
+                f.name = "shell/master/elem" + NumToStr((double)idx) + ".png";
+                f.data = data;
+                f.shell = false;
+                files.push_back(f);
+            }
+            int x = L["x"].asInt(0), y = L["y"].asInt(0);
+            if (x < -9999) x = -9999; if (x > 9999) x = 9999;
+            if (y < -9999) y = -9999; if (y > 9999) y = 9999;
+            char buf[128];
+            sprintf_s(buf, "element%d,overlay,elem%d.png,%d,%d\r\n", n++, (int)idx, x, y);
+            lines += buf;
+            if (x + lw > w) w = x + lw;
+            if (y + lh > h) h = y + lh;
+        }
+    }
+    if (n == 0) return false;
+    *outW = w;
+    *outH = h;
+    return true;
+}
+
 static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
     const JValue& shell = project["shell"];
     const JValue& meta = project["meta"];
@@ -368,7 +518,8 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
     const int SW = 190, SH = 320, KW = 140, KH = 230;
     struct Surface {
         int id; int w, h; const std::string* hair; const std::string* cloth; int face;
-        bool custom = false;   // 自分でえらんだ絵を使う
+        bool custom = false;   // 自分でえらんだ絵を使う（重ねて作るときも）
+        std::string elements;  // 重ねて作るときの element 行
     };
     std::vector<Surface> list;
     const int stdIds[6] = { 0, 1, 2, 10, 11, 12 };
@@ -387,7 +538,7 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
     const JValue& images = shell["images"];
     for (size_t i = 0; i < images.size(); i++) {
         int id = images.at(i)["id"].asInt(-1);
-        if (id < 0 || images.at(i)["path"].asStr().empty()) continue;
+        if (id < 0 || (images.at(i)["path"].asStr().empty() && images.at(i)["layers"].size() == 0)) continue;
         bool known = false;
         for (size_t k = 0; k < list.size(); k++) {
             if (list[k].id == id) { known = true; break; }
@@ -404,7 +555,17 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
         list.push_back(s);
     }
 
+    ElementFiles elemNames;
     for (size_t i = 0; i < list.size(); i++) {
+        // 絵を重ねて作る立ち絵なら、surface<N>.png は書かずに element で組む
+        int ew = 0, eh = 0;
+        if (ComposeSurface(project, list[i].id, files, elemNames, list[i].elements, &ew, &eh)) {
+            list[i].custom = true;
+            list[i].w = ew;
+            list[i].h = eh;
+            continue;
+        }
+
         OutFile f;
         char name[32];
         sprintf_s(name, "surface%d.png", list[i].id);
@@ -438,16 +599,19 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
              Line("sakura.balloon.offsetx", "80") + Line("sakura.balloon.offsety", "40") +
              Line("kero.balloon.offsetx", "20") + Line("kero.balloon.offsety", "30") +
              Line("sakura.defaultx", "80") + Line("kero.defaultx", "-40");
-    files.push_back(d);
 
     OutFile s;
     s.name = "shell/master/surfaces.txt";
     s.shell = true;
     s.data = "charset,UTF-8\r\n\r\ndescript\r\n{\r\nversion,1\r\n}\r\n\r\n";
+    std::vector<int> surfaceIds;
     for (size_t i = 0; i < list.size(); i++) {
+        surfaceIds.push_back(list[i].id);
         char head[32];
         sprintf_s(head, "surface%d\r\n{\r\n", list[i].id);
         s.data += head;
+        s.data += list[i].elements;                       // 重ねて作る立ち絵の絵
+
         // 自分の絵に当たり判定を描いてあれば、それを使う。無ければ、仮の立ち絵の
         // 割合で付ける（画像を使うときはその大きさで）。
         const JValue& own = ShellImageCollisions(project, list[i].id);
@@ -456,6 +620,8 @@ static void AppendShell(std::vector<OutFile>& files, const JValue& project) {
         s.data += AnimationLines(project, list[i].id);    // SERIKO のアニメーション
         s.data += "}\r\n\r\n";
     }
+    AppendDressup(project, surfaceIds, files, s.data, d.data);
+    files.push_back(d);
     files.push_back(s);
 }
 

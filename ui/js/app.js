@@ -672,6 +672,7 @@
     $('#btn-export-nar').addEventListener('click', () => N.Dialog.doExport('nar'));
     $('#btn-add-var').addEventListener('click', () => App.promptNewVariable());
     $('#btn-anim-add').addEventListener('click', N.Shell.addAnimation);
+    $('#btn-dress-add').addEventListener('click', N.Shell.addDressPart);
     $('#btn-shell-add').addEventListener('click', () => {
       const v = prompt('どの番号の立ち絵にしますか？（さくらは 0〜9、うにゅうは 10 以上）', '3');
       if (v == null) return;

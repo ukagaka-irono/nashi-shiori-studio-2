@@ -345,6 +345,29 @@ const scenarios = [
     ],
   },
   {
+    name: '着せ替え — そのキャラに切りかえてから \\![bind,カテゴリ,部品,1|0] を出す',
+    dir: MAIN,
+    steps: [
+      ['OnDressTest', '\\1\\![bind,服,エプロン,1]\\0\\![bind,リボン,白,0]\\e'],
+    ],
+  },
+  {
+    // 「こたえ」の UTF-8 は E3 81 93 / E3 81 9F / E3 81 88
+    name: 'SSP の情報 — たずねたぶんだけ、答えを 1 回だけ変数に入れる',
+    dir: MAIN,
+    steps: [
+      // たずねる前に答えが来ても、変数をいじらない
+      ['OnNashiProp_E38193E3819FE38188:9.9.99', { status: '204 No Content' }],
+      ['OnShowAnswer', { valueOneOf: ['\\0\\e', ''] }],
+      ['OnPropTest', '\\![get,property,OnNashiProp_E38193E3819FE38188,baseware.version]\\0%property[system.os.name]\\e'],
+      ['OnNashiProp_E38193E3819FE38188:2.9.26', { status: '204 No Content' }],
+      ['OnShowAnswer', '\\02.9.26\\e'],
+      // 2 回目の答えは受けとらない
+      ['OnNashiProp_E38193E3819FE38188:9.9.99', { status: '204 No Content' }],
+      ['OnShowAnswer', '\\02.9.26\\e'],
+    ],
+  },
+  {
     name: 'ファイルを落とされたとき — 1 つ目のファイルを読める',
     dir: MAIN,
     steps: [

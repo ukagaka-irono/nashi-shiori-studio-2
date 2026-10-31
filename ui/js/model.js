@@ -13,6 +13,17 @@
     'start', 'stop', 'import'];
   const ANIM_SHAPES = ['rect', 'ellipse', 'circle', 'polygon'];
 
+  // 重ねる絵の並び（立ち絵を重ねて作るとき）。パスの無いものは落とす。
+  function normalizeLayers(list) {
+    return (Array.isArray(list) ? list : [])
+      .filter((l) => l && l.path)
+      .map((l) => ({
+        path: String(l.path),
+        x: Number(l.x) || 0, y: Number(l.y) || 0,
+        stamp: l.stamp ? String(l.stamp) : '',
+      }));
+  }
+
   // 当たり判定の並び（立ち絵にも、うごきにも使う）。名前の無いものは落とす。
   function normalizeCollisions(list) {
     return (Array.isArray(list) ? list : [])
@@ -67,8 +78,11 @@
           balloonEnabled: false, balloonColor: '#fffdf5',
           sakuraColor: '#f08cae', sakuraCloth: '#6e82c8',
           keroColor: '#8fd18a', keroCloth: '#e8b45c',
-          images: [],       // { id, path, name, w, h } 用意した立ち絵
+          images: [],       // { id, path, name, w, h } 用意した立ち絵（layers なら重ねて作る）
+          base: { 0: [], 1: [] },   // 重ねて作る立ち絵の、キャラ共通の土台
         },
+        // 着せ替え（MAYUNA）。部品の絵を、そのキャラのすべての表情に重ねる。
+        dressup: { parts: [], rules: {} },
         variables: [],
         scripts: [],
       };
@@ -80,16 +94,47 @@
       out.meta = Object.assign(base.meta, (p && p.meta) || {});
       out.settings = Object.assign(base.settings, (p && p.settings) || {});
       out.shell = Object.assign(base.shell, (p && p.shell) || {});
+      // 立ち絵は「1 枚の絵（path）」か「絵を重ねて作る（layers）」のどちらか
       out.shell.images = (Array.isArray(out.shell.images) ? out.shell.images : [])
-        .filter((x) => x && x.path && Number.isFinite(Number(x.id)))
+        .filter((x) => x && Number.isFinite(Number(x.id))
+          && (x.path || (Array.isArray(x.layers) && x.layers.length)))
         .map((x) => ({
-          id: Number(x.id), path: String(x.path),
-          name: x.name ? String(x.name) : String(x.path).split(/[\/]/).pop(),
+          id: Number(x.id), path: x.path ? String(x.path) : '',
+          name: x.name ? String(x.name) : (x.path ? String(x.path).split(/[\\/]/).pop() : ''),
           w: Number(x.w) || 0, h: Number(x.h) || 0,
+          // 重ねる絵（そのキャラ共通の土台の上に、下から順に）
+          layers: normalizeLayers(x.layers),
           // この絵に描いた当たり判定（無ければ、書き出すときに自動で付ける）
           collisions: normalizeCollisions(x.collisions),
         }))
         .sort((a, b) => a.id - b.id);
+      // キャラ共通の土台（"0" = さくら / "1" = うにゅう）。重ねて作る立ち絵の、いちばん下に入る
+      const baseIn = (p && p.shell && p.shell.base) || {};
+      out.shell.base = { 0: normalizeLayers(baseIn[0]), 1: normalizeLayers(baseIn[1]) };
+      // 着せ替えの部品。id はうごき（0〜127）とぶつからないよう 200 から。
+      const dress = (p && p.dressup && typeof p.dressup === 'object') ? p.dressup : {};
+      // 「キャラ/カテゴリ」ごとの決まり: なし = 1 つまで（はずせる）/ mustselect / multiple
+      out.dressup = { parts: [], rules: {} };
+      const seenIds = {};
+      for (const x of (Array.isArray(dress.parts) ? dress.parts : [])) {
+        const id = Number(x && x.id);
+        if (!Number.isFinite(id) || id < 200 || seenIds[id]) continue;   // 同じ番号は 1 つだけ
+        seenIds[id] = 1;
+        out.dressup.parts.push({
+          id,
+          who: Number(x.who) === 1 ? 1 : 0,
+          category: String(x.category || '').trim(),
+          name: String(x.name || '').trim(),
+          path: x.path ? String(x.path) : '',
+          x: Number(x.x) || 0, y: Number(x.y) || 0,
+          on: !!x.on,
+          stamp: x.stamp ? String(x.stamp) : '',   // 絵をえらびなおした時刻（描きなおしの目印）
+        });
+      }
+      for (const key of Object.keys(dress.rules || {})) {
+        const v = dress.rules[key];
+        if (v === 'mustselect' || v === 'multiple') out.dressup.rules[key] = v;
+      }
       out.variables = Array.isArray(out.variables) ? out.variables : [];
       out.variables = out.variables
         .filter((v) => v && v.name)
