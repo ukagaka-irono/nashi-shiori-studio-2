@@ -58,6 +58,8 @@ struct RunCtx {
 
 // Escapes plain text for SakuraScript (\\ and newlines -> \n tag).
 std::string EscapeText(const std::string& text);
+// 句読点のあとに、少し間（\_w[…]）を足す（設定の autoWait）
+std::string AddAutoWaits(const std::string& text);
 
 // "YYYY-MM-DD" を、日のかぞえ番号にする（2 つの日付の差が、あいだの日数になる）。読めなければ -1
 long DayNumber(const std::string& ymd);

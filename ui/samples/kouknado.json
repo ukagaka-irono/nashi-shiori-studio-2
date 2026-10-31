@@ -7,7 +7,7 @@
     "version": "1.0.0",
     "description": "なでられると好感度が上がって、しゃべる内容が変わります。"
   },
-  "settings": { "randomTalkEnabled": true, "randomTalkInterval": 120 },
+  "settings": { "autoWait": true, "randomTalkEnabled": true, "randomTalkInterval": 120 },
   "variables": [{ "name": "好感度", "value": 0 }],
   "scripts": [
     {

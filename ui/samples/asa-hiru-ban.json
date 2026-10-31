@@ -7,7 +7,7 @@
     "version": "1.0.0",
     "description": "「いまごろ」で、朝・昼・夕方・夜のトークを出し分けます。"
   },
-  "settings": { "randomTalkEnabled": true, "randomTalkInterval": 90 },
+  "settings": { "autoWait": true, "randomTalkEnabled": true, "randomTalkInterval": 90 },
   "variables": [],
   "scripts": [
     {

@@ -288,12 +288,14 @@ void Shiori::MaybeReload() {
 }
 
 int Shiori::TalkInterval() const {
+    // 書いた人が「自動でしゃべる」を切にしたら、使う人がメニューで選んだ多さより先にそれを守る
+    const JValue& s = prog_.settings();
+    if (!s["randomTalkEnabled"].asBool(true)) return 0;
+    // 使う人がメニューで選んだ多さ（-1 は「いつもどおり」＝設定の間隔にしたがう）
     if (vars_.exists("@talkInterval")) {
         int v = (int)vars_.get("@talkInterval").asNum();
         if (v >= 0) return v;
     }
-    const JValue& s = prog_.settings();
-    if (!s["randomTalkEnabled"].asBool(true)) return 0;
     int iv = s["randomTalkInterval"].asInt(180);
     return iv < 0 ? 0 : iv;
 }
@@ -561,6 +563,69 @@ void Shiori::DrainSaori() {
     }
 }
 
+// さくらスクリプトから \-（ゴーストを終了する）をはずす。\\（文字の \）のあとの - は残す
+static std::string WithoutCloseTag(const std::string& script) {
+    std::string out;
+    out.reserve(script.size());
+    for (size_t i = 0; i < script.size(); i++) {
+        if (script[i] == '\\' && i + 1 < script.size()) {
+            if (script[i + 1] == '-') { i++; continue; }
+            out += script[i];
+            out += script[++i];          // \\ や \n などは、2 文字ごとそのまま
+            continue;
+        }
+        out += script[i];
+    }
+    return out;
+}
+
+// 「N 分ごと」「N 秒ごと」の言いかた
+static std::string IntervalWords(long sec) {
+    if (sec % 60 == 0) return NumToStr((double)(sec / 60)) + " 分ごと";
+    return NumToStr((double)sec) + " 秒ごと";
+}
+
+// 書いていないときのダブルクリックのメニュー（BuiltinDefault の OnMouseDoubleClick）から選ばれたもの。
+// 話す多さは @talkInterval に入れる（保存されるので、つぎに起動しても続く。TalkInterval が見る）。
+std::string Shiori::BuiltinMenu(const std::string& target, const ShioriRequest& req) {
+    if (target == "nashi.menu.talk") {
+        std::string out = PlayRandomTalk(req);
+        if (out.empty()) return "\\0\\s[0]……いまは、話すことを思いつかないや。";
+        talkWait_ = 0;
+        return out;
+    }
+    if (target == "nashi.menu.interval") {
+        long now = TalkInterval();
+        long usual = prog_.settings()["randomTalkInterval"].asInt(180);
+        if (usual <= 0) usual = 180;
+        std::string out = "\\0\\s[0]どれくらい話そうか？\\n";
+        out += now > 0 ? "（いまは、だいたい " + IntervalWords(now) + "）" : std::string("（いまは、静かにしてるよ）");
+        out += "\\n\\n\\q[たくさん（1 分ごと）,nashi.menu.iv.60]\\n";
+        out += "\\q[いつもどおり（" + IntervalWords(usual) + "）,nashi.menu.iv.usual]\\n";
+        out += "\\q[ときどき（10 分ごと）,nashi.menu.iv.600]\\n";
+        out += "\\q[しばらく静かに,nashi.menu.iv.0]";
+        return out;
+    }
+    if (target == "nashi.menu.iv.usual") {
+        // 数をおぼえず、設定の間隔にもどす（書いた人があとで間隔を変えたら、それにしたがう）
+        vars_.set("@talkInterval", Value::Num(-1));
+        dirty_ = true;
+        talkWait_ = 0;
+        return "\\0\\s[0]わかった。いつもどおりに話すね。";
+    }
+    if (target.compare(0, 14, "nashi.menu.iv.") == 0) {
+        long sec = (long)atoi(target.c_str() + 14);
+        if (sec < 0) sec = 0;
+        if (sec > 86400) sec = 86400;
+        vars_.set("@talkInterval", Value::Num((double)sec));
+        dirty_ = true;
+        talkWait_ = 0;                                       // つぎの間隔は、新しい多さで決めなおす
+        if (sec == 0) return "\\0\\s[0]わかった。しばらく静かにしてるね。\\n（ダブルクリックで、また変えられるよ）";
+        return "\\0\\s[0]わかった。だいたい " + IntervalWords(sec) + "に話すね。";
+    }
+    return "\\0\\s[0]そう？";                                 // nashi.menu.cancel
+}
+
 std::string Shiori::BuiltinDefault(const std::string& id, const ShioriRequest& req) {
     const JValue& meta = prog_.meta();
     std::string name = meta["name"].asStr("ゴースト");
@@ -586,7 +651,13 @@ std::string Shiori::BuiltinDefault(const std::string& id, const ShioriRequest& r
     }
     if (id == "OnMouseDoubleClick") {
         static const char* lines[] = { "なに？", "呼んだ？", "どうしたの？" };
-        return std::string("\\0\\s[0]") + lines[RandInt(0, 2)];
+        std::string head = std::string("\\0\\s[0]") + lines[RandInt(0, 2)];
+        // ランダムトークがあるゴーストなら、メニューを出す（使う人が、話してもらう・話す多さを変える）。
+        // 行き先の ID は nashi.menu.〜（Dispatch の BuiltinMenu で受ける。出した選択肢だけを受け付ける）
+        if (prog_.talkScripts().empty()) return head;
+        std::string menu = head + "\\n\\n\\q[なにか話して,nashi.menu.talk]\\n";
+        if (prog_.settings()["randomTalkEnabled"].asBool(true)) menu += "\\q[話す多さを変える,nashi.menu.interval]\\n";
+        return menu + "\\q[なんでもない,nashi.menu.cancel]";
     }
     if (id == "OnNadeNade") {
         std::string area = req.refs.size() > 4 ? req.refs[4] : std::string();
@@ -938,6 +1009,11 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
     // 選択肢・リンクの行き先。こちらが出したものだけを動かす。
     if (id == "OnChoiceSelect" || id == "OnAnchorSelect") {
         std::string target = RefAt(req, 0);
+        // 書いていないときのダブルクリックのメニュー（BuiltinDefault）。こちらが出したものだけ
+        if (target.compare(0, 11, "nashi.menu.") == 0 && TakeOffered("c:" + target, false)) {
+            secondsSinceTalk_ = 0;
+            return BuiltinMenu(target, req);
+        }
         const JValue* fn = NULL;
         if (TakeOffered("c:" + target, false)) {
             fn = prog_.functionByName(target);
@@ -976,6 +1052,14 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
     if (!found && (id == "OnGhostChanged" || id == "OnGhostCalled")) {
         out = RunHandlers("OnBoot", req, &found);
         if (!found) out = BuiltinDefault("OnBoot", req);
+        found = true;
+    }
+    // ほかのゴーストへ切りかわるときに専用のブロックが無ければ、「終了するとき」であいさつする。
+    // ただし \-（ゴーストを終了する）ははずす（終了ではなく、SSP が切りかえるので）。
+    if (!found && id == "OnGhostChanging") {
+        out = RunHandlers("OnClose", req, &found);
+        if (!found) out = "\\0\\s[0]またね。";
+        out = WithoutCloseTag(out);
         found = true;
     }
     if (out.empty() && !found) out = BuiltinDefault(id, req);

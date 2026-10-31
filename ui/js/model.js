@@ -71,6 +71,8 @@
           randomTalkInterval: 180,
           randomTalkEnabled: true,
           noRepeatCount: 0,
+          // 句読点のあとに少し間を置く。新しく作るゴーストだけ入（前からあるプロジェクトは、無ければ切のまま）
+          autoWait: true,
           defaultSurfaceSakura: 0,
           defaultSurfaceKero: 10,
         },
@@ -93,6 +95,8 @@
       const out = Object.assign(base, p || {});
       out.meta = Object.assign(base.meta, (p && p.meta) || {});
       out.settings = Object.assign(base.settings, (p && p.settings) || {});
+      // 自動の間は、書いていないプロジェクト（前の版で作ったもの・取りこんだもの）では切のまま（話す速さを変えない）
+      if (!(p && p.settings && 'autoWait' in p.settings)) out.settings.autoWait = false;
       out.shell = Object.assign(base.shell, (p && p.shell) || {});
       // 立ち絵は「1 枚の絵（path）」か「絵を重ねて作る（layers）」のどちらか
       out.shell.images = (Array.isArray(out.shell.images) ? out.shell.images : [])

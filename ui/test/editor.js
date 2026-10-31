@@ -69,6 +69,15 @@ section('読みこんだプロジェクトの整形 (model.normalize)');
 }
 
 {
+  // 句読点のあとの間は、新しく作るものだけ入。書いていない前のプロジェクトは切のまま
+  check('自動の間: 新しく作る / 書いていない / 切と書いた', [
+    Model.normalize(Model.newProject()).settings.autoWait,
+    Model.normalize({ settings: { randomTalkInterval: 60 } }).settings.autoWait,
+    Model.normalize({ settings: { autoWait: false } }).settings.autoWait,
+  ], [true, false, false]);
+}
+
+{
   const p = Model.normalize({
     variables: [{ name: 'すき', value: 3 }, { name: '', value: 1 }, { value: 9 }],
   });

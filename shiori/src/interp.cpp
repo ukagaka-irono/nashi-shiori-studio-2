@@ -4,6 +4,7 @@
 #include <ctime>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 namespace nashi {
 
@@ -74,6 +75,56 @@ std::string TodayYmd() {
     char buf[16];
     sprintf_s(buf, "%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
     return buf;
+}
+
+// 句読点のあとに、少し間を置く（設定の autoWait。句読点で区切って話すように聞こえる）。
+// 「、」は短く（100 ミリ秒）、「。」「！」「？」は長く（300 ミリ秒）。「！？」「……」のように続くときは、
+// 最後のあとに 1 回だけ。セリフのいちばん終わりには置かない（改行やつぎのセリフに任せる）。
+// text は EscapeText をすませたもの（句読点は全角だけを見るので、\ のエスケープとはぶつからない）。
+std::string AddAutoWaits(const std::string& text) {
+    static const char* kShort[] = { "、", "，" };
+    static const char* kLong[] = { "。", "！", "？", "…", "．" };
+    static const char* kClose[] = { "」", "』", "）", "】", "〕" };
+    std::string out;
+    out.reserve(text.size() + 32);
+    size_t i = 0;
+    int pending = 0;                                  // 0 = なし、1 = 短く、2 = 長く
+    while (i < text.size()) {
+        int kind = 0;
+        size_t len = 0;
+        for (size_t k = 0; k < sizeof(kLong) / sizeof(kLong[0]) && !kind; k++) {
+            size_t n = strlen(kLong[k]);
+            if (text.compare(i, n, kLong[k]) == 0) { kind = 2; len = n; }
+        }
+        for (size_t k = 0; k < sizeof(kShort) / sizeof(kShort[0]) && !kind; k++) {
+            size_t n = strlen(kShort[k]);
+            if (text.compare(i, n, kShort[k]) == 0) { kind = 1; len = n; }
+        }
+        if (kind) {
+            out.append(text, i, len);
+            if (kind > pending) pending = kind;
+            i += len;
+            continue;
+        }
+        // 句読点のすぐあとの閉じかっこ（「うん。」）は、間の前に入れる
+        if (pending) {
+            for (size_t k = 0; k < sizeof(kClose) / sizeof(kClose[0]) && !len; k++) {
+                size_t n = strlen(kClose[k]);
+                if (text.compare(i, n, kClose[k]) == 0) len = n;
+            }
+            if (len) {
+                out.append(text, i, len);
+                i += len;
+                continue;
+            }
+        }
+        if (pending) {
+            out += pending == 2 ? "\\_w[300]" : "\\_w[100]";
+            pending = 0;
+        }
+        out += text[i++];
+    }
+    return out;
 }
 
 // -1 / 0 / +1
@@ -478,14 +529,24 @@ void RunScript(const JValue& script, RunCtx& ctx) {
     RunBlocks(script["blocks"], ctx);
 }
 
+// スクリプトに \<c> のタグがあるか。\\（文字としての \）のあとの c は数えない（「\\-」は \- ではない）
+static bool HasTag(const std::string& s, char c) {
+    for (size_t i = 0; i + 1 < s.size(); i++) {
+        if (s[i] != '\\') continue;
+        if (s[i + 1] == c) return true;
+        i++;                             // \\ や \n などは、2 文字ごと飛ばす
+    }
+    return false;
+}
+
 std::string CloseScript(const std::string& out, bool isCloseEvent) {
     if (out.empty()) return out;
     std::string s = out;
     if (isCloseEvent) {
-        if (s.find("\\-") == std::string::npos) s += "\\-";
+        if (!HasTag(s, '-')) s += "\\-";
         return s;
     }
-    if (s.find("\\e") == std::string::npos && s.find("\\-") == std::string::npos) s += "\\e";
+    if (!HasTag(s, 'e') && !HasTag(s, '-')) s += "\\e";
     return s;
 }
 
@@ -506,7 +567,9 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
             sprintf_s(buf, "\\s[%d]", EvalInt(b["surface"], ctx, 0));
             Emit(ctx, buf);
         }
-        Emit(ctx, EscapeText(EvalStr(b["text"], ctx)));
+        std::string said = EscapeText(EvalStr(b["text"], ctx));
+        if (ctx.prog && ctx.prog->settings()["autoWait"].asBool(false)) said = AddAutoWaits(said);
+        Emit(ctx, said);
         if (b["nl"].asBool(true)) Emit(ctx, "\\n");
         return;
     }
@@ -706,7 +769,9 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
     if (type == "communicate") {
         int who = EvalInt(b["who"], ctx, 0);
         EmitScope(ctx, who);
-        Emit(ctx, EscapeText(EvalStr(b["text"], ctx)));
+        std::string said = EscapeText(EvalStr(b["text"], ctx));
+        if (ctx.prog && ctx.prog->settings()["autoWait"].asBool(false)) said = AddAutoWaits(said);
+        Emit(ctx, said);
         std::string to = Trim(EvalStr(b["to"], ctx));
         if (!to.empty()) ctx.commTo = to;
         return;

@@ -31,6 +31,14 @@ const MAIN = path.join(__dirname, 'main');
 const TALK = path.join(__dirname, 'talk');
 const TALKWAIT = path.join(__dirname, 'talkwait');
 const SAVE = path.join(__dirname, 'save');
+const AUTOWAIT = path.join(__dirname, 'autowait');
+
+// 書いていないときのダブルクリックのメニュー（頭のひとことは 3 つのどれか）
+const MENU_TAIL = '\\n\\n\\q[なにか話して,nashi.menu.talk]\\n\\q[話す多さを変える,nashi.menu.interval]\\n\\q[なんでもない,nashi.menu.cancel]\\e';
+const MENU = ['なに？', '呼んだ？', 'どうしたの？'].map((h) => `\\0\\s[0]${h}${MENU_TAIL}`);
+// 「話す多さを変える」の選択肢（TALK ゴーストは間隔 1 秒）
+const IV_CHOICES = '\\n\\n\\q[たくさん（1 分ごと）,nashi.menu.iv.60]\\n\\q[いつもどおり（1 秒ごと）,nashi.menu.iv.usual]\\n'
+  + '\\q[ときどき（10 分ごと）,nashi.menu.iv.600]\\n\\q[しばらく静かに,nashi.menu.iv.0]\\e';
 
 // 保存データのテスト用: ゴーストのフォルダのファイルを書く・読む
 const fs = require('fs');
@@ -48,6 +56,70 @@ const daysAgo = (n) => {
 //   { valueOneOf: [...] } どれか 1 つに当たればよい（既定の反応がランダムなもの）
 //   null なら見ない
 const scenarios = [
+  {
+    name: 'ダブルクリックを書いていないゴースト（トークあり）— メニューから話す多さを変えられる',
+    dir: TALK,
+    steps: [
+      ['OnMouseDoubleClick:0,0,0,0,Head', { valueOneOf: MENU }],
+      ['OnChoiceSelect:nashi.menu.interval', '\\0\\s[0]どれくらい話そうか？\\n（いまは、だいたい 1 秒ごと）' + IV_CHOICES],
+      ['OnChoiceSelect:nashi.menu.iv.0', '\\0\\s[0]わかった。しばらく静かにしてるね。\\n（ダブルクリックで、また変えられるよ）\\e'],
+      ['OnSecondChange:0,0,0,1', { status: '204 No Content' }],   // 間隔 1 秒のゴーストでも、もう話さない
+      ['OnSecondChange:0,0,0,1', { status: '204 No Content' }],
+      // 「いつもどおり」で、設定の間隔にもどる（数はおぼえない）
+      ['OnMouseDoubleClick:0,0,0,0,Head', { valueOneOf: MENU }],
+      ['OnChoiceSelect:nashi.menu.interval', '\\0\\s[0]どれくらい話そうか？\\n（いまは、静かにしてるよ）' + IV_CHOICES],
+      ['OnChoiceSelect:nashi.menu.iv.usual', '\\0\\s[0]わかった。いつもどおりに話すね。\\e'],
+      ['OnSecondChange:0,0,0,1', '\\0はなす\\e'],
+      // 「なにか話して」「なんでもない」
+      ['OnMouseDoubleClick:0,0,0,0,Head', { valueOneOf: MENU }],
+      ['OnChoiceSelect:nashi.menu.talk', '\\0はなす\\e'],
+      ['OnMouseDoubleClick:0,0,0,0,Head', { valueOneOf: MENU }],
+      ['OnChoiceSelect:nashi.menu.cancel', '\\0\\s[0]そう？\\e'],
+    ],
+  },
+  {
+    name: 'メニューの行き先も、こちらが出したものだけ受け付ける',
+    dir: TALK,
+    steps: [
+      ['OnChoiceSelect:nashi.menu.iv.0', { status: '204 No Content' }],   // 出していないのに来た
+      ['OnSecondChange:0,0,0,1', '\\0はなす\\e'],                          // 静かにはなっていない
+    ],
+  },
+  {
+    name: '句読点のあとに自動で間を置く（settings.autoWait）— 続く句読点は最後に 1 回、終わりには置かない',
+    dir: AUTOWAIT,
+    steps: [
+      ['OnBoot:master', '\\0はい、\\_w[100]そうです。\\_w[300]ほんと！？……\\_w[300]うん。\\e'],
+      // 閉じかっこは間の前に。改行の前（セリフの終わり）には置かない。半角の !? は見ない
+      ['OnKeyPress:a', '\\0「うん。」\\_w[300]そう、\\na!b?c\\e'],
+      // 話しかけるブロックも、しゃべるブロックと同じ
+      ['OnCommunicate:user,こんにちは', '\\0うん、\\_w[100]いいよ\\e'],
+    ],
+  },
+  {
+    name: '終わりの印 \\- — セリフの中の文字の「\\-」は、終わりの印とみなさない',
+    dir: AUTOWAIT,
+    steps: [
+      ['OnClose', '\\0またね、\\_w[100]/\\\\-/\\-'],
+      ['OnCloseAll', '\\0/\\\\-/\\-'],                             // 文字の \\- しか無いので、栞が \\- を足す
+      // 切りかわるときは、ほんものの \\- だけはずす（文字の \\- は残す）
+      ['OnGhostChanging:ほかの子', '\\0またね、\\_w[100]/\\\\-/\\e'],
+    ],
+  },
+  {
+    name: 'ほかのゴーストへ切りかわるとき — 専用が無ければ「終了するとき」で（\\- ははずす）',
+    dir: MAIN,
+    steps: [
+      ['OnGhostChanging:ほかの子', '\\0ばいばい\\e'],
+    ],
+  },
+  {
+    name: 'ほかのゴーストへ切りかわるとき — 何も書いていなければ「またね。」',
+    dir: TALK,
+    steps: [
+      ['OnGhostChanging:ほかの子', '\\0\\s[0]またね。\\e'],
+    ],
+  },
   {
     name: '保存データ — 読めない本体はよけて、ひとつ前の控えから読む',
     dir: SAVE,

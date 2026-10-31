@@ -8,6 +8,7 @@
     "description": "ほかのゴーストに話しかけ、話しかけられたら返します。"
   },
   "settings": {
+    "autoWait": true,
     "randomTalkEnabled": true,
     "randomTalkInterval": 180
   },

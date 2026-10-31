@@ -40,6 +40,7 @@ private:
     std::string RunHandlers(const std::string& eventId, const ShioriRequest& req, bool* found);
     std::string PlayRandomTalk(const ShioriRequest& req);
     std::string BuiltinDefault(const std::string& eventId, const ShioriRequest& req);
+    std::string BuiltinMenu(const std::string& target, const ShioriRequest& req);
     void MaybeReload();
     void LoadSave();
     enum { kSaveOk = 0, kSaveMissing = 1, kSaveLocked = 2, kSaveBroken = 3 };
