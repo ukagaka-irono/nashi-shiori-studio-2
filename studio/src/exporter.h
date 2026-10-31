@@ -21,6 +21,8 @@ struct ExportResult {
     std::string folder;
     std::vector<std::string> written;
     std::vector<std::string> skipped;
+    // written のうち、中身が前とちがって書きかえたもの（SSP にどこを読み直させるか決めるのに使う）
+    std::vector<std::string> changed;
     // えらんであるのに読めなかった絵（消した・動かした・PNG でない）。その絵は書いていない
     std::vector<std::string> missing;
     // 書き出し先に、なし栞ではない別のゴーストがすでに入っていた（何も書いていない）

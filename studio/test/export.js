@@ -310,6 +310,7 @@ console.log('  ---- 書き出し直しと読めない絵');
     const surfAfter = fs.readFileSync(surfPath, 'utf8');
     const descAfter = fs.readFileSync(descPath, 'utf8');
     const third = lines(run([fixture, '--export', out, '--overwrite']));
+    const fourth = lines(run([fixture, '--export', out]));
     const missing = first.filter((l) => l.startsWith('missing ')).map((l) => path.basename(l.slice(8)));
 
     const checks = [
@@ -321,13 +322,17 @@ console.log('  ---- 書き出し直しと読めない絵');
       ['「上書き」に印を付ければ、目印が無くても書き直す', third.includes('written shell/master/descript.txt')
         && !fs.readFileSync(descPath, 'utf8').includes('手で直した')],
       ['読めない絵を 1 回ずつ知らせる（無い・PNG でない）', missing.sort().join(',') === 'gone.png,text.png'],
+      ['書きかえたファイルを知らせる（SSP にシェルも読み直させる目印）', second.includes('changed shell/master/surfaces.txt')
+        && !second.includes('changed shell/master/descript.txt')],
+      ['中身が同じなら、書きかえたことにしない', !fourth.some((l) => l.startsWith('changed '))],
+      ['前と同じ自動の立ち絵は「残した」に入れない', !second.some((l) => /^skipped .*\.png$/.test(l))],
     ];
     for (const [label, ok] of checks) {
       checked++;
       if (ok) { console.log(`${green}  OK  ${off}${label}`); continue; }
       failed++;
       console.log(`${red}  だめ ${label}${off}`);
-      console.log(`        ${dim}${JSON.stringify({ first, second, third })}${off}`);
+      console.log(`        ${dim}${JSON.stringify({ first, second, third, fourth })}${off}`);
     }
   } finally {
     fs.rmSync(tmpRe, { recursive: true, force: true });

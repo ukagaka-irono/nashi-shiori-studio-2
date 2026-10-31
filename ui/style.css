@@ -313,6 +313,7 @@ button, input, select, textarea { font-family: inherit; }
 .panel-head:first-child { margin-top: 0; }
 .panel-head h2 { font-size: 13px; margin: 0 0 3px; color: #33455c; }
 .hint { font-size: 11.5px; color: #7c8b9e; line-height: 1.6; margin: 0; }
+.hint.result-note { margin-top: 8px; }   /* 書き出しの結果の下に足す説明 */
 
 .field { display: block; margin-bottom: 9px; }
 .field > span { display: block; font-size: 11.5px; color: #6b7b8f; margin-bottom: 3px; }

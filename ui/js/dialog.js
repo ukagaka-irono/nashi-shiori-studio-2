@@ -221,9 +221,46 @@
     return box;
   }
 
+  /**
+   * すでにあったので書きかえなかったシェルのファイルの知らせ（書き出しと SSP に入れるの結果で使う）。
+   * 無ければ null。手で直したものを守ったので、まちがいではない（だから赤ではなく説明の字）。
+   */
+  function skippedNote(list) {
+    if (!list || !list.length) return null;
+    const box = Render.div('hint result-note');
+    box.appendChild(Render.div('', `すでにあったシェルのファイル ${list.length} 個は、そのまま残しました。` +
+      '書き直すときは「すでにあるシェルの絵も上書き」に印を付けてください。'));
+    for (const name of list) {
+      const row = Render.div('');
+      row.appendChild(Render.el('code', null, name));
+      box.appendChild(row);
+    }
+    return box;
+  }
+
+  /**
+   * チェックタブに ⛔（エラー）があれば、書き出す前に確かめる。やめたらチェックタブを開いて false。
+   * ⚠（注意）では止めない。ためしに動かしたいときもあるので、書き出しそのものは禁じない。
+   * question … 最後にたずねる文（「それでも書き出しますか？」など。押したボタンに合わせる）
+   */
+  function confirmIfErrors(question) {
+    const errors = N.Lint.run(Model.project).filter((i) => i.level === 'error');
+    if (!errors.length) return true;
+    const shown = errors.slice(0, 3).map((i) => '・' + i.message);
+    if (errors.length > 3) shown.push(`（ほかに ${errors.length - 3} つ）`);
+    const ok = confirm(`チェックタブに ⛔ が ${errors.length} つあります。\n${shown.join('\n')}\n\n` +
+      'このままだと、そこはうまく動きません。' + question);
+    if (!ok) App.switchTab('check');
+    return ok;
+  }
+
   async function doExport(mode) {
     const outDir = $('#export-dir').value.trim();
     const box = $('#export-result');
+    if (!confirmIfErrors(mode === 'nar' ? 'それでも .nar を作りますか？' : 'それでも書き出しますか？')) {
+      box.textContent = 'やめました。';
+      return;
+    }
     box.textContent = '書き出し中…';
     try {
       const r = await withForeignCheck((overwriteForeign) => api('/api/export', {
@@ -246,8 +283,9 @@
           'SSP のウィンドウにドラッグ＆ドロップするとインストールできます。';
       } else {
         p.innerHTML = `<b>書き出しました</b><br><code>${escapeHtml(r.root)}</code><br>` +
-          `ファイル ${r.written.length} 個` +
-          (r.skipped.length ? `（既存のシェル ${r.skipped.length} 個はそのまま）` : '');
+          `ファイル ${r.written.length} 個`;
+        const kept = skippedNote(r.skipped);
+        if (kept) p.appendChild(kept);
       }
       if (!r.dll) {
         p.appendChild(Render.div('status-line status-ng',
@@ -274,6 +312,7 @@
 
   N.Dialog = {
     saveProject, openProjectDialog, openSampleDialog, doExport, withForeignCheck, rememberFolder, missingNote,
+    confirmIfErrors, skippedNote,
     modal, closeModal, modalBlocksUndo,
   };
 

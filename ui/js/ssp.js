@@ -121,6 +121,7 @@
 
   async function installToSsp() {
     const box = $('#ssp-result');
+    if (!N.Dialog.confirmIfErrors('それでも SSP に入れますか？')) { box.textContent = 'やめました。'; return; }
     box.textContent = 'SSP に入れています…';
     try {
       const r = await N.Dialog.withForeignCheck((overwriteForeign) => api('/api/ssp/install', {
@@ -137,6 +138,7 @@
       N.Dialog.rememberFolder(r.folder);
       const notes = {
         reload: '入れ直して、栞を読み込み直しました。すぐ反映されています。',
+        'reload-shell': '入れ直して、栞とシェル（立ち絵・当たり判定・着せ替え）・バルーンのうち書きかえたものを読み込み直しました。すぐ反映されています。',
         change: 'SSP のゴーストを切り替えました。切り替わらないときは、新しいゴーストなので SSP を再起動してください。',
         none: '書き出しました。SSP を起動（または再起動）すると反映されます。',
         failed: '書き出しましたが、SSP への指示は届きませんでした。',
@@ -145,6 +147,8 @@
       box.innerHTML =
         `<b>${escapeHtml(r.folder)}</b> を入れました（${r.files} ファイル）<br>` +
         `<code>${escapeHtml(r.root)}</code><br>${escapeHtml(notes[r.action] || '')}`;
+      const kept = N.Dialog.skippedNote(r.skipped);
+      if (kept) box.appendChild(kept);
       const lost = N.Dialog.missingNote(r.missing);
       if (lost) {
         box.appendChild(lost);

@@ -77,6 +77,7 @@ int wmain(int argc, wchar_t** argv) {
         if (!r.ok) { printf("だめ: %s\n", r.error.c_str()); return 4; }
         for (size_t i = 0; i < r.written.size(); i++) printf("written %s\n", r.written[i].c_str());
         for (size_t i = 0; i < r.skipped.size(); i++) printf("skipped %s\n", r.skipped[i].c_str());
+        for (size_t i = 0; i < r.changed.size(); i++) printf("changed %s\n", r.changed[i].c_str());
         for (size_t i = 0; i < r.missing.size(); i++) printf("missing %s\n", r.missing[i].c_str());
         return 0;
     }

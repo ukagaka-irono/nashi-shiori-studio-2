@@ -1012,17 +1012,18 @@ ExportResult ExportToDir(const JValue& project, const std::wstring& outDir, cons
             if (rel[k] == L'/') rel[k] = L'\\';
         }
         std::wstring dest = PathJoin(r.root, rel);
-        // すでにあるシェルは、スタジオの目印が入っているもの（前にここから書いたもの）だけ書き直す
+        // 中身が同じなら書かない（SSP が読みこんでいる nashi.dll は差しかえられないため）。
+        // 同じものは「残した」とも言わない（前と同じ自動の立ち絵を、毎回知らせないように）。
         std::string current;
         bool exists = PathExists(dest) && ReadBinaryFile(dest, current);
+        if (exists && current == files[i].data) {
+            r.written.push_back(files[i].name);
+            continue;
+        }
+        // すでにあるシェルは、スタジオの目印が入っているもの（前にここから書いたもの）だけ書き直す
         if (files[i].shell && exists && !overwriteShell &&
             current.substr(0, 512).find(kStudioMark) == std::string::npos) {
             r.skipped.push_back(files[i].name);
-            continue;
-        }
-        // 中身が同じなら書かない（SSP が読みこんでいる nashi.dll は差しかえられないため）
-        if (exists && current == files[i].data) {
-            r.written.push_back(files[i].name);
             continue;
         }
         if (!WriteBinaryFile(dest, files[i].data)) {
@@ -1030,6 +1031,7 @@ ExportResult ExportToDir(const JValue& project, const std::wstring& outDir, cons
             return r;
         }
         r.written.push_back(files[i].name);
+        r.changed.push_back(files[i].name);
     }
 
     // 「更新のありか」を決めているゴーストには、照合表も置く。
