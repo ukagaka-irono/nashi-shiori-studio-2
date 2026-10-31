@@ -207,6 +207,65 @@ console.log('  ---- 着せ替え (surfaces.txt / シェルの descript.txt)');
   }
 }
 
+// ------------------------------------------------- 絵を重ねて作る立ち絵（element）
+console.log('  ---- 絵を重ねて作る立ち絵 (element)');
+{
+  const tmpEl = fs.mkdtempSync(path.join(os.tmpdir(), 'nashi-elem-'));
+  try {
+    const png = (w, h) => {
+      const b = Buffer.alloc(8 + 8 + 13 + 4);
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0);
+      b.writeUInt32BE(13, 8); b.write('IHDR', 12, 'ascii');
+      b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); b[24] = 8; b[25] = 6;
+      return b;
+    };
+    fs.writeFileSync(path.join(tmpEl, 'body.png'), png(200, 300));
+    fs.writeFileSync(path.join(tmpEl, 'smile.png'), png(80, 60));
+    fs.writeFileSync(path.join(tmpEl, 'angry.png'), png(80, 60));
+    const project = {
+      meta: { name: 'かさねテスト', sakuraName: 'さくら', keroName: 'うにゅう' },
+      shell: {
+        base: { 0: [{ path: path.join(tmpEl, 'body.png'), x: 0, y: 0 }] },
+        images: [
+          { id: 0, path: '', layers: [{ path: path.join(tmpEl, 'smile.png'), x: 60, y: 260 }] },
+          { id: 1, path: '', layers: [
+            { path: path.join(tmpEl, 'angry.png'), x: 60, y: 40 },
+            { path: path.join(tmpEl, 'none.png'), x: 0, y: 0 },
+          ] },
+        ],
+      },
+      scripts: [],
+    };
+    const fixture = path.join(tmpEl, 'project.json');
+    fs.writeFileSync(fixture, JSON.stringify(project));
+    const surf = run([fixture, 'shell/master/surfaces.txt']).toString('utf8');
+    const outDir = path.join(tmpEl, 'out');
+    const written = run([fixture, '--write', outDir]).toString('utf8');
+    const block = (id) => {
+      const m = new RegExp(`surface${id}\\r\\n\\{\\r\\n([\\s\\S]*?)\\}`).exec(surf);
+      return m ? m[1] : '';
+    };
+    const checks = [
+      ['土台が下、表情の絵が上に重なる', block(0).startsWith('element0,overlay,elem0.png,0,0\r\nelement1,overlay,elem1.png,60,260\r\n')],
+      ['同じ土台の絵は 1 回だけ入れて使いまわす', block(1).startsWith('element0,overlay,elem0.png,0,0\r\nelement1,overlay,elem2.png,60,40\r\n')
+        && (written.match(/elem\d+\.png/g) || []).length === 3],
+      ['読めない絵は飛ばす', !/elem3/.test(surf)],
+      ['重ねて作る立ち絵は surface<N>.png を書かない', !/surface0\.png|surface1\.png/.test(written) && /surface2\.png/.test(written)],
+      ['大きさは重ねた絵の外側（当たり判定もその大きさ）', /collision0,\d+,\d+,\d+,\d+,Head/.test(block(0)) && block(0).includes(',320,Skirt')],
+    ];
+    for (const [label, ok] of checks) {
+      checked++;
+      if (ok) { console.log(`${green}  OK  ${off}${label}`); continue; }
+      failed++;
+      console.log(`${red}  だめ ${label}${off}`);
+      console.log(`        ${dim}${JSON.stringify(surf.slice(0, 700))}${off}`);
+      console.log(`        ${dim}${JSON.stringify(written)}${off}`);
+    }
+  } finally {
+    fs.rmSync(tmpEl, { recursive: true, force: true });
+  }
+}
+
 // ------------------------------------------------- ネットワーク更新の照合表
 //
 // 中身を作るところから確かめたいので、その場でフォルダを組み立てます。

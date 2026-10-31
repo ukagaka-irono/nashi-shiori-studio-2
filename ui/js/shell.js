@@ -40,6 +40,7 @@
   // 色を変えれば URL も変わり、そのまま描き直しになる。
   function shellUrl(surfaceId) {
     const img = shellImageOf(surfaceId);
+    if (img && !img.path && Array.isArray(img.layers) && img.layers.length) return composedUrl(img);
     if (img && img.path) {
       return '/api/shell/file?path=' + encodeURIComponent(img.path) +
              '&v=' + encodeURIComponent(img.stamp || '');
@@ -51,6 +52,89 @@
     return '/api/shell?id=' + surfaceId +
            '&hair=' + encodeURIComponent(hair) +
            '&cloth=' + encodeURIComponent(cloth);
+  }
+
+  // ---------------------------------------------- 重ねて作る立ち絵（element）
+  // そのキャラ共通の土台の手前に、その立ち絵の絵を奥から順に重ねる。書き出しでは SSP が重ねるが、
+  // エディタでは画面の中で描いて、できた絵を立ち絵として使う（できるまでは、すきとおった 1 点）。
+  const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  const composed = {};   // 立ち絵の番号 → { key, url }
+  const composeWatchers = new Set();   // 重ねた絵ができたら呼ぶ（開いているダイアログの見本）
+
+  function layerUrl(l) {
+    return '/api/shell/file?path=' + encodeURIComponent(l.path) + '&v=' + encodeURIComponent(l.stamp || '');
+  }
+
+  function baseLayers(who) {
+    const sh = Model.project.shell || {};
+    const base = sh.base || {};
+    return Array.isArray(base[who]) ? base[who] : [];
+  }
+
+  function composedUrl(img) {
+    const layers = baseLayers(Number(img.id) >= 10 ? 1 : 0).concat(img.layers);
+    const key = JSON.stringify(layers);
+    const c = composed[img.id];
+    if (c && c.key === key) return c.url || BLANK;
+    composed[img.id] = { key, url: '' };
+    composeLayers(layers).then(({ url, missing }) => {
+      const now = composed[img.id];
+      if (!now || now.key !== key) return;           // そのあいだに変わった
+      now.url = url;
+      now.missing = missing;
+      refreshShell();
+      for (const fn of composeWatchers) fn();
+    });
+    return (c && c.url) || BLANK;                     // できるまでは前の絵のまま
+  }
+
+  // 重ねる絵のうち、読めなかった枚数（できあがるまでは 0）
+  function composedMissing(surfaceId) {
+    const c = composed[surfaceId];
+    return (c && c.missing) || 0;
+  }
+
+  // 土台だけを重ねた見本（まだ表情の絵が無いとき、ダイアログで見せる）
+  function baseOnlyUrl(who) {
+    const layers = baseLayers(who);
+    const key = JSON.stringify(layers);
+    const slot = 'base' + who;
+    const c = composed[slot];
+    if (c && c.key === key) return c.url || BLANK;
+    composed[slot] = { key, url: '' };
+    composeLayers(layers).then(({ url, missing }) => {
+      const now = composed[slot];
+      if (!now || now.key !== key) return;
+      now.url = url;
+      now.missing = missing;
+      for (const fn of composeWatchers) fn();
+    });
+    return (c && c.url) || BLANK;
+  }
+
+  // 絵を読みこんで、左上をそろえて重ねる。読めない絵は飛ばす。
+  async function composeLayers(layers) {
+    const loaded = await Promise.all(layers.map((l) => new Promise((resolve) => {
+      const im = new Image();
+      im.onload = () => resolve({ im, x: l.x || 0, y: l.y || 0 });
+      im.onerror = () => resolve(null);
+      im.src = layerUrl(l);
+    })));
+    const ok = loaded.filter(Boolean);
+    const missing = loaded.length - ok.length;
+    if (!ok.length) return { url: '', missing };
+    // SSP と同じく、はみ出したぶんは広げる（左や上へのはみ出しは切る）
+    let w = 1, h = 1;
+    for (const { im, x, y } of ok) {
+      w = Math.max(w, x + im.naturalWidth);
+      h = Math.max(h, y + im.naturalHeight);
+    }
+    const cv = document.createElement('canvas');
+    cv.width = Math.min(w, 4096);
+    cv.height = Math.min(h, 4096);
+    const g = cv.getContext('2d');
+    for (const { im, x, y } of ok) g.drawImage(im, x, y);
+    return { url: cv.toDataURL('image/png'), missing };
   }
 
   function setSurface(who, surfaceId) {
@@ -538,9 +622,15 @@
 
       const info = Render.div('info');
       info.appendChild(Render.div('slot-name', `${label}（${id} 番）`));
+      const layered = !!(img && !img.path && img.layers && img.layers.length);
       const file = Render.el('span', 'slot-file' + (img ? '' : ' is-auto'),
-        img ? (img.name || img.path) : '自動生成');
-      if (img) {
+        layered ? `絵を重ねて作る（${img.layers.length} 枚）` : (img ? (img.name || img.path) : '自動生成'));
+      if (layered && composedMissing(id)) {
+        // 重ねる絵が動いた・消えたときも、1 枚の絵の行と同じように知らせる
+        file.textContent = 'ファイルが見つかりません';
+        file.style.color = '#e2664a';
+      }
+      if (img && !layered) {
         file.title = img.path;
         // ファイルが動いた・消えたときは、ここで気づけるようにする
         pic.addEventListener('error', () => {
@@ -552,9 +642,15 @@
       info.appendChild(file);
       row.appendChild(info);
 
-      const pickBtn = Render.el('button', 'btn tiny', img ? '変える' : 'えらぶ');
+      const pickBtn = Render.el('button', 'btn tiny', img && !layered ? '変える' : 'えらぶ');
+      pickBtn.title = '1 枚の PNG を立ち絵にする';
       pickBtn.addEventListener('click', () => pickShellImage(id));
       row.appendChild(pickBtn);
+
+      const composeBtn = Render.el('button', 'btn tiny', '重ねて作る');
+      composeBtn.title = 'キャラ共通の土台の上に、この表情の絵を重ねて立ち絵を作る';
+      composeBtn.addEventListener('click', () => openComposeEditor(id, `${label}（${id} 番）`));
+      row.appendChild(composeBtn);
 
       if (img) {
         const n = (img.collisions || []).length;
@@ -883,6 +979,20 @@
       redraw();
     };
     Model.onChange(follow);
+    // 重ねて作る立ち絵は、絵ができあがるまで 1 点の仮の絵なので、できたら差しかえる
+    // （差しかえると load で大きさを読みなおす）
+    let composeWarn = null;
+    const onComposed = () => {
+      const u = shellUrl(surfaceId);
+      if (pic.getAttribute('src') !== u) pic.src = u;
+      // 重ねる絵が読めないときは、1 枚の絵のときと同じ文と色で知らせる
+      if (composedMissing(surfaceId) && !composeWarn) {
+        composeWarn = Render.div('hint', 'ファイルが見つかりません');
+        composeWarn.style.color = '#e2664a';
+        stage.after(composeWarn);
+      }
+    };
+    composeWatchers.add(onComposed);
 
     renderRows();
     drawShapes();
@@ -891,13 +1001,198 @@
       // 閉じたら、ボタンの「（3）」などを描きなおす
       onClose: () => {
         Model.offChange(follow);
+        composeWatchers.delete(onComposed);
         refreshShell();
       },
     });
+    onComposed();                        // もうできあがっている絵なら、ここで知らせる
     requestAnimationFrame(drawShapes);   // 大きさが決まってから、線の太さを合わせなおす
   }
 
+  // ------------------------------------------- 立ち絵を絵から重ねて作る（ダイアログ）
+  function openComposeEditor(surfaceId, title) {
+    const who = Number(surfaceId) >= 10 ? 1 : 0;
+    const whoName = who === 1 ? 'うにゅう' : 'さくら';
+
+    const body = Render.div('compose-editor');
+    body.appendChild(Render.el('p', 'hint',
+      `${whoName}の土台（すべての表情で共通）の手前に、この表情の絵を、奥から順に重ねます。` +
+      '土台を直すと、重ねて作ったすべての表情に効きます。この表情の絵が 1 枚もなければ、自動生成にもどります。'));
+    const stage = Render.div('hit-stage');
+    const pic = Render.el('img');
+    pic.alt = title;
+    pic.draggable = false;
+    stage.appendChild(pic);
+    body.appendChild(stage);
+    const warn = Render.div('hint');
+    warn.style.color = '#e2664a';
+    body.appendChild(warn);
+    const lists = Render.div('');
+    body.appendChild(lists);
+
+    const own = () => {
+      const img = shellImageOf(surfaceId);
+      return img && !img.path && Array.isArray(img.layers) ? img.layers : null;
+    };
+    const base = () => {
+      const sh = Model.project.shell;
+      if (!sh.base || typeof sh.base !== 'object') sh.base = { 0: [], 1: [] };
+      if (!Array.isArray(sh.base[who])) sh.base[who] = [];
+      return sh.base[who];
+    };
+
+    // この表情の絵の並びを用意する（1 枚の絵だった立ち絵は、addLayers が先に確かめてある）
+    function ensureOwn() {
+      let img = shellImageOf(surfaceId);
+      if (img && img.path) {
+        img.path = '';
+        img.name = '';
+        img.layers = [];
+      }
+      if (!img) {
+        img = { id: Number(surfaceId), path: '', name: '', w: 0, h: 0, layers: [], collisions: [] };
+        shellImages().push(img);
+        shellImages().sort((a, b) => Number(a.id) - Number(b.id));
+      }
+      if (!Array.isArray(img.layers)) img.layers = [];
+      return img.layers;
+    }
+    // この表情の絵が無くなったら、立ち絵の登録ごと外す（自動生成にもどる）
+    function dropIfEmpty() {
+      const img = shellImageOf(surfaceId);
+      if (img && !img.path && (!img.layers || !img.layers.length)) {
+        const list = shellImages();
+        list.splice(list.indexOf(img), 1);
+      }
+    }
+
+    async function addLayers(toBase) {
+      // 1 枚の絵の立ち絵を重ねて作るほうへ切りかえるときは、ファイルをえらぶ前に確かめる
+      const cur = shellImageOf(surfaceId);
+      if (!toBase && cur && cur.path &&
+          !confirm(`「${cur.name || cur.path}」の 1 枚の絵をやめて、絵を重ねて作りますか？`)) {
+        return;
+      }
+      let r;
+      try {
+        r = await api('/api/shell/pick', { method: 'POST', body: {} });
+      } catch (e) {
+        App.toast(e.message, true);
+        return;
+      }
+      const files = r.files || [];
+      if (!files.length) return;
+      Model.act(() => {
+        const list = toBase ? base() : ensureOwn();
+        for (const f of files) list.push({ path: f.path, x: 0, y: 0, stamp: String(Date.now()) });
+      });
+      refreshShell();
+      render();
+      App.toast(files.length > 1 ? `${files.length} 枚を割り当てました` : '画像を割り当てました');
+    }
+
+    // うごきの欄と同じ作り（変えたら元にもどすに積む）
+    const mk = (label, value, onInput) => {
+      const f = Render.el('label', 'field row');
+      f.appendChild(Render.el('span', null, label));
+      const inp = Render.el('input');
+      inp.type = 'number';
+      inp.value = value;
+      inp.addEventListener('change', () => {
+        const snap = Model.snapshot();
+        onInput(inp.value);
+        Model.pushUndo(snap);
+        refreshShell();
+        render();
+      });
+      f.appendChild(inp);
+      return f;
+    };
+
+    function layerRows(list, isBase) {
+      const box = Render.div('anim-pats');
+      box.appendChild(Render.el('p', 'hint', isBase ? `${whoName}の土台（すべての表情で共通）` : 'この表情で重ねる絵'));
+      (list || []).forEach((l, k) => {
+        const r = Render.div('anim-pat');
+        r.appendChild(Render.el('span', 'anim-step', `${k + 1}`));
+        const name = Render.el('span', 'slot-file', l.path.split(/[\\/]/).pop());
+        name.title = l.path;
+        const probe = new Image();
+        probe.addEventListener('error', () => {
+          name.textContent = 'ファイルが見つかりません';
+          name.style.color = '#e2664a';
+        });
+        probe.src = layerUrl(l);
+        r.appendChild(name);
+        r.appendChild(mk('よこ', l.x, (v) => { l.x = Math.round(Number(v) || 0); }));
+        r.appendChild(mk('たて', l.y, (v) => { l.y = Math.round(Number(v) || 0); }));
+        const move = (d, label, tip) => {
+          const b = Render.el('button', 'btn tiny', label);
+          b.title = tip;
+          b.disabled = k + d < 0 || k + d >= list.length;
+          b.addEventListener('click', () => {
+            Model.act(() => { const [it] = list.splice(k, 1); list.splice(k + d, 0, it); });
+            refreshShell();
+            render();
+          });
+          return b;
+        };
+        // 並びは奥の絵から順なので、ボタンは重なりの向きで書く（画面の上下とまちがえないように）
+        r.appendChild(move(-1, '奥へ', '1 つ奥へ'));
+        r.appendChild(move(1, '手前へ', '1 つ手前へ'));
+        const rm = Render.el('button', 'btn tiny', '−');
+        rm.title = 'この絵を消す';
+        rm.addEventListener('click', () => {
+          Model.act(() => { list.splice(k, 1); if (!isBase) dropIfEmpty(); });
+          refreshShell();
+          render();
+        });
+        r.appendChild(rm);
+        box.appendChild(r);
+      });
+      const add = Render.el('button', 'btn tiny', '＋ 絵を足す');
+      add.addEventListener('click', () => addLayers(isBase));
+      box.appendChild(add);
+      return box;
+    }
+
+    function render() {
+      lists.textContent = '';
+      lists.appendChild(layerRows(base(), true));
+      lists.appendChild(layerRows(own(), false));
+      const img = shellImageOf(surfaceId);
+      // この表情の絵が無いうちは、土台だけの見本を出す（わざと。いま直している土台が見えるように）
+      const layered = img && !img.path && img.layers && img.layers.length;
+      pic.src = layered ? shellUrl(surfaceId) : (base().length ? baseOnlyUrl(who) : shellUrl(surfaceId));
+      // 読めない絵があれば、当たり判定の編集と同じように知らせる
+      const missing = layered ? composedMissing(surfaceId) : (base().length ? composedMissing('base' + who) : 0);
+      warn.textContent = missing ? 'ファイルが見つかりません' : '';
+      warn.style.display = missing ? '' : 'none';     // 何も無いときは、すきまも作らない
+    }
+
+    // 重ねた絵ができたとき・元にもどしたときに、見本と並びを描きなおす
+    const onComposed = () => render();
+    const onModel = () => render();
+    composeWatchers.add(onComposed);
+    Model.onChange(onModel);
+    render();
+    N.Dialog.modal(`${title}を重ねて作る`, body, [{ label: '閉じる' }], {
+      wide: true,
+      onClose: () => {
+        composeWatchers.delete(onComposed);
+        Model.offChange(onModel);
+        refreshShell();
+      },
+    });
+  }
+
   async function pickShellImage(surfaceId) {
+    // 重ねて作った立ち絵を 1 枚の絵にするときは、ファイルをえらぶ前に確かめる
+    const cur = shellImageOf(surfaceId);
+    if (cur && !cur.path && cur.layers && cur.layers.length &&
+        !confirm('重ねて作った絵をやめて、1 枚の絵にしますか？')) {
+      return;
+    }
     let r;
     try {
       r = await api('/api/shell/pick', { method: 'POST', body: {} });
