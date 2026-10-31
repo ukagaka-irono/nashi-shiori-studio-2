@@ -94,6 +94,12 @@ button, input, select, textarea { font-family: inherit; }
 .cat-btn.is-active { background: #e7eef7; font-weight: 700; color: #26374d; }
 .cat-dot { width: 17px; height: 17px; border-radius: 50%; border: 2px solid rgba(0,0,0,.12); }
 #palette-scroll { flex: 1 1 auto; overflow: auto; padding: 10px 0 60px 10px; }
+/* パレットの上の「ブロックをさがす」。下へスクロールしても上に残す */
+#palette-search {
+  position: sticky; top: 0; z-index: 2; display: block; width: calc(100% - 10px); margin: 0 0 10px;
+  padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; font-size: 12px;
+  background: var(--panel); color: #2b3a4d;
+}
 .palette-group-title {
   font-size: 11px; font-weight: 700; color: #7b8a9c; margin: 14px 0 6px;
   letter-spacing: .04em;
@@ -482,7 +488,7 @@ button, input, select, textarea { font-family: inherit; }
 .ctx-menu {
   position: fixed; z-index: 1000; background: #fff; border: 1px solid var(--line);
   border-radius: 8px; box-shadow: 0 6px 20px rgba(35,55,85,.18); padding: 4px; display: none;
-  min-width: 148px;
+  min-width: 148px; max-height: calc(100vh - 16px); overflow-y: auto;
 }
 .ctx-menu.open { display: block; }
 .ctx-item {

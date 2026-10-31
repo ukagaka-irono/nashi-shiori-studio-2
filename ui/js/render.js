@@ -86,6 +86,9 @@
       if (argDef.expand && e.key === 'Enter' && (e.shiftKey || input.readOnly)) {
         e.preventDefault();
         open();
+      } else if (argDef.choices && e.altKey && e.key === 'ArrowDown') {
+        e.preventDefault();
+        openChoices(input, owner, argName, argDef.choices, true);
       } else if (e.key === 'Enter') {
         input.blur();
       }
@@ -109,7 +112,63 @@
       btn.addEventListener('click', open);
       slot.appendChild(btn);
     }
+
+    if (argDef.choices) {
+      // いまの値が一覧にあれば、その名前をマウスをのせたときに見せる（0 → さくら／通常 など）
+      const known = choicesFor(argDef.choices, owner).find(([, v]) => String(v) === String(value));
+      if (known && !input.title) input.title = known[0];
+      const btn = el('button', 'blk-btn blk-expand', '▾');
+      btn.title = '一覧からえらぶ (Alt+↓)';
+      btn.tabIndex = -1;          // Tab は欄から欄へ（キーボードでは Alt+↓ で開く）
+      btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();      // 外をクリックしたら閉じる、の仕組みに、開いた直後に閉じられないように
+        openChoices(btn, owner, argName, argDef.choices);
+      });
+      slot.appendChild(btn);
+    }
     return slot;
+  }
+
+  /**
+   * 欄の ▾ でえらべるもの。[[見せる名前, 入れる値], …]。番号や名前を覚えていなくても、
+   * プロジェクトにあるもの（表情・うごき・まとまり・イベント）から指でえらべるように。
+   */
+  function choicesFor(kind, owner) {
+    const p = Model.project;
+    if (kind === 'surfaces') {
+      return N.Shell ? N.Shell.surfaceChoices(owner && owner.who) : [];
+    }
+    if (kind === 'anims') {
+      return (p.animations || []).map((a) => [`うごき ${a.id}（表情 ${a.base} から）`, a.id]);
+    }
+    if (kind === 'groups') {
+      const groups = p.scripts.filter((s) => s.kind === 'talk').map((s) => String(s.group || '').trim());
+      return [...new Set(groups.filter(Boolean))].map((g) => [g, g]);
+    }
+    if (kind === 'events') {
+      // 起こしても受けるかたまりが無ければ何も起きないので、このプロジェクトにあるイベントだけ
+      const names = p.scripts.filter((s) => s.kind === 'event' && s.event).map((s) => s.event);
+      return [...new Set(names)].map((ev) => {
+        const known = N.EVENTS.find(([, v]) => v === ev);
+        return [known ? `${known[0]}（${ev}）` : ev, ev];
+      });
+    }
+    return [];
+  }
+  const NO_CHOICES = {
+    anims: 'まだうごきがありません。「ゴースト」タブの「うごき」で作れます',
+    groups: 'まとまりを付けたランダムトークがありません',
+    events: 'イベントのかたまりがありません。「イベント」から置いてください',
+  };
+  // fromKeyboard … Alt+↓ で開いたとき。いちばん上の項目へ移り、Esc で欄にもどる
+  function openChoices(anchor, owner, argName, kind, fromKeyboard) {
+    const list = choicesFor(kind, owner);
+    if (!list.length) { N.App.toast(NO_CHOICES[kind] || 'えらべるものがありません', true); return; }
+    const r = anchor.getBoundingClientRect();
+    N.App.openMenu(r.left, r.bottom + 2, list.map(([label, v]) => ({
+      label, run: () => Model.act(() => { owner[argName] = v; }),
+    })), fromKeyboard ? { focusFrom: anchor } : null);
   }
 
   /**
@@ -164,10 +223,15 @@
   // -------------------------------------------------------------- フィールド
   function buildField(owner, name, argDef, project, blockEl) {
     switch (argDef.kind) {
-      case 'dropdown':
-        return buildSelect(argDef.options, owner[name], (v) => {
+      case 'dropdown': {
+        let options = argDef.options;
+        // 「イベントの情報 N番目」は、そのかたまりのイベントでの意味を添える（ダブルクリックなら X座標 など）
+        const refs = owner.type === 'ref' && name === 'index' && buildingEvent && N.EVENT_REFS[buildingEvent];
+        if (refs) options = options.map(([label, v]) => [refs[v] ? `${label}：${refs[v]}` : label, v]);
+        return buildSelect(options, owner[name], (v) => {
           Model.act(() => { owner[name] = v; });
         });
+      }
 
       // 一覧からえらぶか、「その他（自分で書く）」で自分で書く欄（イベント名・プロパティ名）
       case 'eventname':
@@ -307,6 +371,7 @@
     const wrap = div('blk cat-' + def.cat);
     wrap._blk = block;
     wrap._def = def;
+    wrap.title = N.blockHelp(def);       // マウスをのせると、何をするブロックかを出す
     if (def.shape === 'reporter') wrap.classList.add('reporter');
     if (def.shape === 'boolean') wrap.classList.add('boolean');
     if (block.disabled) wrap.classList.add('disabled');
@@ -424,15 +489,24 @@
       const hat = div('blk cat-' + def.cat + ' hat');
       hat._script = script;
       hat._isHat = true;
+      hat.title = N.blockHelp(def);
       const row = div('row sh-hat');
       fillRow(row, script, def, project, hat);
       hat.appendChild(row);
       wrap.appendChild(hat);
     }
 
-    wrap.appendChild(buildStackEl(script.blocks, project, { script }));
+    // 中のブロックを作るあいだ、どのイベントのかたまりかを覚えておく（「イベントの情報」の意味を出すため）
+    const outer = buildingEvent;
+    buildingEvent = script.kind === 'event' ? script.event : null;
+    try {
+      wrap.appendChild(buildStackEl(script.blocks, project, { script }));
+    } finally {
+      buildingEvent = outer;
+    }
     return wrap;
   }
+  let buildingEvent = null;
 
   // -------------------------------------------------------------- workspace
   function renderWorkspace(canvas, project) {
@@ -443,9 +517,38 @@
   }
 
   // ---------------------------------------------------------------- palette
-  function renderPalette(container, catId, project) {
+  /**
+   * パレットの「さがす」。すべてのカテゴリから、ことば・説明が query をふくむブロックをえらび、
+   * カテゴリ名の小見出しを付けて並べる（renderPalette と同じ形の entries を返す）。
+   */
+  function searchPalette(query) {
+    const q = query.trim().toLowerCase();
+    const hit = (text) => String(text || '').toLowerCase().includes(q);
+    const out = [];
+    for (const cat of N.CATEGORIES) {
+      const found = [];
+      for (const entry of N.PALETTE[cat.id] || []) {
+        if (entry === '@vars') {
+          if (Model.variableNames().some(hit) || hit('変数')) found.push(entry);
+          continue;
+        }
+        if (typeof entry !== 'string') continue;
+        const def = N.BLOCKS[entry];
+        // いちばん基本の帽子は、えらべるイベントの名前（「起動したとき」など）でも見つかるように
+        // （マウスなどのイベントをえらぶと、帽子はひとりでにその形に変わる）
+        const byEvent = entry === '@event' && N.EVENTS.some(([label, v]) => v !== '__custom__' && hit(label));
+        if (def && (hit(def.spec.replace(/%\w+/g, ' ')) || hit(N.blockHelp(def)) || byEvent)) found.push(entry);
+      }
+      if (found.length) out.push({ heading: cat.name }, ...found);
+    }
+    if (!out.length) out.push({ note: `「${query.trim()}」をふくむブロックは見つかりません。` });
+    return out;
+  }
+
+  // query があれば、カテゴリではなく「さがす」の結果を並べる
+  function renderPalette(container, catId, project, query) {
     container.textContent = '';
-    const entries = N.PALETTE[catId] || [];
+    const entries = query && query.trim() ? searchPalette(query) : (N.PALETTE[catId] || []);
 
     for (const entry of entries) {
       if (typeof entry === 'object' && entry.note) {

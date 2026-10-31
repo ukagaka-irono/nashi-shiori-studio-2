@@ -32,6 +32,22 @@
     return sh.images;
   }
 
+  /**
+   * 「表情を ◯ 番にする」の ▾ でえらべる番号。標準の 6 枚と、絵を割り当てたほかの番号。
+   * who が 0 / 1 なら、そのキャラの番号（さくらは 10 より下、うにゅうは 10 から）だけ。
+   */
+  function surfaceChoices(who) {
+    const list = SHELL_SLOTS.map(([id, label]) => [id, label]);
+    for (const img of shellImages()) {
+      const id = Number(img.id);
+      if (!list.some(([n]) => n === id)) list.push([id, (id >= 10 ? 'うにゅう' : 'さくら') + '／自分の絵']);
+    }
+    return list
+      .filter(([id]) => who !== 0 && who !== 1 ? true : (who === 1) === (id >= 10))
+      .sort((a, b) => a[0] - b[0])
+      .map(([id, label]) => [`${id}　${label}`, id]);
+  }
+
   function shellImageOf(surfaceId) {
     return shellImages().find((x) => Number(x.id) === Number(surfaceId)) || null;
   }
@@ -1374,6 +1390,6 @@
     });
   }
 
-  N.Shell = { refreshShell, addAnimation, addDressPart, pickShellImage, resetStage, playSakura };
+  N.Shell = { refreshShell, addAnimation, addDressPart, pickShellImage, resetStage, playSakura, surfaceChoices };
 
 })(window.NASHI);

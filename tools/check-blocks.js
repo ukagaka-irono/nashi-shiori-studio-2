@@ -220,6 +220,23 @@ if (notInPalette.length) {
   ));
 }
 
+// ======================================================= 4b. ブロックの説明
+// マウスをのせたときの説明（N.BLOCK_HELP）。無いブロックは、はじめての人に何をするかわからない。
+const noHelp = Object.keys(defs).filter((k) => !N.blockHelp(defs[k])).sort();
+if (noHelp.length) {
+  bad('説明の無いブロックがあります', noHelp.map(
+    (k) => `"${k}" … ${DEFS} の N.BLOCK_HELP に、何をするブロックかを 1〜2 文で足してください`
+  ));
+}
+const helpOrphans = Object.keys(N.BLOCK_HELP).filter(
+  (k) => !defs[k] && !Object.values(defs).some((d) => d.type === k)
+).sort();
+if (helpOrphans.length) {
+  bad('N.BLOCK_HELP に、定義の無いブロックの説明があります', helpOrphans.map(
+    (k) => `"${k}" … ${DEFS} の N.BLOCK_HELP から消してください`
+  ));
+}
+
 // ==================================================== 5. イベント名のつじつま
 const eventNames = new Set(N.EVENTS.map((e) => e[1]).filter((e) => e !== '__custom__'));
 const refOnly = Object.keys(N.EVENT_REFS).filter(
