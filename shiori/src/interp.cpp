@@ -561,6 +561,17 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
     }
     if (type == "sound_stop") { Emit(ctx, "\\![sound,stop]"); return; }
 
+    // 着せ替えの部品をつける／はずす（\![bind,カテゴリ,部品,1|0]）。部品はシェルの descript.txt に
+    // 書き出したカテゴリと名前で指す。そのキャラに切りかえてから出す。
+    if (type == "dressup") {
+        std::string cat = Trim(TagArg(EvalStr(b["category"], ctx), true));
+        std::string part = Trim(TagArg(EvalStr(b["part"], ctx), true));
+        if (cat.empty() || part.empty()) return;
+        EmitScope(ctx, EvalInt(b["who"], ctx, 0) == 1 ? 1 : 0);
+        Emit(ctx, "\\![bind," + cat + "," + part + (EvalInt(b["on"], ctx, 1) ? ",1]" : ",0]"));
+        return;
+    }
+
     // キャラの濃さ（\![set,alpha,…]）。0 で見えなくなり、100 でもとどおり。
     if (type == "alpha") {
         int who = EvalInt(b["who"], ctx, 0);

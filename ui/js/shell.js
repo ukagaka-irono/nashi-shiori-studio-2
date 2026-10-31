@@ -76,7 +76,9 @@
       if (img) img.setAttribute('src', shellUrl(id));
     }
     renderShellSlots();
+    renderDressList();
     renderAnimList();
+    renderStageDress();
   }
 
   // うごき（SERIKO のアニメーション）
@@ -297,6 +299,203 @@
       }
       box.appendChild(row);
     });
+  }
+
+  // ------------------------------------------------------------ 着せ替え
+  const WHO_LABELS = [['さくら', 0], ['うにゅう', 1]];
+  const DRESS_RULES = [['1 つまで（はずせる）', ''], ['必ず 1 つ', 'mustselect'], ['いくつでも', 'multiple']];
+
+  function dressup() {
+    const p = Model.project;
+    if (!p.dressup || typeof p.dressup !== 'object') p.dressup = { parts: [], rules: {} };
+    if (!Array.isArray(p.dressup.parts)) p.dressup.parts = [];
+    if (!p.dressup.rules || typeof p.dressup.rules !== 'object') p.dressup.rules = {};
+    return p.dressup;
+  }
+
+  function renderDressList() {
+    const box = $('#dress-list');
+    if (!box) return;
+    const d = dressup();
+    box.textContent = '';
+    if (!d.parts.length) {
+      box.appendChild(Render.div('hint', 'まだ部品がありません。下のボタンで足せます。'));
+      return;
+    }
+
+    // うごきの欄と同じ作り（変えたら元にもどすに積んで、描きなおす）
+    const mk = (label, value, onInput, opts) => {
+      const f = Render.el('label', 'field row');
+      f.appendChild(Render.el('span', null, label));
+      const inp = Render.el('input');
+      inp.type = (opts && opts.type) || 'number';
+      if (inp.type === 'checkbox') inp.checked = !!value; else inp.value = value;
+      inp.addEventListener('change', () => {
+        const snap = Model.snapshot();
+        onInput(inp.type === 'checkbox' ? inp.checked : inp.value);
+        Model.pushUndo(snap);
+        refreshShell();
+      });
+      f.appendChild(inp);
+      return f;
+    };
+    const pick = (label, list, value, onPick) => {
+      const f = Render.el('label', 'field row');
+      f.appendChild(Render.el('span', null, label));
+      const s = Render.el('select');
+      for (const [text, v] of list) {
+        const o = Render.el('option', null, text);
+        o.value = v;
+        s.appendChild(o);
+      }
+      s.value = value;
+      s.addEventListener('change', () => {
+        const snap = Model.snapshot();
+        onPick(s.value);
+        Model.pushUndo(snap);
+        refreshShell();
+      });
+      f.appendChild(s);
+      return f;
+    };
+
+    d.parts.forEach((part, idx) => {
+      const row = Render.div('anim-row');
+      const head = Render.div('anim-head');
+      head.appendChild(Render.el('span', 'anim-id', `部品 ${idx + 1}`));
+      head.appendChild(pick('キャラ', WHO_LABELS, String(part.who), (v) => { part.who = Number(v) === 1 ? 1 : 0; }));
+      head.appendChild(mk('カテゴリ', part.category, (v) => { part.category = String(v).trim(); }, { type: 'text' }));
+      head.appendChild(mk('名前', part.name, (v) => { part.name = String(v).trim(); }, { type: 'text' }));
+      head.appendChild(mk('よこ', part.x, (v) => { part.x = Math.round(Number(v) || 0); }));
+      head.appendChild(mk('たて', part.y, (v) => { part.y = Math.round(Number(v) || 0); }));
+      head.appendChild(mk('はじめからつける', part.on, (v) => { part.on = !!v; }, { type: 'checkbox' }));
+
+      const file = Render.el('span', 'slot-file' + (part.path ? '' : ' is-auto'),
+        part.path ? part.path.split(/[\\/]/).pop() : '絵がありません');
+      if (part.path) {
+        file.title = part.path;
+        // ファイルが動いた・消えたときは、立ち絵の行と同じように知らせる
+        const probe = new Image();
+        probe.addEventListener('error', () => {
+          file.textContent = 'ファイルが見つかりません';
+          file.style.color = '#e2664a';
+        });
+        probe.src = dressUrl(part);
+      }
+      head.appendChild(file);
+      const pickBtn = Render.el('button', 'btn tiny', part.path ? '変える' : 'えらぶ');
+      pickBtn.addEventListener('click', () => pickDressImage(part.id));
+      head.appendChild(pickBtn);
+      const del = Render.el('button', 'btn tiny', '消す');
+      del.addEventListener('click', () => {
+        Model.act(() => { dressup().parts.splice(idx, 1); });
+        refreshShell();
+      });
+      head.appendChild(del);
+      row.appendChild(head);
+      box.appendChild(row);
+    });
+
+    // カテゴリごとの決まり（SSP の着せ替えメニューで、どうえらべるか）
+    const cats = [];
+    for (const p of d.parts) {
+      const key = p.who + '/' + p.category;
+      if (p.category && cats.indexOf(key) < 0) cats.push(key);
+    }
+    if (cats.length) {
+      // 部品の行と同じ枠に入れる（説明＋その下に 1 カテゴリ 1 行）。
+      // 見出しを部品の番号と同じ見た目にすると、部品がもう 1 つあるように見えるので、説明の書きかたにする。
+      const ruleRow = Render.div('anim-row');
+      ruleRow.appendChild(Render.div('hint', 'カテゴリごとのえらびかた（SSP の着せ替えメニューで、どうえらべるか）'));
+      const rules = Render.div('anim-pats');
+      for (const key of cats) {
+        const [w, ...rest] = key.split('/');
+        const cat = rest.join('/');
+        const r = Render.div('anim-pat');
+        r.appendChild(Render.el('span', 'anim-step', `${Number(w) === 1 ? 'うにゅう' : 'さくら'}：${cat}`));
+        r.appendChild(pick('えらびかた', DRESS_RULES, d.rules[key] || '', (v) => {
+          if (v) d.rules[key] = v; else delete d.rules[key];
+        }));
+        rules.appendChild(r);
+      }
+      ruleRow.appendChild(rules);
+      box.appendChild(ruleRow);
+    }
+  }
+
+  // 部品の絵。えらびなおすたびに stamp を変えて、同じパスでも描きなおさせる（立ち絵と同じ）
+  function dressUrl(part) {
+    return '/api/shell/file?path=' + encodeURIComponent(part.path) + '&v=' + encodeURIComponent(part.stamp || '');
+  }
+
+  function addDressPart() {
+    Model.act(() => {
+      const d = dressup();
+      let id = 200;
+      while (d.parts.some((p) => p.id === id)) id++;
+      d.parts.push({ id, who: 0, category: '服', name: '部品' + (d.parts.length + 1), path: '', x: 0, y: 0, on: true });
+    });
+    refreshShell();
+  }
+
+  async function pickDressImage(partId) {
+    let r;
+    try {
+      r = await api('/api/shell/pick', { method: 'POST', body: {} });
+    } catch (e) {
+      App.toast(e.message, true);
+      return;
+    }
+    const f = (r.files || [])[0];
+    if (!f) return;
+    Model.act(() => {
+      const part = dressup().parts.find((p) => p.id === partId);
+      if (part) { part.path = f.path; part.stamp = String(Date.now()); }
+    });
+    refreshShell();
+    App.toast('画像を割り当てました');
+  }
+
+  // ためすの立ち絵に、つけている部品を重ねる。on は { 部品の id: true/false }（無ければ「はじめから」）
+  let dressOn = null;
+  function renderStageDress() {
+    hookStageDress();
+    for (const who of [0, 1]) {
+      const chara = document.getElementById('chara-' + who);
+      if (!chara) continue;
+      const stage = chara.parentElement;
+      for (const old of stage.querySelectorAll(`.dress-layer[data-who="${who}"]`)) old.remove();
+      if (!chara.naturalHeight) continue;
+      const scale = chara.clientHeight / chara.naturalHeight;
+      let anchor = chara;           // 書いた順に、上へ重ねていく
+      for (const part of dressup().parts) {
+        if (part.who !== who || !part.path) continue;
+        const on = dressOn && part.id in dressOn ? dressOn[part.id] : part.on;
+        if (!on) continue;
+        const layer = Render.el('img', 'dress-layer');
+        layer.dataset.who = String(who);
+        layer.alt = '';
+        layer.draggable = false;
+        layer.src = dressUrl(part);
+        layer.style.left = (chara.offsetLeft + part.x * scale) + 'px';
+        layer.style.top = (chara.offsetTop + part.y * scale) + 'px';
+        layer.style.transform = `scale(${scale})`;
+        // 重なり順は、立ち絵のすぐ上（吹き出しより下）
+        anchor.after(layer);
+        anchor = layer;
+      }
+    }
+  }
+  // 立ち絵の絵が変わると大きさも変わるので、読みこみ終わるたびに重ねなおす。
+  // 画面ができてから（はじめて描くときに）1 回だけつなぐ。
+  let stageHooked = false;
+  function hookStageDress() {
+    if (stageHooked) return;
+    stageHooked = true;
+    for (const who of [0, 1]) {
+      const chara = document.getElementById('chara-' + who);
+      if (chara) chara.addEventListener('load', renderStageDress);
+    }
   }
 
   function addAnimation() {
@@ -753,6 +952,9 @@
     let target = balloonOf(0);
     // いまの文字の飾り（\f[…]）。空ならふつうの文字
     let style = {};
+    // 着せ替えは、ためすたびに「はじめから」の状態にもどす
+    dressOn = null;
+    renderStageDress();
 
     for (const op of ops) {
       if (token !== App.playToken) return;
@@ -768,6 +970,16 @@
         case 'style':
           style = applyStyle(style, op.name, op.value);
           break;
+        case 'bind': {
+          const part = dressup().parts.find((p) => p.who === (who === 1 ? 1 : 0)
+            && p.category === op.category && p.name === op.part);
+          if (!part) break;
+          if (!dressOn) dressOn = {};
+          const now = part.id in dressOn ? dressOn[part.id] : part.on;
+          dressOn[part.id] = op.value === '' ? !now : (op.value === '1' || op.value === 'true');
+          renderStageDress();
+          break;
+        }
         case 'note': {
           target.classList.remove('is-empty');
           target.querySelector('.balloon-text').appendChild(Render.el('span', 'balloon-note', op.text));
@@ -867,6 +1079,6 @@
     });
   }
 
-  N.Shell = { refreshShell, addAnimation, pickShellImage, resetStage, playSakura };
+  N.Shell = { refreshShell, addAnimation, addDressPart, pickShellImage, resetStage, playSakura };
 
 })(window.NASHI);

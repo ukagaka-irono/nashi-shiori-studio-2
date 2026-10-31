@@ -163,6 +163,25 @@
         });
       }
 
+      // 着せ替えの部品。「ゴースト」タブで作ったものからえらぶ。キャラ・カテゴリ・名前をまとめて入れる。
+      case 'dresspart': {
+        const whoName = (w) => (w === 1 ? 'うにゅう' : 'さくら');
+        const parts = ((Model.project.dressup || {}).parts || []).filter((p) => p.category && p.name);
+        const opts = parts.map((p) => [`${whoName(p.who)}：${p.category}／${p.name}`, String(p.id)]);
+        const cur = parts.find((p) => p.who === (owner.who === 1 ? 1 : 0)
+          && p.category === owner.category && p.name === owner[name]);
+        // 名前を変えたり消したりして見つからなくなった部品も、そのまま見せておく（チェックタブが知らせる）
+        if (!cur && owner[name]) {
+          opts.unshift([`${whoName(owner.who)}：${owner.category || ''}／${owner[name]}`, '__missing__']);
+        }
+        if (!opts.length) opts.push(['（部品がありません）', '']);
+        return buildSelect(opts, cur ? String(cur.id) : (owner[name] ? '__missing__' : ''), (v) => {
+          const p = parts.find((x) => String(x.id) === v);
+          if (!p) return;
+          Model.act(() => { owner.who = p.who; owner.category = p.category; owner[name] = p.name; });
+        });
+      }
+
       case 'varname': {
         const opts = Model.variableNames().map((n) => [n, n]);
         if (!opts.length) opts.push(['（変数がありません）', '']);

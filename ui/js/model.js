@@ -69,6 +69,8 @@
           keroColor: '#8fd18a', keroCloth: '#e8b45c',
           images: [],       // { id, path, name, w, h } 用意した立ち絵
         },
+        // 着せ替え（MAYUNA）。部品の絵を、そのキャラのすべての表情に重ねる。
+        dressup: { parts: [], rules: {} },
         variables: [],
         scripts: [],
       };
@@ -90,6 +92,30 @@
           collisions: normalizeCollisions(x.collisions),
         }))
         .sort((a, b) => a.id - b.id);
+      // 着せ替えの部品。id はうごき（0〜127）とぶつからないよう 200 から。
+      const dress = (p && p.dressup && typeof p.dressup === 'object') ? p.dressup : {};
+      // 「キャラ/カテゴリ」ごとの決まり: なし = 1 つまで（はずせる）/ mustselect / multiple
+      out.dressup = { parts: [], rules: {} };
+      const seenIds = {};
+      for (const x of (Array.isArray(dress.parts) ? dress.parts : [])) {
+        const id = Number(x && x.id);
+        if (!Number.isFinite(id) || id < 200 || seenIds[id]) continue;   // 同じ番号は 1 つだけ
+        seenIds[id] = 1;
+        out.dressup.parts.push({
+          id,
+          who: Number(x.who) === 1 ? 1 : 0,
+          category: String(x.category || '').trim(),
+          name: String(x.name || '').trim(),
+          path: x.path ? String(x.path) : '',
+          x: Number(x.x) || 0, y: Number(x.y) || 0,
+          on: !!x.on,
+          stamp: x.stamp ? String(x.stamp) : '',   // 絵をえらびなおした時刻（描きなおしの目印）
+        });
+      }
+      for (const key of Object.keys(dress.rules || {})) {
+        const v = dress.rules[key];
+        if (v === 'mustselect' || v === 'multiple') out.dressup.rules[key] = v;
+      }
       out.variables = Array.isArray(out.variables) ? out.variables : [];
       out.variables = out.variables
         .filter((v) => v && v.name)

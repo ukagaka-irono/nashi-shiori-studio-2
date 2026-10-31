@@ -144,11 +144,18 @@ SSP から返ってきた `OnChoiceSelect` / `OnAnchorSelect` / `OnUserInput` �
 | これから N 番のキャラが話す | `{"type":"chara","id":2}` | `\p[2]`（0 と 1 は `\0` `\1`） |
 | うごき N を再生する | `{"type":"anim","id":0}` | `\i[0]` |
 | バルーンを N 番にする | `{"type":"balloon","id":0}` | `\b[0]` |
+| 着せ替え ◯ を つける／はずす | `{"type":"dressup","who":0,"category":"服","part":"エプロン","on":1}` | `\0\![bind,服,エプロン,1]`（部品は「ゴースト」タブの「着せ替え」で作ったものからえらぶ） |
 | 音 F を鳴らす | `{"type":"sound","file":"a.wav"}` | `\_v[a.wav]` |
 | 音 F をくりかえし鳴らす／1 回鳴らす（音量 V ％） | `{"type":"bgm","file":"bgm.mp3","mode":"loop","volume":100}` | `\![sound,loop,bgm.mp3]`（100 以外なら `,--volume=V`。ファイルはゴーストのフォルダの中だけ） |
 | 鳴っている音をぜんぶ止める | `{"type":"sound_stop"}` | `\![sound,stop]` |
 | ◯の濃さを N ％にする（M ミリ秒かけて） | `{"type":"alpha","who":0,"alpha":50,"ms":500}` | `\0\![set,alpha,50,--time=500]`（0 で見えない・100 でもとどおり） |
 | ◯を画面の 横 X 縦 Y へ動かす（M ミリ秒かけて） | `{"type":"move","who":0,"x":100,"y":100,"ms":1000}` | `\0\![move,--X=100,--Y=100,--time=1000,--base=screen]` |
+
+**着せ替え**（`dressup`）の部品は、エディタの「ゴースト」タブで作ります。書き出すと、部品の絵が
+`shell/master/dress<番号>.png` に入り、そのキャラのすべての表情に `surface.append` で
+`animation<番号>.interval,bind` を足し、シェルの `descript.txt` に `bindgroup<番号>.name,カテゴリ,名前`
+（はじめからつけるなら `.default,1`）と、カテゴリのえらびかた（`bindoption`）・`menu,auto` を書きます。
+番号はうごき（0〜127）とぶつからないよう 200 からです。SSP の右クリックメニューからも付けはずしできます。
 
 **うごき**（`anim`）は SERIKO のアニメーションを再生します。中身はブロックではなく、
 エディタの「ゴースト」タブで作って `shell/master/surfaces.txt` に書き出されます。

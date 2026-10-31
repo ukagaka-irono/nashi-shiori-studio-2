@@ -145,6 +145,12 @@
         case '!': {
           // 画面のプレビューでは再現しないものを、吹き出しに小さく書いておく
           const a = splitArgs(readBracket() || '');
+          // 着せ替えは、立ち絵に重ねて見せる（値が無ければ、付けはずしを入れかえる）
+          if (a[0] === 'bind') {
+            flush();
+            ops.push({ op: 'bind', category: a[1] || '', part: a[2] || '', value: a.length > 3 ? a[3] : '' });
+            break;
+          }
           const note = describeCommand(a);
           if (note) { flush(); ops.push({ op: 'note', text: note }); }
           break;

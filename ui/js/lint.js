@@ -201,6 +201,17 @@
                 '変数タブで作るか、別の変数にえらび直してください。', s, b);
             }
             break;
+          case 'dressup': {
+            const parts = ((project.dressup || {}).parts || []);
+            if (isEmptyText(b.part)) {
+              issue(out, 'error', `${title}の「着せ替え」で、部品がえらばれていません`,
+                '「ゴースト」タブの「着せ替え」で部品を作ってから、えらんでください。', s, b);
+            } else if (!parts.some((p) => p.who === (b.who === 1 ? 1 : 0) && p.category === b.category && p.name === b.part)) {
+              issue(out, 'error', `着せ替えの部品「${b.category || ''}／${b.part}」がありません（${title}）`,
+                '部品の名前やカテゴリを変えたときは、ブロックでもえらび直してください。', s, b);
+            }
+            break;
+          }
           case 'property_get':
             if (isEmptyText(b.prop)) {
               issue(out, 'error', `${title}に、たずねる中身が空の「SSP にたずねる」ブロックがあります`,

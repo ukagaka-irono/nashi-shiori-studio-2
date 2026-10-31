@@ -394,6 +394,17 @@ window.NASHI = window.NASHI || {};
     },
   });
   def({ type: 'sound_stop', cat: 'looks', shape: 'stack', spec: '鳴っている音をぜんぶ止める' });
+  // 着せ替え。部品は「ゴースト」タブの「着せ替え」で作り、ここではその中からえらぶ。
+  // えらぶと who / category / part の 3 つがまとめて入る。
+  def({
+    type: 'dressup', cat: 'looks', shape: 'stack',
+    spec: '着せ替え %part を %on',
+    args: {
+      part: { kind: 'dresspart', def: '' },
+      on: { kind: 'dropdown', def: 1, options: [['つける', 1], ['はずす', 0]] },
+    },
+    fixed: { who: 0, category: '' },
+  });
   def({
     type: 'alpha', cat: 'looks', shape: 'stack',
     spec: '%who の濃さを %alpha ％にする（%ms ミリ秒かけて）',
@@ -723,7 +734,7 @@ window.NASHI = window.NASHI || {};
     ],
     talk: ['say', 'newline', 'click_wait', 'clear', 'choice', 'choice_event', 'link',
       'font_style', 'font_color', 'font_size', 'font_default', 'communicate', 'raw'],
-    looks: ['surface', 'chara', 'anim', 'balloon', 'sound', 'bgm', 'sound_stop', 'alpha', 'move'],
+    looks: ['surface', 'chara', 'anim', 'balloon', 'dressup', 'sound', 'bgm', 'sound_stop', 'alpha', 'move'],
     control: ['wait', 'if', 'if_else', 'repeat', 'while', 'random_one', 'call',
       'call_group', 'talk_interval', 'ask', 'ask_kind', 'property_get', 'later', 'raise', 'update', 'saori_call',
       'open_browser', 'end', 'close', 'change_ghost'],

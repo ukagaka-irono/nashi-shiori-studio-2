@@ -158,6 +158,55 @@ console.log('  ---- 自分の絵に描いた当たり判定 (surfaces.txt)');
   }
 }
 
+// ------------------------------------------------- 着せ替え
+console.log('  ---- 着せ替え (surfaces.txt / シェルの descript.txt)');
+{
+  const tmpDress = fs.mkdtempSync(path.join(os.tmpdir(), 'nashi-dress-'));
+  try {
+    const png = Buffer.alloc(8 + 8 + 13 + 4);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0);
+    png.writeUInt32BE(13, 8); png.write('IHDR', 12, 'ascii');
+    png.writeUInt32BE(40, 16); png.writeUInt32BE(30, 20); png[24] = 8; png[25] = 6;
+    fs.writeFileSync(path.join(tmpDress, 'apron.png'), png);
+    const project = {
+      meta: { name: 'きがえテスト', sakuraName: 'さくら', keroName: 'うにゅう' },
+      shell: { images: [] },
+      dressup: {
+        parts: [
+          { id: 200, who: 0, category: '服', name: 'エプロン', path: path.join(tmpDress, 'apron.png'), x: 30, y: 120, on: true },
+          { id: 201, who: 0, category: '服', name: 'ドレス,x', path: path.join(tmpDress, 'apron.png'), x: 0, y: 0, on: false },
+          { id: 202, who: 1, category: 'ぼうし', name: '絵が無い', path: path.join(tmpDress, 'none.png'), x: 0, y: 0, on: true },
+        ],
+        rules: { '0/服': 'mustselect', '1/ぼうし': 'multiple' },
+      },
+      scripts: [],
+    };
+    const fixture = path.join(tmpDress, 'project.json');
+    fs.writeFileSync(fixture, JSON.stringify(project));
+    const surf = run([fixture, 'shell/master/surfaces.txt']).toString('utf8');
+    const desc = run([fixture, 'shell/master/descript.txt']).toString('utf8');
+    const checks = [
+      ['部品だけの surface ができる', surf.includes('surface10200\r\n{\r\nelement0,overlay,dress200.png,0,0\r\n}')],
+      ['さくらのすべての表情に bind のうごきを足す', surf.includes('surface.append0,1,2\r\n{\r\nanimation200.interval,bind\r\nanimation200.pattern0,add,10200,0,30,120\r\n')],
+      ['append は表情の surface よりあと', surf.indexOf('surface.append') > surf.indexOf('surface12\r\n')],
+      ['絵の無い部品は書かない', !surf.includes('202') && !desc.includes('bindgroup202')],
+      ['カテゴリと名前（, は空白に）', desc.includes('sakura.bindgroup200.name,服,エプロン\r\n') && desc.includes('sakura.bindgroup201.name,服,ドレス x\r\n')],
+      ['はじめからつける部品だけ default', desc.includes('sakura.bindgroup200.default,1\r\n') && !desc.includes('bindgroup201.default')],
+      ['えらびかたとメニュー', desc.includes('sakura.bindoption0.group,服,mustselect\r\n') && desc.includes('sakura.menu,auto\r\n') && !desc.includes('kero.menu')],
+    ];
+    for (const [label, ok] of checks) {
+      checked++;
+      if (ok) { console.log(`${green}  OK  ${off}${label}`); continue; }
+      failed++;
+      console.log(`${red}  だめ ${label}${off}`);
+      console.log(`        ${dim}${JSON.stringify(surf.slice(-500))}${off}`);
+      console.log(`        ${dim}${JSON.stringify(desc.slice(-400))}${off}`);
+    }
+  } finally {
+    fs.rmSync(tmpDress, { recursive: true, force: true });
+  }
+}
+
 // ------------------------------------------------- ネットワーク更新の照合表
 //
 // 中身を作るところから確かめたいので、その場でフォルダを組み立てます。

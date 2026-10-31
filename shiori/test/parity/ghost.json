@@ -433,6 +433,16 @@
           "text": { "type": "join", "a": "SSP ", "b": { "type": "property", "prop": "baseware.version" } } },
         { "type": "say", "who": 0, "nl": 0, "text": { "type": "property", "prop": "a]%b" } }
       ]
+    },
+    {
+      "id": "p34", "kind": "event", "event": "OnP34",
+      "_": "着せ替え。そのキャラに切りかえてから出し、名前の , ] は落とす。部品が空なら何も出さない",
+      "blocks": [
+        { "type": "dressup", "who": 1, "category": "服", "part": "エプロン", "on": 1 },
+        { "type": "dressup", "who": 0, "category": "リボン,x", "part": "白]\\![open,file,x", "on": 0 },
+        { "type": "dressup", "who": 0, "category": "服", "part": "", "on": 1 },
+        { "type": "say", "who": 0, "text": "きがえた", "nl": 0 }
+      ]
     }
   ]
 }

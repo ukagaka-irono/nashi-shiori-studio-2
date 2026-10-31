@@ -206,6 +206,13 @@
             "b": { "type": "join", "a": "/", "b": { "type": "sys", "key": "baseware" } } } } } } } }]
     },
     {
+      "id": "b_dress", "kind": "event", "event": "OnDressTest",
+      "blocks": [
+        { "type": "dressup", "who": 1, "category": "服", "part": "エプロン", "on": 1 },
+        { "type": "dressup", "who": 0, "category": "リボン", "part": "白", "on": 0 }
+      ]
+    },
+    {
       "id": "b_prop", "kind": "event", "event": "OnPropTest",
       "blocks": [
         { "type": "property_get", "prop": "baseware.version", "into": "こたえ" },
