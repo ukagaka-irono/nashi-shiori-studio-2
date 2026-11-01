@@ -10,6 +10,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 button, input, select, textarea { font-family: inherit; }
+/* 画面のことばが中国語・韓国語のときは、その言語の字形の字体を先に（<html lang> は i18n.js が付ける）。
+   ゴーストのセリフの日本語は、あとの "Yu Gothic UI" で出る */
+html:lang(zh-CN) body { font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "Yu Gothic UI", system-ui, sans-serif; }
+html:lang(zh-TW) body { font-family: "Segoe UI", "Microsoft JhengHei UI", "Microsoft JhengHei", "Yu Gothic UI", system-ui, sans-serif; }
+html:lang(ko) body { font-family: "Segoe UI", "Malgun Gothic", "Yu Gothic UI", system-ui, sans-serif; }
 
 :root {
   --topbar-h: 46px;
@@ -167,6 +172,8 @@ button, input, select, textarea { font-family: inherit; }
   text-align: left; counter-reset: step;
 }
 #canvas-hint .steps li { margin: 4px 0; }
+/* 「こまったら…」は手順のあとの行に（手順の箱は inline-block なので、ことばによってはその横に流れこむ） */
+#canvas-hint > span { display: block; }
 #zoom-controls { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 5px; }
 #zoom-controls .btn { background: #fff; box-shadow: 0 1px 4px rgba(40,60,90,.13); }
 #trash {

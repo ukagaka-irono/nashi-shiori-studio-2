@@ -74,9 +74,12 @@ Actions のほうは、実行ページをいちばん下まで送ると **Artifa
 * ウィンドウを閉じればアプリも終わります。保存していない変更があれば確認します。
 * ウィンドウの位置と大きさは次回起動時に復元します。
 * 二重起動しても増えません（すでに開いているウィンドウが前に出ます）。
-* 画面は **日本語と英語** で使えます。Windows の表示言語に合わせて始まり、「ヘルプ」タブのいちばん上で切りかえられます
-  （The editor also works in English: it follows the Windows display language, and you can switch it at the top of the Help tab）。
+* 画面は **日本語・英語・简体中文・繁體中文・한국어** で使えます。Windows の表示言語に合わせて始まり、
+  「ヘルプ」タブのいちばん上で切りかえられます
+  （The editor also works in English, Chinese and Korean: it follows the Windows display language,
+  and you can switch it at the top of the Help tab）。
   切りかえても、作っているゴーストのセリフは変わりません。
+  中国語と韓国語の訳は、その言語を話す人にまだ見てもらっていません。直したいところがあれば教えてください。
 
 **ポートは開きません。** 画面からの要求は WebView2 の中で受け取って、そのまま exe の中で処理しています。
 外に出る通信もしません（SSP と話すときだけ `127.0.0.1:9801` へ接続します）。
