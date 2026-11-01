@@ -11,6 +11,8 @@
 
 (function (N) {
 
+  const T = N.I18n.T;
+
   function fmtNum(v) {
     if (!isFinite(v)) return '0';
     if (Number.isInteger(v)) return String(v);
@@ -26,19 +28,19 @@
 
   // \![…] のうち、プレビューで「こうなります」と見せたいもの。ほかは何も出さない。
   const INPUT_KINDS = {
-    inputbox: '文字', dateinput: '日付', timeinput: '時刻', sliderinput: '数', passwordinput: 'パスワード',
+    inputbox: T('文字'), dateinput: T('日付'), timeinput: T('時刻'), sliderinput: T('数'), passwordinput: T('パスワード'),
   };
   function describeCommand(a) {
     if (a[0] === 'sound') {
-      if (a[1] === 'stop') return '♪ 音を止める';
-      if (a[1] === 'loop') return `♪ ${a[2] || ''} をくりかえし鳴らす`;
-      if (a[1] === 'play') return `♪ ${a[2] || ''} を鳴らす`;
+      if (a[1] === 'stop') return T('♪ 音を止める');
+      if (a[1] === 'loop') return T('♪ {file} をくりかえし鳴らす', { file: a[2] || '' });
+      if (a[1] === 'play') return T('♪ {file} を鳴らす', { file: a[2] || '' });
       return '';
     }
-    if (a[0] === 'set' && a[1] === 'alpha') return `濃さ ${a[2]}％`;
-    if (a[0] === 'get' && a[1] === 'property') return `（SSP に ${a[3] || ''} をたずねる）`;
-    if (a[0] === 'move') return 'キャラが動く';
-    if (a[0] === 'open' && a[1] === 'browser') return `（ブラウザで ${a[2] || ''} を開く）`;
+    if (a[0] === 'set' && a[1] === 'alpha') return T('濃さ {n}％', { n: a[2] });
+    if (a[0] === 'get' && a[1] === 'property') return T('（SSP に {name} をたずねる）', { name: a[3] || '' });
+    if (a[0] === 'move') return T('キャラが動く');
+    if (a[0] === 'open' && a[1] === 'browser') return T('（ブラウザで {url} を開く）', { url: a[2] || '' });
     return '';
   }
 
@@ -51,7 +53,7 @@
     // %property[…] は SSP が出すときに置きかえる。ためすときは、何が入るかを〈 〉で見せる。
     const flush = () => {
       if (!text) return;
-      ops.push({ op: 'text', text: text.replace(/%property\[([^\]]*)\]/g, '〈$1〉') });
+      ops.push({ op: 'text', text: text.replace(/%property\[([^\]]*)\]/g, (m, name) => T('〈{name}〉', { name })) });
       text = '';
     };
     // [ … ] の中身。\] と \\ は 1 文字として読む（SSP と同じ）。

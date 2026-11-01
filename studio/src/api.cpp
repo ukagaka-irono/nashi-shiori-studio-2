@@ -625,6 +625,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         JValue places = JValue::makeArr();
         std::string text;
         bool recording = false;
+        bool trimmed = false;
         std::wstring shown;
 
         for (size_t i = 0; i < roots.size(); i++) {
@@ -645,7 +646,13 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
                 if (ReadBinaryFile(p, raw)) {
                     // 長くなるので、うしろの方だけ見せる
                     const size_t kMax = 24000;
-                    if (raw.size() > kMax) raw = "（古いところは省いています）\r\n" + raw.substr(raw.size() - kMax);
+                    if (raw.size() > kMax) {
+                        // 切ったことは画面が言う（画面の言語で）。UTF-8 の文字のとちゅうから始めない
+                        size_t from = raw.size() - kMax;
+                        while (from < raw.size() && ((unsigned char)raw[from] & 0xC0) == 0x80) from++;
+                        raw = raw.substr(from);
+                        trimmed = true;
+                    }
                     text = raw;
                 }
             }
@@ -654,6 +661,7 @@ void Api::HandleApi(const HttpRequest& req, HttpResponse& res) {
         o.set("ok", JValue::makeBool(true));
         o.set("recording", JValue::makeBool(recording));
         o.set("text", JValue::makeStr(text));
+        o.set("trimmed", JValue::makeBool(trimmed));
         o.set("path", JValue::makeStr(WideToUtf8(shown)));
         o.set("places", places);
         Json(res, 200, o);

@@ -14,6 +14,7 @@
   const App = N.App;
   const $ = N.$;
   const switchTab = App.switchTab;
+  const T = N.I18n.T;
 
   // ------------------------------------------------------------- チェック
   function renderCheck() {
@@ -28,7 +29,7 @@
 
     list.textContent = '';
     if (!issues.length) {
-      list.appendChild(Render.div('check-ok', '✓ 気になるところはありません'));
+      list.appendChild(Render.div('check-ok', T('✓ 気になるところはありません')));
       return;
     }
     for (const it of issues) {
@@ -39,7 +40,7 @@
       if (it.hint) msg.appendChild(Render.el('span', 'why', it.hint));
       item.appendChild(msg);
       if (it.script) {
-        item.title = 'クリックでその場所へ移動します';
+        item.title = T('クリックでその場所へ移動します');
         item.addEventListener('click', () => jumpTo(it));
       } else {
         item.style.cursor = 'default';
@@ -60,22 +61,22 @@
     let label = '';
     let run = null;
     if (fix.add === 'var') {
-      label = `変数「${fix.name}」を作る`;
+      label = T('変数「{name}」を作る', { name: fix.name });
       run = () => {
         let made = null;
         Model.act(() => { made = Model.addVariable(fix.name, 0); return made ? undefined : false; });
-        if (made) App.toast(`変数「${fix.name}」を作りました`);
-        else App.toast('その名前の変数は作れません。変数タブで名前を確かめてください', true);
+        if (made) App.toast(T('変数「{name}」を作りました', { name: fix.name }));
+        else App.toast(T('その名前の変数は作れません。変数タブで名前を確かめてください'), true);
       };
     } else if (fix.add === 'talk') {
-      label = `トーク「${fix.name}」を作る`;
+      label = T('トーク「{name}」を作る', { name: fix.name });
       run = () => App.createFunctionNamed(fix.name);
     } else if (fix.remove === 'var') {
-      label = `変数「${fix.name}」を削除する`;
+      label = T('変数「{name}」を削除する', { name: fix.name });
       run = () => {
-        if (!confirm(`変数「${fix.name}」を削除しますか？`)) return;   // 変数タブの ✕ と同じく確かめる
+        if (!confirm(T('変数「{name}」を削除しますか？', { name: fix.name }))) return;   // 変数タブの ✕ と同じく確かめる
         Model.act(() => Model.removeVariable(fix.name));
-        App.toast(`変数「${fix.name}」を削除しました`);
+        App.toast(T('変数「{name}」を削除しました', { name: fix.name }));
       };
     }
     if (!run) return null;
@@ -97,7 +98,7 @@
       const v = b[part.arg];
       if (v == null || v === '') { s += '◯'; continue; }
       if (typeof v === 'object') {
-        s += v.type ? '（' + blockSummary(v, (depth || 0) + 1) + '）' : '…';
+        s += v.type ? T('（{inner}）', { inner: blockSummary(v, (depth || 0) + 1) }) : '…';
         continue;
       }
       const a = (d.args || {})[part.arg];
@@ -145,15 +146,15 @@
       const scripts = Model.project.scripts.filter((s) => s.kind !== 'note')
         .slice().sort((a, b) => (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0));
       if (!scripts.length) {
-        list.appendChild(Render.div('hint', 'キャンバスにまだ何もありません。'));
+        list.appendChild(Render.div('hint', T('キャンバスにまだ何もありません。')));
         return;
       }
-      list.appendChild(Render.div('palette-group-title', `かたまりの一覧（${scripts.length} つ）`));
+      list.appendChild(Render.div('palette-group-title', T('かたまりの一覧（{n} つ）', { n: scripts.length })));
       for (const s of scripts) {
         const item = Render.el('button', 'check-item');
         item.appendChild(Render.el('span', 'mark', '📄'));
         item.appendChild(Render.div('msg', Model.scriptTitle(s)));
-        item.title = 'クリックでその場所へ移動します';
+        item.title = T('クリックでその場所へ移動します');
         item.addEventListener('click', () => jumpTo({ script: s, block: null }));
         list.appendChild(item);
       }
@@ -174,7 +175,7 @@
     }
 
     if (!hits.length) {
-      list.appendChild(Render.div('check-ok', '見つかりませんでした'));
+      list.appendChild(Render.div('check-ok', T('見つかりませんでした')));
       return;
     }
     for (const h of hits) {
@@ -184,7 +185,7 @@
       msg.appendChild(document.createTextNode(h.text));
       if (h.block) msg.appendChild(Render.el('span', 'why', h.title));
       item.appendChild(msg);
-      item.title = 'クリックでその場所へ移動します';
+      item.title = T('クリックでその場所へ移動します');
       item.addEventListener('click', () => jumpTo(h));
       list.appendChild(item);
     }

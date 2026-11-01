@@ -3,6 +3,7 @@
 
 (function (N) {
 
+  const T = N.I18n.T;
   const clone = (v) => JSON.parse(JSON.stringify(v));
 
   // こまの重ねかた（SERIKO の描画メソッド）。書き出しでもこの名前だけ通します。
@@ -58,9 +59,9 @@
       return {
         format: 'nashi/1',
         meta: {
-          name: 'なしゴースト',
-          sakuraName: 'さくら',
-          keroName: 'うにゅう',
+          name: T('なしゴースト'),
+          sakuraName: T('さくら'),
+          keroName: T('うにゅう'),
           craftman: '',
           craftmanUrl: '',
           homeUrl: '',
@@ -176,7 +177,7 @@
         if (script.kind === 'talk' && script.weight == null) script.weight = 1;
         if (script.kind === 'talk' && typeof script.group !== 'string') script.group = '';
         if ((script.kind === 'talk' || script.kind === 'function') && !script.name) {
-          script.name = script.kind === 'talk' ? 'トーク' : 'なまえのないトーク';
+          script.name = script.kind === 'talk' ? T('トーク') : T('なまえのないトーク');
         }
         if (script.kind === 'event') {
           if (!script.event) script.event = 'OnBoot';
@@ -294,8 +295,8 @@
         if (typeof s.contains !== 'string') s.contains = '';
         if (typeof s.everySec !== 'number') s.everySec = 1;
       }
-      if (kind === 'talk') { s.name = s.name || 'トーク'; if (s.weight == null) s.weight = 1; }
-      if (kind === 'function') s.name = s.name || 'あたらしいトーク';
+      if (kind === 'talk') { s.name = s.name || T('トーク'); if (s.weight == null) s.weight = 1; }
+      if (kind === 'function') s.name = s.name || T('あたらしいトーク');
       Model.project.scripts.push(s);
       return s;
     },
@@ -309,33 +310,37 @@
       if (!s) return '';
       if (s.kind === 'event') {
         const found = N.EVENTS.find((e) => e[1] === s.event);
-        let label = found ? found[0] : (s.event || 'イベント');
+        let label = found ? found[0] : (s.event || T('イベント'));
         if (s.event === 'OnSecondChange') {
           const n = Math.max(1, Number(s.everySec) || 1);
-          return n > 1 ? `${n}秒ごとにくりかえす` : label;
+          return n > 1 ? T('{n}秒ごとにくりかえす', { n }) : label;
         }
         if (N.MOUSE_EVENTS[s.event]) {
           // 仮シェルの名前に無いもの（うごきで足した当たり判定）は、そのまま出す
           const area = (N.AREAS.find((a) => a[1] === (s.area || '')) || [])[0] || s.area;
           const who = (N.WHO_ANY.find((w) => w[1] === (s.who == null ? -1 : s.who)) || [])[0];
-          if (s.area || (s.who != null && s.who >= 0)) label = who + 'の' + area + 'が' + label;
+          if (s.area || (s.who != null && s.who >= 0)) label = T('{who}の{area}が{label}', { who, area, label });
         }
         if (s.event === 'OnCommunicate' && (s.from || s.contains)) {
-          const who = s.from ? s.from : 'だれか';
-          label = s.contains ? `${who}に「${s.contains}」と${label}` : `${who}に${label}`;
+          const who = s.from ? s.from : T('だれか');
+          label = s.contains
+            ? T('{who}に「{text}」と{label}', { who, text: s.contains, label })
+            : T('{who}に{label}', { who, label });
         }
         return label;
       }
       if (s.kind === 'talk') {
         const g = String(s.group || '').trim();
-        return 'ランダムトーク「' + (s.name || '') + '」' + (g ? `（${g}）` : '');
+        const name = s.name || '';
+        return g ? T('ランダムトーク「{name}」（{group}）', { name, group: g }) : T('ランダムトーク「{name}」', { name });
       }
-      if (s.kind === 'function') return '「' + (s.name || '') + '」';
+      if (s.kind === 'function') return T('「{name}」', { name: s.name || '' });
       if (s.kind === 'note') {
         const first = String(s.text || '').split('\n')[0].trim();
-        return 'メモ' + (first ? '「' + (first.length > 20 ? first.slice(0, 20) + '…' : first) + '」' : '');
+        if (!first) return T('メモ');
+        return T('メモ「{text}」', { text: first.length > 20 ? first.slice(0, 20) + '…' : first });
       }
-      return 'ブロックのかたまり';
+      return T('ブロックのかたまり');
     },
 
     functionNames() {

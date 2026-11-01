@@ -6,6 +6,7 @@
   const Model = N.Model;
   const Render = N.Render;
   const Player = N.Player;
+  const T = N.I18n.T;
   const $ = (sel) => document.querySelector(sel);
   N.$ = $;   // あとから読みこむ画面ファイルも使います
 
@@ -45,7 +46,8 @@
     let data = {};
     try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
     if (!res.ok) {
-      const err = new Error(data.error || ('通信エラー (' + res.status + ')'));
+      // exe の側のことばは日本語で届くので、ここで画面の言語にする
+      const err = new Error(data.error ? N.I18n.native(data.error) : T('通信エラー ({status})', { status: res.status }));
       err.status = res.status;
       err.data = data;                 // 呼んだ側が、くわしい中身（foreign など）を見られるように
       throw err;
@@ -125,7 +127,7 @@
 
   function updateTitle() {
     document.title = (Model.dirty ? '● ' : '') +
-      (Model.project.meta.name || 'なしゴースト') + ' - なしスタジオ 2';
+      T('{name} - なしスタジオ 2', { name: Model.project.meta.name || T('なしゴースト') });
   }
 
   function switchTab(name) {
@@ -184,7 +186,7 @@
     const list = $('#var-list');
     list.textContent = '';
     if (!Model.project.variables.length) {
-      list.appendChild(Render.div('hint', 'まだ変数がありません。'));
+      list.appendChild(Render.div('hint', T('まだ変数がありません。')));
       return;
     }
     for (const v of Model.project.variables) {
@@ -197,13 +199,13 @@
       name.addEventListener('focus', () => { before = name.value; });
       name.addEventListener('change', () => {
         const ok = Model.act(() => Model.renameVariable(before, name.value.trim()));
-        if (!ok) { name.value = before; App.toast('その名前は使えません', true); }
+        if (!ok) { name.value = before; App.toast(T('その名前は使えません'), true); }
       });
       row.appendChild(name);
 
       const val = Render.el('input', 'vval');
       val.value = v.value;
-      val.title = 'はじめの値';
+      val.title = T('はじめの値');
       val.addEventListener('change', () => {
         Model.act(() => {
           v.value = val.value !== '' && !isNaN(Number(val.value)) ? Number(val.value) : val.value;
@@ -212,13 +214,13 @@
       row.appendChild(val);
 
       const del = Render.el('button', 'del', '✕');
-      del.title = '削除';
+      del.title = T('削除');
       del.addEventListener('click', () => {
         // 使っているブロックがあれば、その数も見せる（消すと、そのブロックはチェックタブで ⛔ になる）
         const uses = Model.countVariableUses(v.name);
         const msg = uses
-          ? `変数「${v.name}」は ${uses} か所で使っています。削除すると、そこはうまく動きません。削除しますか？`
-          : `変数「${v.name}」を削除しますか？`;
+          ? T('変数「{name}」は {n} か所で使っています。削除すると、そこはうまく動きません。削除しますか？', { name: v.name, n: uses })
+          : T('変数「{name}」を削除しますか？', { name: v.name });
         if (!confirm(msg)) return;
         Model.act(() => Model.removeVariable(v.name));
       });
@@ -228,28 +230,28 @@
   }
 
   App.promptNewVariable = function () {
-    const name = prompt('あたらしい変数の名前は？', '好感度');
+    const name = prompt(T('あたらしい変数の名前は？'), T('好感度'));
     if (!name) return null;
     const trimmed = name.trim();
     if (!trimmed) return null;
     let created = null;
     Model.act(() => { created = Model.addVariable(trimmed, 0); });
-    if (!created) { App.toast('その名前の変数はもうあります', true); return null; }
-    App.toast(`変数「${trimmed}」を作りました`);
+    if (!created) { App.toast(T('その名前の変数はもうあります'), true); return null; }
+    App.toast(T('変数「{name}」を作りました', { name: trimmed }));
     return trimmed;
   };
 
   App.promptNewFunction = function () {
-    const name = prompt('あたらしいトークの名前は？', 'あたらしいトーク');
+    const name = prompt(T('あたらしいトークの名前は？'), T('あたらしいトーク'));
     if (!name || !name.trim()) return null;
     const trimmed = name.trim();
     if (Model.functionNames().includes(trimmed)) {
-      App.toast('その名前はもう使われています', true);
+      App.toast(T('その名前はもう使われています'), true);
       return null;
     }
     const at = viewCenter();
     Model.act(() => Model.addScript('function', { name: trimmed, x: at.x, y: at.y }));
-    App.toast(`「${trimmed}」を作りました。ブロックをつなげてください`);
+    App.toast(T('「{name}」を作りました。ブロックをつなげてください', { name: trimmed }));
     return trimmed;
   };
 
@@ -257,7 +259,7 @@
   App.createFunctionNamed = function (name) {
     const at = viewCenter();
     Model.act(() => Model.addScript('function', { name, x: at.x, y: at.y }));
-    App.toast(`「${name}」を作りました。ブロックをつなげてください`);
+    App.toast(T('「{name}」を作りました。ブロックをつなげてください', { name }));
   };
 
   /** 付箋（メモ）を置く。at が無ければ、見えているあたり */
@@ -265,7 +267,7 @@
     const p = at || viewCenter();
     let note = null;
     Model.act(() => { note = Model.addScript('note', { text: '', x: Math.round(p.x), y: Math.round(p.y) }); });
-    App.toast('メモを置きました');
+    App.toast(T('メモを置きました'));
     // 置いたらすぐ書けるように、中にカーソルを置く
     setTimeout(() => {
       const el = [...document.querySelectorAll('#canvas > .script.note')].find((e) => e._script === note);
@@ -289,22 +291,22 @@
       copy.x = (script.x || 0) + 40;
       copy.y = (script.y || 0) + 40;
       if (copy.kind === 'function' || copy.kind === 'talk') {
-        let base = copy.name || 'コピー';
+        let base = copy.name || T('コピー');
         let n = 2;
         while (Model.functionNames().includes(base + n)) n++;
         copy.name = base + n;
       }
       Model.project.scripts.push(copy);
     });
-    App.toast('複製しました');
+    App.toast(T('複製しました'));
   };
 
   App.deleteScript = function (script) {
     // 中身があれば確かめる（ブロック、またはメモの文字）
     const count = (script.blocks || []).length || (script.kind === 'note' && String(script.text || '').trim() ? 1 : 0);
-    if (count && !confirm(`「${Model.scriptTitle(script)}」を削除しますか？`)) return;
+    if (count && !confirm(T('「{name}」を削除しますか？', { name: Model.scriptTitle(script) }))) return;
     Model.act(() => Model.removeScript(script));
-    App.toast('削除しました');
+    App.toast(T('削除しました'));
   };
 
   // かたまりを、種類ごとに上から並べなおす。大きさは描いた実物で測る（セリフが長いと 420px より広いので）
@@ -359,7 +361,7 @@
       sel.appendChild(o);
     }
     if (!sel.childElementCount) {
-      const o = Render.el('option', null, '（まだブロックがありません）');
+      const o = Render.el('option', null, T('（まだブロックがありません）'));
       o.value = '';
       sel.appendChild(o);
     }
@@ -374,7 +376,7 @@
     if (!script || script.kind !== 'event') return [];
     if (script.event === 'OnCommunicate') {
       // 相手の名前・言われたこと。空欄なら、ためすとき用の仮の値を入れる。
-      return [script.from || 'ほかのゴースト', script.contains || 'こんにちは'];
+      return [script.from || T('ほかのゴースト'), script.contains || T('こんにちは')];
     }
     // よく使うイベントは、それらしい仮の値を入れておく
     const samples = {
@@ -408,7 +410,7 @@
         vars: App.sessionVars,
         // SSP が知らせてくる情報は、ためすときは仮の値（誕生日は今日にしておく）
         sys: {
-          ghostName: meta.name || '', shellName: 'master', userName: 'ユーザー',
+          ghostName: meta.name || '', shellName: 'master', userName: T('ユーザー'),
           birthMonth: new Date().getMonth() + 1, birthDay: new Date().getDate(), baseware: '2.9',
         },
       },
@@ -423,14 +425,14 @@
     try {
       res = await runPreview(script, refs);
     } catch (e) {
-      $('#script-preview').textContent = '（ためせませんでした: ' + e.message + '）';
+      $('#script-preview').textContent = T('（ためせませんでした: {message}）', { message: e.message });
       App.toast(e.message, true);
       return;
     }
     App.sessionVars = res.vars || {};
-    let preview = res.script || '（なにも出力されませんでした）';
+    let preview = res.script || T('（なにも出力されませんでした）');
     // 話しかけ先はさくらスクリプトに出ないので、ここで見せる
-    if (res.commTo) preview += `\n\n（「${res.commTo}」に届きます）`;
+    if (res.commTo) preview += '\n\n' + T('（「{name}」に届きます）', { name: res.commTo });
     $('#script-preview').textContent = preview;
     renderRunVars();
     N.Shell.playSakura(res.script);
@@ -450,8 +452,8 @@
     }
     const handler = Model.project.scripts.find((s) => s.kind === 'event' && s.event === 'OnUserInput' && !s.disabled);
     if (handler) { App.runScript(handler, [id, answer]); return; }
-    App.toast(name ? `変数「${name}」に「${shown == null ? answer : shown}」を入れました`
-      : '「答えが返ってきたとき」のかたまりがありません', !name);
+    App.toast(name ? T('変数「{name}」に「{value}」を入れました', { name, value: shown == null ? answer : shown })
+      : T('「答えが返ってきたとき」のかたまりがありません'), !name);
   };
 
   function renderRunVars() {
@@ -463,7 +465,7 @@
     Object.assign(shown, App.sessionVars);
     const names = Object.keys(shown).filter((k) => k[0] !== '@');
     if (!names.length) {
-      box.appendChild(Render.div('run-var is-empty', 'まだ変数がありません'));
+      box.appendChild(Render.div('run-var is-empty', T('まだ変数がありません')));
       return;
     }
     for (const k of names) {
@@ -475,7 +477,7 @@
   function resetSessionVars() {
     App.sessionVars = {};
     renderRunVars();
-    App.toast('ためすときの変数を、初期値にもどしました');
+    App.toast(T('ためすときの変数を、初期値にもどしました'));
   }
 
   /** 書き出したゴーストが覚えている変数（nashi_save.json）を消す */
@@ -487,8 +489,8 @@
       });
       const n = (r.deleted || []).length;
       App.toast(n
-        ? `ゴーストの記憶を消しました（${n} か所）。次に動かすと初期値からになります`
-        : '消すものがありませんでした（まだ動かしていないようです）');
+        ? T('ゴーストの記憶を消しました（{n} か所）。次に動かすと初期値からになります', { n })
+        : T('消すものがありませんでした（まだ動かしていないようです）'));
     } catch (e) {
       App.toast(e.message, true);
     }
@@ -511,25 +513,23 @@
         },
       });
       if (!(r.places || []).length) {
-        box.textContent = 'まだ書き出していないようです。先に「SSP に入れて動かす」を押してください。';
+        box.textContent = T('まだ書き出していないようです。先に「SSP に入れて動かす」を押してください。');
         return;
       }
       if (action === 'clear') {
-        box.textContent = '記録をやめました。';
-        App.toast('記録をやめました');
+        box.textContent = T('記録をやめました。');
+        App.toast(T('記録をやめました'));
         return;
       }
       if (!r.recording) {
-        box.textContent = 'いまは記録していません。「記録をはじめる」を押すと、'
-          + 'つぎに動かしたときから残ります。';
+        box.textContent = T('いまは記録していません。「記録をはじめる」を押すと、つぎに動かしたときから残ります。');
         return;
       }
       box.textContent = r.text && r.text.trim()
-        ? r.text
-        : `記録中です（${r.path}）。まだ何も書かれていません。\n`
-          + 'ゴーストを動かしてから、もう一度「読む」を押してください。';
+        ? (r.trimmed ? T('（古いところは省いています）') + '\n' : '') + r.text
+        : T('記録中です（{path}）。まだ何も書かれていません。\nゴーストを動かしてから、もう一度「読む」を押してください。', { path: r.path });
       box.scrollTop = box.scrollHeight;
-      if (action === 'start') App.toast('記録をはじめました');
+      if (action === 'start') App.toast(T('記録をはじめました'));
     } catch (e) {
       box.textContent = e.message;
       App.toast(e.message, true);
@@ -577,7 +577,7 @@
    * at が無ければ、さいごに押した空いた場所、それも無ければ見えている左上あたり。
    */
   App.pasteOnCanvas = function (at) {
-    if (!App.clipboard) { App.toast('コピーしたブロックがありません', true); return; }
+    if (!App.clipboard) { App.toast(T('コピーしたブロックがありません'), true); return; }
     const ws = $('#workspace');
     const p = at || N.Drag.D.lastPoint ||
       { x: ws.scrollLeft / App.zoom + 40, y: ws.scrollTop / App.zoom + 40 };
@@ -587,7 +587,7 @@
         x: Math.max(0, Math.round(p.x)), y: Math.max(0, Math.round(p.y)),
       });
     });
-    App.toast('はりつけました');
+    App.toast(T('はりつけました'));
   };
 
   // ------------------------------------------------------- パレットの幅
@@ -646,8 +646,8 @@
         // 空いた場所: メモを置ける。コピーしたブロックがあれば、そこへはりつけられる
         e.preventDefault();
         const at = N.Drag.toCanvas(e.clientX, e.clientY);
-        const items = [{ label: 'ここにメモを置く', run: () => App.addNote(at) }];
-        if (App.clipboard) items.push({ label: 'ここにはりつける', run: () => App.pasteOnCanvas(at) });
+        const items = [{ label: T('ここにメモを置く'), run: () => App.addNote(at) }];
+        if (App.clipboard) items.push({ label: T('ここにはりつける'), run: () => App.pasteOnCanvas(at) });
         openContextMenu(e.clientX, e.clientY, items);
         return;
       }
@@ -660,10 +660,10 @@
       if (hat || !blk || isNote) {
         const script = scriptEl._script;
         openContextMenu(e.clientX, e.clientY, [
-          ...(isNote ? [] : [{ label: '▶ 実行してみる', run: () => App.runScript(script) }]),
-          { label: '複製する', run: () => App.duplicateScript(script) },
+          ...(isNote ? [] : [{ label: T('▶ 実行してみる'), run: () => App.runScript(script) }]),
+          { label: T('複製する'), run: () => App.duplicateScript(script) },
           '-',
-          { label: '削除する', danger: true, run: () => App.deleteScript(script) },
+          { label: T('削除する'), danger: true, run: () => App.deleteScript(script) },
         ]);
         return;
       }
@@ -671,14 +671,14 @@
       const block = blk._blk;
       openContextMenu(e.clientX, e.clientY, [
         {
-          label: '複製する',
+          label: T('複製する'),
           run: () => Model.act(() => {
             if (!Array.isArray(blk._stack)) return false;
             blk._stack.splice(blk._index + 1, 0, Model.clone(block));
           }),
         },
         {
-          label: block.disabled ? '有効にする' : '一時的に無効にする',
+          label: block.disabled ? T('有効にする') : T('一時的に無効にする'),
           run: () => Model.act(() => {
             if (block.disabled) delete block.disabled;
             else block.disabled = true;
@@ -686,7 +686,7 @@
         },
         '-',
         {
-          label: 'このブロックを削除',
+          label: T('このブロックを削除'),
           danger: true,
           run: () => Model.act(() => {
             if (!Array.isArray(blk._stack)) return false;
@@ -694,7 +694,7 @@
           }),
         },
         {
-          label: 'ここから下をすべて削除',
+          label: T('ここから下をすべて削除'),
           danger: true,
           run: () => Model.act(() => {
             if (!Array.isArray(blk._stack)) return false;
@@ -814,8 +814,69 @@
     $('#btn-zoom-reset').textContent = Math.round(App.zoom * 100) + '%';
   }
 
+  // ------------------------------------------------------------- 画面のことば
+  // 切りかえるときは、えらんだ言語をおぼえて画面を読みなおす（ことばは読みこみのときに決まるため）。
+  // 保存していない中身は、このタブのあいだだけ sessionStorage に置いて持ちこす
+  const CARRY_KEY = 'nashi-studio-2.carry';
+
+  function takeCarried() {
+    try {
+      const raw = sessionStorage.getItem(CARRY_KEY);
+      sessionStorage.removeItem(CARRY_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+
+  // 閉じるときに exe（main.cpp）が出す確認のことば。exe は画面の言語を知らないので、閉じるときにここで渡す
+  App.nativeTexts = function () {
+    return {
+      dirty: !!Model.dirty,
+      title: T('なしスタジオ 2'),
+      ask: T('保存していない変更があります。\n保存して終了しますか？'),
+      notFinished: T('保存が終わりませんでした。'),
+      failed: T('保存できませんでした。'),
+      discard: T('保存せずに終了しますか？（変更は消えます）'),
+    };
+  };
+
+  App.setLanguage = function (code) {
+    const sel = $('#lang-select');
+    const undo = () => { if (sel) sel.value = N.I18n.lang; };   // やめたときは、えらぶ欄をもとにもどす
+    if (code === N.I18n.lang) return;
+    if (!N.I18n.remember(code)) { undo(); App.toast(T('ことばを切りかえられませんでした'), true); return; }
+    try {
+      sessionStorage.setItem(CARRY_KEY, JSON.stringify({
+        project: Model.project, projectName: App.projectName || '', dirty: !!Model.dirty,
+      }));
+    } catch {
+      // 持ちこせないとき（大きすぎるなど）は、保存していない変更が消えることを先に言う
+      if (Model.dirty && !confirm(T('保存していない変更があります。保存せずに画面のことばを切りかえますか？'))) {
+        N.I18n.remember(N.I18n.lang);
+        undo();
+        return;
+      }
+    }
+    Model.dirty = false;             // 持ちこしたので、読みなおしの確認は出さない
+    location.reload();
+  };
+
+  function setupLanguage() {
+    const sel = $('#lang-select');
+    if (!sel) return;
+    sel.textContent = '';
+    for (const l of N.I18n.languages) {
+      const o = Render.el('option', null, l.name);
+      o.value = l.code;
+      sel.appendChild(o);
+    }
+    sel.value = N.I18n.lang;
+    sel.addEventListener('change', () => App.setLanguage(sel.value));
+  }
+
   // ------------------------------------------------------------------- 起動
   async function boot() {
+    // index.html に書いてあることばを、いまの言語に（ゴーストの中身を描く前に。セリフまで訳さないように）
+    N.I18n.applyDom();
     renderCategories();
     bindMeta();
     setupContextMenu();
@@ -840,11 +901,11 @@
       const st = $('#dll-status');
       st.className = 'status-line ' + (state.dllFound ? 'status-ok' : 'status-ng');
       st.textContent = state.dllFound
-        ? '栞 (nashi.dll) の準備ができています'
-        : 'nashi.dll がまだありません。shiori\\build.ps1 を実行してください。';
+        ? T('栞 (nashi.dll) の準備ができています')
+        : T('nashi.dll がまだありません。shiori\\build.ps1 を実行してください。');
       $('#ssp-hint').textContent = state.sspGhostDir
-        ? 'SSP らしきフォルダを見つけました: ' + state.sspGhostDir
-        : 'SSP の ghost フォルダを指定すると、そのまま追加できます。';
+        ? T('SSP らしきフォルダを見つけました: {path}', { path: state.sspGhostDir })
+        : T('SSP の ghost フォルダを指定すると、そのまま追加できます。');
     }
 
     let loaded = null;
@@ -856,11 +917,15 @@
         lostLast = state.lastProject;   // 消えた・動いた。黙ってお手本にすると、作ったものが消えたように見える
       }
     }
-    Model.init(loaded || Model.newProject());
+    // 画面のことばを切りかえて読みなおしたときは、保存していない中身を持ちこす（setLanguage）
+    const carried = takeCarried();
+    Model.init(carried ? carried.project : (loaded || Model.newProject()));
     // 開いたファイルに上書き保存する（ゴーストの名前を変えても、別のファイルにはしない）
-    App.projectName = loaded ? state.lastProject : '';
+    App.projectName = carried ? carried.projectName : (loaded ? state.lastProject : '');
+    if (carried && carried.dirty) Model.dirty = true;
+    setupLanguage();
     if (lostLast) {
-      App.toast(`前に開いていた「${lostLast}」を開けませんでした`, true);
+      App.toast(T('前に開いていた「{name}」を開けませんでした', { name: lostLast }), true);
     }
     setZoom(1);
     switchTab('run');
@@ -880,8 +945,8 @@
       if (ssp && ssp.ghostDir) { N.Ssp.installToSsp(); return; }
       $('#ssp-path').focus();
       App.toast(ssp && ssp.exe
-        ? 'SSP の ghost フォルダが見つかりません。ssp.exe の場所を確かめてください'
-        : 'SSP が見つかりません。ssp.exe の場所を入れてください', true);
+        ? T('SSP の ghost フォルダが見つかりません。ssp.exe の場所を確かめてください')
+        : T('SSP が見つかりません。ssp.exe の場所を入れてください'), true);
     });
     $('#btn-export-dir').addEventListener('click', () => N.Dialog.doExport('dir'));
     $('#btn-export-nar').addEventListener('click', () => N.Dialog.doExport('nar'));
@@ -889,39 +954,39 @@
     $('#btn-anim-add').addEventListener('click', N.Shell.addAnimation);
     $('#btn-dress-add').addEventListener('click', N.Shell.addDressPart);
     $('#btn-shell-add').addEventListener('click', () => {
-      const v = prompt('どの番号の立ち絵にしますか？（さくらは 0〜9、うにゅうは 10 以上）', '3');
+      const v = prompt(T('どの番号の立ち絵にしますか？（さくらは 0〜9、うにゅうは 10 以上）'), '3');
       if (v == null) return;
       const id = Math.max(0, Math.floor(Number(v)));
-      if (!Number.isFinite(id)) { App.toast('番号は数字で入れてください', true); return; }
+      if (!Number.isFinite(id)) { App.toast(T('番号は数字で入れてください'), true); return; }
       N.Shell.pickShellImage(id);
     });
     $('#btn-run').addEventListener('click', () => {
       const id = $('#run-target').value;
       const s = Model.project.scripts.find((x) => x.id === id);
       if (s) App.runScript(s);
-      else App.toast('実行するかたまりがありません', true);
+      else App.toast(T('実行するかたまりがありません'), true);
     });
     $('#btn-copy-script').addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText($('#script-preview').textContent);
-        App.toast('コピーしました');
-      } catch { App.toast('コピーできませんでした', true); }
+        App.toast(T('コピーしました'));
+      } catch { App.toast(T('コピーできませんでした'), true); }
     });
     $('#btn-zoom-in').addEventListener('click', () => setZoom(App.zoom + 0.1));
     $('#btn-zoom-out').addEventListener('click', () => setZoom(App.zoom - 0.1));
     $('#btn-zoom-reset').addEventListener('click', () => setZoom(1));
-    $('#btn-tidy').addEventListener('click', () => { tidy(); App.toast('整列しました'); });
+    $('#btn-tidy').addEventListener('click', () => { tidy(); App.toast(T('整列しました')); });
     $('#btn-note').addEventListener('click', () => App.addNote());
     $('#btn-import').addEventListener('click', async () => {
       const p = $('#import-path').value.trim();
       if (!p) return;
-      if (Model.dirty && !confirm('保存していない変更があります。読み込みますか？')) return;
+      if (Model.dirty && !confirm(T('保存していない変更があります。読み込みますか？'))) return;
       try {
         const r = await api('/api/import', { method: 'POST', body: { path: p } });
         Model.init(r.project);
         App.projectName = '';            // よそから来たものは、新しいプロジェクトとして保存する
         App.sessionVars = {};
-        App.toast('読み込みました');
+        App.toast(T('読み込みました'));
       } catch (e) { App.toast(e.message, true); }
     });
 
@@ -936,12 +1001,12 @@
     $('#btn-ssp-install').addEventListener('click', N.Ssp.installToSsp);
     $('#btn-ssp-refresh').addEventListener('click', async () => {
       await N.Ssp.refreshSsp();
-      App.toast('SSP の状態を確認しました');
+      App.toast(T('SSP の状態を確認しました'));
     });
     $('#btn-ssp-launch').addEventListener('click', async () => {
       try {
         await api('/api/ssp/launch', { method: 'POST', body: {} });
-        App.toast('SSP を起動しました');
+        App.toast(T('SSP を起動しました'));
         setTimeout(N.Ssp.refreshSsp, 2500);
       } catch (e) { App.toast(e.message, true); }
       N.Ssp.refreshSsp();
@@ -950,7 +1015,7 @@
       try {
         await api('/api/ssp/path', { method: 'POST', body: { path: $('#ssp-path').value.trim() } });
         await N.Ssp.refreshSsp();
-        App.toast('SSP の場所を覚えました');
+        App.toast(T('SSP の場所を覚えました'));
       } catch (e) { App.toast(e.message, true); }
     });
 
@@ -1015,23 +1080,23 @@
           Model.act(() => { sel.stack.splice(sel.index, 1); });
           N.Drag.select(null);
         }
-        App.toast(key === 'x' ? 'ブロックを切り取りました' : 'ブロックをコピーしました');
+        App.toast(key === 'x' ? T('ブロックを切り取りました') : T('ブロックをコピーしました'));
         return;
       }
       if (e.ctrlKey && key === 'v') {
-        if (!App.clipboard) { App.toast('コピーしたブロックがありません', true); return; }
+        if (!App.clipboard) { App.toast(T('コピーしたブロックがありません'), true); return; }
         e.preventDefault();
         // えらんだブロックが無い（または入れ子の中の値ブロック）なら、キャンバスの空いた場所へ
         if (!sel || !Array.isArray(sel.stack)) { App.pasteOnCanvas(); return; }
         Model.act(() => { sel.stack.splice(sel.index + 1, 0, Model.clone(App.clipboard)); });
-        App.toast('はりつけました');
+        App.toast(T('はりつけました'));
         return;
       }
       if (e.ctrlKey && key === 'd') {
         if (!sel || !sel.block || !Array.isArray(sel.stack)) return;
         e.preventDefault();
         Model.act(() => { sel.stack.splice(sel.index + 1, 0, Model.clone(sel.block)); });
-        App.toast('ブロックを複製しました');
+        App.toast(T('ブロックを複製しました'));
         return;
       }
 
@@ -1060,7 +1125,7 @@
     setInterval(() => { if (Model.dirty) N.Dialog.saveProject(true); }, 60000);
 
     // 開くものが無かったとき（はじめての起動など）は、はじめかたをえらんでもらう
-    if (!loaded) N.Dialog.openSampleDialog(true);
+    if (!loaded && !carried) N.Dialog.openSampleDialog(true);
   }
 
   // ---------------------------------------------------- 分けた画面ファイルへ渡すもの

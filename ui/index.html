@@ -53,11 +53,11 @@
       <div id="canvas-hint">
         <b>ここにブロックを置いていきます</b>
         <ol class="steps">
-          <li>左の「イベント」から <i>起動したとき</i> をここにドラッグ</li>
-          <li>「セリフ」の <i>◯が □ と話す</i> を、その下につなげる</li>
-          <li>右の <i>ためす</i> の ▶ で確かめて、<i>書き出し</i> で SSP に入れる</li>
+          <li data-i18n="html">左の「イベント」から <i>起動したとき</i> をここにドラッグ</li>
+          <li data-i18n="html">「セリフ」の <i>◯が □ と話す</i> を、その下につなげる</li>
+          <li data-i18n="html">右の <i>ためす</i> の ▶ で確かめて、<i>書き出し</i> で SSP に入れる</li>
         </ol>
-        こまったら右の <i>ヘルプ</i> タブを見てください
+        <span data-i18n="html">こまったら右の <i>ヘルプ</i> タブを見てください</span>
       </div>
       <div id="zoom-controls">
         <button class="btn icon-btn" id="btn-zoom-out" title="縮小">−</button>
@@ -278,22 +278,27 @@
 
         <!-- ---- help ---- -->
         <section class="side-panel" data-panel="help">
+          <label class="field">
+            <span>画面のことば（Language）</span>
+            <select id="lang-select"></select>
+          </label>
+          <p class="hint">えらぶと、画面を読みなおします。作っているゴーストのセリフは変わりません。</p>
           <div class="panel-head"><h2>つかいかた</h2></div>
           <ol class="help-list">
-            <li><b>新規</b>で、お手本か空かをえらびます。お手本は、動くゴーストを見ながらまねて作れます。</li>
-            <li><b>イベント</b>から「起動したとき」などをキャンバスにドラッグし、その下に<b>セリフ</b>の「…と話す」をつなげます。</li>
-            <li><b>ためす</b>タブの ▶ で、その場で動きを見られます。</li>
-            <li>右上の「<b>▶ SSP に入れて動かす</b>」で、SSP に入れて動かします。フォルダや .nar は<b>書き出し</b>タブから作れます。</li>
-            <li><b>チェック</b>タブに気になるところが出ます。クリックするとその場所へ移動します。</li>
+            <li data-i18n="html"><b>新規</b>で、お手本か空かをえらびます。お手本は、動くゴーストを見ながらまねて作れます。</li>
+            <li data-i18n="html"><b>イベント</b>から「起動したとき」などをキャンバスにドラッグし、その下に<b>セリフ</b>の「…と話す」をつなげます。</li>
+            <li data-i18n="html"><b>ためす</b>タブの ▶ で、その場で動きを見られます。</li>
+            <li data-i18n="html">右上の「<b>▶ SSP に入れて動かす</b>」で、SSP に入れて動かします。フォルダや .nar は<b>書き出し</b>タブから作れます。</li>
+            <li data-i18n="html"><b>チェック</b>タブに気になるところが出ます。クリックするとその場所へ移動します。</li>
           </ol>
           <div class="panel-head"><h2>できること</h2></div>
           <ul class="help-list">
-            <li>「<b>なでられたとき</b>」などのマウス操作は、あたま・かお・むねといった場所ごとに分けられます。
+            <li data-i18n="html">「<b>なでられたとき</b>」などのマウス操作は、あたま・かお・むねといった場所ごとに分けられます。
               自分の絵には、<b>ゴースト</b>タブの「立ち絵の画像」の各行にある「当たり判定」で場所を描けます。</li>
-            <li>立ち絵は<b>ゴースト</b>タブで PNG をえらぶか、土台と表情の絵を重ねて作れます。</li>
-            <li><b>ゴースト</b>タブの「着せ替え」で、服などの部品を SSP の右クリックメニューから付けはずしできます。</li>
-            <li>選択肢は<b>セリフ</b>に、文字や日付をたずねる・◯秒後によぶ・SSP の情報をたずねる、は<b>制御</b>にあります。</li>
-            <li>ほかのゴーストとの会話は、<b>イベント</b>の「話しかけられたとき」と<b>セリフ</b>の「話しかける」で作れます。</li>
+            <li data-i18n="html">立ち絵は<b>ゴースト</b>タブで PNG をえらぶか、土台と表情の絵を重ねて作れます。</li>
+            <li data-i18n="html"><b>ゴースト</b>タブの「着せ替え」で、服などの部品を SSP の右クリックメニューから付けはずしできます。</li>
+            <li data-i18n="html">選択肢は<b>セリフ</b>に、文字や日付をたずねる・◯秒後によぶ・SSP の情報をたずねる、は<b>制御</b>にあります。</li>
+            <li data-i18n="html">ほかのゴーストとの会話は、<b>イベント</b>の「話しかけられたとき」と<b>セリフ</b>の「話しかける」で作れます。</li>
           </ul>
           <div class="panel-head"><h2>ブロックの色</h2></div>
           <div id="help-cats" class="help-cats"></div>
@@ -317,7 +322,7 @@
             <li><b>パレットのふち</b> ドラッグか ← → で幅を変える（ダブルクリックか Home で元の幅にもどす）</li>
           </ul>
           <div class="panel-head"><h2>栞について</h2></div>
-          <p class="hint">
+          <p data-i18n="html" class="hint">
             書き出したゴーストは <b>nashi.dll</b>（なし栞 2）で動きます。会話データは
             <b>ghost/master/ghost.json</b> に入っていて、SSP を動かしたまま書き出し直すと
             数秒で自動的に読み込み直されます。
@@ -333,6 +338,9 @@
 <div id="toast"></div>
 <div id="modal-root" class="modal-root"></div>
 
+<!-- ことばの表（ui/i18n/）は i18n.js より先に、i18n.js はほかの js/ より先に（読みこむときに T() を使うため） -->
+<script src="i18n/en.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/blocks.js"></script>
 <script src="js/model.js"></script>
 <script src="js/player.js"></script>

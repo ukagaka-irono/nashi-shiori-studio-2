@@ -56,7 +56,7 @@ global.document = {
   createElement: () => elStub,
   body: elStub,
 };
-global.window = { NASHI: {}, addEventListener: noop, location: { href: '' } };
+global.window = { NASHI: {}, NASHI_LANG: 'ja', addEventListener: noop, location: { href: '' } };
 // navigator は node が持っていて書きかえられないので、足りないところだけ補う
 if (!globalThis.navigator) global.navigator = { userAgent: 'node' };
 global.fetch = () => Promise.reject(new Error('テストでは通信しません'));

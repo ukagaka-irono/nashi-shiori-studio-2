@@ -10,6 +10,7 @@
 
 (function (N) {
 
+  const T = N.I18n.T;
   const Model = N.Model;
   const Render = N.Render;
   const App = N.App;
@@ -22,8 +23,8 @@
   // ------------------------------------------------------------ 立ち絵の絵
   // 標準の 6 枚。ここに無い番号も「追加」でふやせる。
   const SHELL_SLOTS = [
-    [0, 'さくら／通常'], [1, 'さくら／笑顔'], [2, 'さくら／驚き'],
-    [10, 'うにゅう／通常'], [11, 'うにゅう／笑顔'], [12, 'うにゅう／驚き'],
+    [0, T('さくら／通常')], [1, T('さくら／笑顔')], [2, T('さくら／驚き')],
+    [10, T('うにゅう／通常')], [11, T('うにゅう／笑顔')], [12, T('うにゅう／驚き')],
   ];
 
   function shellImages() {
@@ -40,12 +41,12 @@
     const list = SHELL_SLOTS.map(([id, label]) => [id, label]);
     for (const img of shellImages()) {
       const id = Number(img.id);
-      if (!list.some(([n]) => n === id)) list.push([id, (id >= 10 ? 'うにゅう' : 'さくら') + '／自分の絵']);
+      if (!list.some(([n]) => n === id)) list.push([id, id >= 10 ? T('うにゅう／自分の絵') : T('さくら／自分の絵')]);
     }
     return list
       .filter(([id]) => who !== 0 && who !== 1 ? true : (who === 1) === (id >= 10))
       .sort((a, b) => a[0] - b[0])
-      .map(([id, label]) => [`${id}　${label}`, id]);
+      .map(([id, label]) => [T('{id}　{label}', { id, label }), id]);
   }
 
   function shellImageOf(surfaceId) {
@@ -183,40 +184,40 @@
 
   // うごき（SERIKO のアニメーション）
   const ANIM_INTERVALS = [
-    ['呼んだときだけ', 'never'],
-    ['いつも', 'always'],
-    ['ときどき', 'sometimes'],
-    ['まれに', 'rarely'],
-    ['◯秒に一度くらい', 'random'],
-    ['◯回しゃべるごと', 'talk'],
-    ['起動時に一度だけ', 'runonce'],
+    [T('呼んだときだけ'), 'never'],
+    [T('いつも'), 'always'],
+    [T('ときどき'), 'sometimes'],
+    [T('まれに'), 'rarely'],
+    [T('◯秒に一度くらい'), 'random'],
+    [T('◯回しゃべるごと'), 'talk'],
+    [T('起動時に一度だけ'), 'runonce'],
   ];
 
   // こまの重ねかた（SERIKO の描画メソッド）。名前は surfaces.txt にそのまま出ます。
   const ANIM_METHODS = [
-    ['かさねる', 'overlay'],
-    ['かさねる（速い）', 'overlayfast'],
-    ['土台をとりかえる', 'base'],
-    ['すきとおりごと上書き', 'replace'],
-    ['すきまだけ重ねる', 'interpolate'],
-    ['すきとおりを無視する', 'asis'],
-    ['すきとおりをけずる', 'reduce'],
-    ['位置だけ動かす', 'move'],
-    ['かけあわせ', 'blend-multiply'],
-    ['スクリーン', 'blend-screen'],
-    ['オーバーレイ', 'blend-overlay'],
-    ['足しあわせ', 'blend-add'],
-    ['ほかのうごきを動かす', 'start'],
-    ['ほかのうごきを止める', 'stop'],
-    ['動く絵を差しこむ', 'import'],
+    [T('かさねる'), 'overlay'],
+    [T('かさねる（速い）'), 'overlayfast'],
+    [T('土台をとりかえる'), 'base'],
+    [T('すきとおりごと上書き'), 'replace'],
+    [T('すきまだけ重ねる'), 'interpolate'],
+    [T('すきとおりを無視する'), 'asis'],
+    [T('すきとおりをけずる'), 'reduce'],
+    [T('位置だけ動かす'), 'move'],
+    [T('かけあわせ'), 'blend-multiply'],
+    [T('スクリーン'), 'blend-screen'],
+    [T('オーバーレイ'), 'blend-overlay'],
+    [T('足しあわせ'), 'blend-add'],
+    [T('ほかのうごきを動かす'), 'start'],
+    [T('ほかのうごきを止める'), 'stop'],
+    [T('動く絵を差しこむ'), 'import'],
   ];
 
   // 当たり判定のかたち
   const ANIM_SHAPES = [
-    ['四角', 'rect'],
-    ['だ円', 'ellipse'],
-    ['丸', 'circle'],
-    ['多角形', 'polygon'],
+    [T('四角'), 'rect'],
+    [T('だ円'), 'ellipse'],
+    [T('丸'), 'circle'],
+    [T('多角形'), 'polygon'],
   ];
 
   function renderAnimList() {
@@ -225,7 +226,7 @@
     const anims = Model.project.animations || [];
     box.textContent = '';
     if (!anims.length) {
-      box.appendChild(Render.div('hint', 'まだうごきがありません。下のボタンで作れます。'));
+      box.appendChild(Render.div('hint', T('まだうごきがありません。下のボタンで作れます。')));
       return;
     }
 
@@ -233,7 +234,7 @@
       const row = Render.div('anim-row');
 
       const head = Render.div('anim-head');
-      head.appendChild(Render.el('span', 'anim-id', `うごき ${a.id}`));
+      head.appendChild(Render.el('span', 'anim-id', T('うごき {id}', { id: a.id })));
 
       const mk = (label, value, onInput, opts) => {
         const f = Render.el('label', 'field row');
@@ -252,9 +253,9 @@
         return f;
       };
 
-      head.appendChild(mk('番号', a.id, (v) => { a.id = Math.max(0, Math.min(127, Number(v) || 0)); },
+      head.appendChild(mk(T('番号'), a.id, (v) => { a.id = Math.max(0, Math.min(127, Number(v) || 0)); },
         { min: 0 }));
-      head.appendChild(mk('どの立ち絵に付ける', a.base, (v) => { a.base = Number(v) || 0; }, { min: 0 }));
+      head.appendChild(mk(T('どの立ち絵に付ける'), a.base, (v) => { a.base = Number(v) || 0; }, { min: 0 }));
 
       const sel = Render.el('select');
       for (const [label, value] of ANIM_INTERVALS) {
@@ -270,16 +271,16 @@
         renderAnimList();
       });
       const selField = Render.el('label', 'field row');
-      selField.appendChild(Render.el('span', null, 'いつ動く'));
+      selField.appendChild(Render.el('span', null, T('いつ動く')));
       selField.appendChild(sel);
       head.appendChild(selField);
 
       if (a.interval === 'random' || a.interval === 'talk') {
-        head.appendChild(mk(a.interval === 'random' ? '秒' : '回', a.every,
+        head.appendChild(mk(a.interval === 'random' ? T('秒') : T('回'), a.every,
           (v) => { a.every = Math.max(1, Number(v) || 1); }, { min: 1 }));
       }
 
-      const del = Render.el('button', 'btn tiny', '消す');
+      const del = Render.el('button', 'btn tiny', T('消す'));
       del.addEventListener('click', () => {
         Model.act(() => { Model.project.animations.splice(idx, 1); });
         renderAnimList();
@@ -313,27 +314,27 @@
       a.patterns.forEach((p, k) => {
         const pr = Render.div('anim-pat');
         pr.appendChild(Render.el('span', 'anim-step', `${k + 1}`));
-        pr.appendChild(pick('重ねかた', ANIM_METHODS, p.method || 'base',
+        pr.appendChild(pick(T('重ねかた'), ANIM_METHODS, p.method || 'base',
           (v) => { p.method = v; }));
         // 重ねかたによって、必要な欄が変わる
         if (p.method === 'start' || p.method === 'stop') {
-          pr.appendChild(mk('うごき番号', p.surface,
+          pr.appendChild(mk(T('うごき番号'), p.surface,
             (v) => { p.surface = Math.max(0, Math.min(127, Number(v) || 0)); }, { min: 0 }));
         } else {
           if (p.method === 'import') {
-            pr.appendChild(mk('動く絵', p.file || '', (v) => { p.file = String(v).trim(); },
+            pr.appendChild(mk(T('動く絵'), p.file || '', (v) => { p.file = String(v).trim(); },
               { type: 'text' }));
           } else {
-            pr.appendChild(mk('立ち絵', p.surface, (v) => { p.surface = Number(v) || 0; }, { min: 0 }));
+            pr.appendChild(mk(T('立ち絵'), p.surface, (v) => { p.surface = Number(v) || 0; }, { min: 0 }));
           }
-          pr.appendChild(mk('ミリ秒', p.wait, (v) => { p.wait = Math.max(0, Number(v) || 0); },
+          pr.appendChild(mk(T('ミリ秒'), p.wait, (v) => { p.wait = Math.max(0, Number(v) || 0); },
             { min: 0 }));
           // 位置ずらし。0 のままなら基準の絵とぴったり重なります。
-          pr.appendChild(mk('よこ', p.x || 0, (v) => { p.x = Number(v) || 0; }));
-          pr.appendChild(mk('たて', p.y || 0, (v) => { p.y = Number(v) || 0; }));
+          pr.appendChild(mk(T('よこ'), p.x || 0, (v) => { p.x = Number(v) || 0; }));
+          pr.appendChild(mk(T('たて'), p.y || 0, (v) => { p.y = Number(v) || 0; }));
         }
         const rm = Render.el('button', 'btn tiny', '−');
-        rm.title = 'このこまを消す';
+        rm.title = T('このこまを消す');
         rm.addEventListener('click', () => {
           Model.act(() => { a.patterns.splice(k, 1); });
           renderAnimList();
@@ -341,7 +342,7 @@
         pr.appendChild(rm);
         pats.appendChild(pr);
       });
-      const addPat = Render.el('button', 'btn tiny', '＋ こまを足す');
+      const addPat = Render.el('button', 'btn tiny', T('＋ こまを足す'));
       addPat.addEventListener('click', () => {
         Model.act(() => { a.patterns.push({ surface: a.base, wait: 200, method: 'base', x: 0, y: 0 }); });
         renderAnimList();
@@ -353,25 +354,25 @@
       const cols = Render.div('anim-cols');
       (a.collisions || []).forEach((c, k) => {
         const cr = Render.div('anim-pat');
-        cr.appendChild(Render.el('span', 'anim-step', 'あたり'));
-        cr.appendChild(mk('名前', c.name, (v) => { c.name = String(v).trim(); }, { type: 'text' }));
-        cr.appendChild(pick('かたち', ANIM_SHAPES, c.shape || 'rect', (v) => { c.shape = v; }));
+        cr.appendChild(Render.el('span', 'anim-step', T('あたり')));
+        cr.appendChild(mk(T('名前'), c.name, (v) => { c.name = String(v).trim(); }, { type: 'text' }));
+        cr.appendChild(pick(T('かたち'), ANIM_SHAPES, c.shape || 'rect', (v) => { c.shape = v; }));
         if (c.shape === 'circle') {
-          cr.appendChild(mk('中心よこ', c.x1, (v) => { c.x1 = Number(v) || 0; }));
-          cr.appendChild(mk('中心たて', c.y1, (v) => { c.y1 = Number(v) || 0; }));
-          cr.appendChild(mk('半径', c.x2, (v) => { c.x2 = Math.max(0, Number(v) || 0); }, { min: 0 }));
+          cr.appendChild(mk(T('中心よこ'), c.x1, (v) => { c.x1 = Number(v) || 0; }));
+          cr.appendChild(mk(T('中心たて'), c.y1, (v) => { c.y1 = Number(v) || 0; }));
+          cr.appendChild(mk(T('半径'), c.x2, (v) => { c.x2 = Math.max(0, Number(v) || 0); }, { min: 0 }));
         } else if (c.shape === 'polygon') {
-          cr.appendChild(mk('かどの位置', c.points || '', (v) => { c.points = String(v); },
+          cr.appendChild(mk(T('かどの位置'), c.points || '', (v) => { c.points = String(v); },
             { type: 'text' }));
-          cr.appendChild(Render.el('span', 'hint', 'x,y を空白でならべます（3 つ以上）'));
+          cr.appendChild(Render.el('span', 'hint', T('x,y を空白でならべます（3 つ以上）')));
         } else {
-          cr.appendChild(mk('左', c.x1, (v) => { c.x1 = Number(v) || 0; }));
-          cr.appendChild(mk('上', c.y1, (v) => { c.y1 = Number(v) || 0; }));
-          cr.appendChild(mk('右', c.x2, (v) => { c.x2 = Number(v) || 0; }));
-          cr.appendChild(mk('下', c.y2, (v) => { c.y2 = Number(v) || 0; }));
+          cr.appendChild(mk(T('左'), c.x1, (v) => { c.x1 = Number(v) || 0; }));
+          cr.appendChild(mk(T('上'), c.y1, (v) => { c.y1 = Number(v) || 0; }));
+          cr.appendChild(mk(T('右'), c.x2, (v) => { c.x2 = Number(v) || 0; }));
+          cr.appendChild(mk(T('下'), c.y2, (v) => { c.y2 = Number(v) || 0; }));
         }
         const rm = Render.el('button', 'btn tiny', '−');
-        rm.title = 'この当たり判定を消す';
+        rm.title = T('この当たり判定を消す');
         rm.addEventListener('click', () => {
           Model.act(() => { a.collisions.splice(k, 1); });
           renderAnimList();
@@ -379,8 +380,8 @@
         cr.appendChild(rm);
         cols.appendChild(cr);
       });
-      const addCol = Render.el('button', 'btn tiny', '＋ 当たり判定を足す');
-      addCol.title = 'このうごきが動いている間だけ、ここを触れるようにします';
+      const addCol = Render.el('button', 'btn tiny', T('＋ 当たり判定を足す'));
+      addCol.title = T('このうごきが動いている間だけ、ここを触れるようにします');
       addCol.addEventListener('click', () => {
         Model.act(() => {
           if (!Array.isArray(a.collisions)) a.collisions = [];
@@ -395,15 +396,15 @@
       row.appendChild(cols);
 
       if (!a.patterns.length) {
-        row.appendChild(Render.div('hint', 'こまが無いので、書き出しても動きません。'));
+        row.appendChild(Render.div('hint', T('こまが無いので、書き出しても動きません。')));
       }
       box.appendChild(row);
     });
   }
 
   // ------------------------------------------------------------ 着せ替え
-  const WHO_LABELS = [['さくら', 0], ['うにゅう', 1]];
-  const DRESS_RULES = [['1 つまで（はずせる）', ''], ['必ず 1 つ', 'mustselect'], ['いくつでも', 'multiple']];
+  const WHO_LABELS = [[T('さくら'), 0], [T('うにゅう'), 1]];
+  const DRESS_RULES = [[T('1 つまで（はずせる）'), ''], [T('必ず 1 つ'), 'mustselect'], [T('いくつでも'), 'multiple']];
 
   function dressup() {
     const p = Model.project;
@@ -419,7 +420,7 @@
     const d = dressup();
     box.textContent = '';
     if (!d.parts.length) {
-      box.appendChild(Render.div('hint', 'まだ部品がありません。下のボタンで足せます。'));
+      box.appendChild(Render.div('hint', T('まだ部品がありません。下のボタンで足せます。')));
       return;
     }
 
@@ -462,31 +463,31 @@
     d.parts.forEach((part, idx) => {
       const row = Render.div('anim-row');
       const head = Render.div('anim-head');
-      head.appendChild(Render.el('span', 'anim-id', `部品 ${idx + 1}`));
-      head.appendChild(pick('キャラ', WHO_LABELS, String(part.who), (v) => { part.who = Number(v) === 1 ? 1 : 0; }));
-      head.appendChild(mk('カテゴリ', part.category, (v) => { part.category = String(v).trim(); }, { type: 'text' }));
-      head.appendChild(mk('名前', part.name, (v) => { part.name = String(v).trim(); }, { type: 'text' }));
-      head.appendChild(mk('よこ', part.x, (v) => { part.x = Math.round(Number(v) || 0); }));
-      head.appendChild(mk('たて', part.y, (v) => { part.y = Math.round(Number(v) || 0); }));
-      head.appendChild(mk('はじめからつける', part.on, (v) => { part.on = !!v; }, { type: 'checkbox' }));
+      head.appendChild(Render.el('span', 'anim-id', T('部品 {n}', { n: idx + 1 })));
+      head.appendChild(pick(T('キャラ'), WHO_LABELS, String(part.who), (v) => { part.who = Number(v) === 1 ? 1 : 0; }));
+      head.appendChild(mk(T('カテゴリ'), part.category, (v) => { part.category = String(v).trim(); }, { type: 'text' }));
+      head.appendChild(mk(T('名前'), part.name, (v) => { part.name = String(v).trim(); }, { type: 'text' }));
+      head.appendChild(mk(T('よこ'), part.x, (v) => { part.x = Math.round(Number(v) || 0); }));
+      head.appendChild(mk(T('たて'), part.y, (v) => { part.y = Math.round(Number(v) || 0); }));
+      head.appendChild(mk(T('はじめからつける'), part.on, (v) => { part.on = !!v; }, { type: 'checkbox' }));
 
       const file = Render.el('span', 'slot-file' + (part.path ? '' : ' is-auto'),
-        part.path ? part.path.split(/[\\/]/).pop() : '絵がありません');
+        part.path ? part.path.split(/[\\/]/).pop() : T('絵がありません'));
       if (part.path) {
         file.title = part.path;
         // ファイルが動いた・消えたときは、立ち絵の行と同じように知らせる
         const probe = new Image();
         probe.addEventListener('error', () => {
-          file.textContent = 'ファイルが見つかりません';
+          file.textContent = T('ファイルが見つかりません');
           file.style.color = '#e2664a';
         });
         probe.src = dressUrl(part);
       }
       head.appendChild(file);
-      const pickBtn = Render.el('button', 'btn tiny', part.path ? '変える' : 'えらぶ');
+      const pickBtn = Render.el('button', 'btn tiny', part.path ? T('変える') : T('えらぶ'));
       pickBtn.addEventListener('click', () => pickDressImage(part.id));
       head.appendChild(pickBtn);
-      const del = Render.el('button', 'btn tiny', '消す');
+      const del = Render.el('button', 'btn tiny', T('消す'));
       del.addEventListener('click', () => {
         Model.act(() => { dressup().parts.splice(idx, 1); });
         refreshShell();
@@ -506,14 +507,15 @@
       // 部品の行と同じ枠に入れる（説明＋その下に 1 カテゴリ 1 行）。
       // 見出しを部品の番号と同じ見た目にすると、部品がもう 1 つあるように見えるので、説明の書きかたにする。
       const ruleRow = Render.div('anim-row');
-      ruleRow.appendChild(Render.div('hint', 'カテゴリごとのえらびかた（SSP の着せ替えメニューで、どうえらべるか）'));
+      ruleRow.appendChild(Render.div('hint', T('カテゴリごとのえらびかた（SSP の着せ替えメニューで、どうえらべるか）')));
       const rules = Render.div('anim-pats');
       for (const key of cats) {
         const [w, ...rest] = key.split('/');
         const cat = rest.join('/');
         const r = Render.div('anim-pat');
-        r.appendChild(Render.el('span', 'anim-step', `${Number(w) === 1 ? 'うにゅう' : 'さくら'}：${cat}`));
-        r.appendChild(pick('えらびかた', DRESS_RULES, d.rules[key] || '', (v) => {
+        r.appendChild(Render.el('span', 'anim-step',
+          T('{who}：{cat}', { who: Number(w) === 1 ? T('うにゅう') : T('さくら'), cat })));
+        r.appendChild(pick(T('えらびかた'), DRESS_RULES, d.rules[key] || '', (v) => {
           if (v) d.rules[key] = v; else delete d.rules[key];
         }));
         rules.appendChild(r);
@@ -533,7 +535,7 @@
       const d = dressup();
       let id = 200;
       while (d.parts.some((p) => p.id === id)) id++;
-      d.parts.push({ id, who: 0, category: '服', name: '部品' + (d.parts.length + 1), path: '', x: 0, y: 0, on: true });
+      d.parts.push({ id, who: 0, category: T('服'), name: T('部品{n}', { n: d.parts.length + 1 }), path: '', x: 0, y: 0, on: true });
     });
     refreshShell();
   }
@@ -553,7 +555,7 @@
       if (part) { part.path = f.path; part.stamp = String(Date.now()); }
     });
     refreshShell();
-    App.toast('画像を割り当てました');
+    App.toast(T('画像を割り当てました'));
   }
 
   // ためすの立ち絵に、つけている部品を重ねる。on は { 部品の id: true/false }（無ければ「はじめから」）
@@ -622,7 +624,7 @@
       .map((x) => Number(x.id))
       .filter((id) => !SHELL_SLOTS.some(([sid]) => sid === id))
       .sort((a, b) => a - b);
-    const rows = SHELL_SLOTS.concat(extra.map((id) => [id, id >= 10 ? 'うにゅう' : 'さくら']));
+    const rows = SHELL_SLOTS.concat(extra.map((id) => [id, id >= 10 ? T('うにゅう') : T('さくら')]));
 
     box.textContent = '';
     for (const [id, label] of rows) {
@@ -637,48 +639,49 @@
       row.appendChild(thumb);
 
       const info = Render.div('info');
-      info.appendChild(Render.div('slot-name', `${label}（${id} 番）`));
+      const slotName = T('{label}（{id} 番）', { label, id });
+      info.appendChild(Render.div('slot-name', slotName));
       const layered = !!(img && !img.path && img.layers && img.layers.length);
       const file = Render.el('span', 'slot-file' + (img ? '' : ' is-auto'),
-        layered ? `絵を重ねて作る（${img.layers.length} 枚）` : (img ? (img.name || img.path) : '自動生成'));
+        layered ? T('絵を重ねて作る（{n} 枚）', { n: img.layers.length }) : (img ? (img.name || img.path) : T('自動生成')));
       if (layered && composedMissing(id)) {
         // 重ねる絵が動いた・消えたときも、1 枚の絵の行と同じように知らせる
-        file.textContent = 'ファイルが見つかりません';
+        file.textContent = T('ファイルが見つかりません');
         file.style.color = '#e2664a';
       }
       if (img && !layered) {
         file.title = img.path;
         // ファイルが動いた・消えたときは、ここで気づけるようにする
         pic.addEventListener('error', () => {
-          file.textContent = 'ファイルが見つかりません';
+          file.textContent = T('ファイルが見つかりません');
           file.style.color = '#e2664a';
-          thumb.textContent = '？';
+          thumb.textContent = '？';  // i18n-ignore（記号だけ）
         });
       }
       info.appendChild(file);
       row.appendChild(info);
 
-      const pickBtn = Render.el('button', 'btn tiny', img && !layered ? '変える' : 'えらぶ');
-      pickBtn.title = '1 枚の PNG を立ち絵にする';
+      const pickBtn = Render.el('button', 'btn tiny', img && !layered ? T('変える') : T('えらぶ'));
+      pickBtn.title = T('1 枚の PNG を立ち絵にする');
       pickBtn.addEventListener('click', () => pickShellImage(id));
       row.appendChild(pickBtn);
 
-      const composeBtn = Render.el('button', 'btn tiny', '重ねて作る');
-      composeBtn.title = 'キャラ共通の土台の上に、この表情の絵を重ねて立ち絵を作る';
-      composeBtn.addEventListener('click', () => openComposeEditor(id, `${label}（${id} 番）`));
+      const composeBtn = Render.el('button', 'btn tiny', T('重ねて作る'));
+      composeBtn.title = T('キャラ共通の土台の上に、この表情の絵を重ねて立ち絵を作る');
+      composeBtn.addEventListener('click', () => openComposeEditor(id, slotName));
       row.appendChild(composeBtn);
 
       if (img) {
         const n = (img.collisions || []).length;
-        const hitBtn = Render.el('button', 'btn tiny', n ? `当たり判定（${n}）` : '当たり判定');
-        hitBtn.title = n ? 'この絵に描いた当たり判定を直す' : 'この絵に当たり判定を描く（描かなければ自動で付けます）';
-        hitBtn.addEventListener('click', () => openHitAreaEditor(id, `${label}（${id} 番）`));
+        const hitBtn = Render.el('button', 'btn tiny', n ? T('当たり判定（{n}）', { n }) : T('当たり判定'));
+        hitBtn.title = n ? T('この絵に描いた当たり判定を直す') : T('この絵に当たり判定を描く（描かなければ自動で付けます）');
+        hitBtn.addEventListener('click', () => openHitAreaEditor(id, slotName));
         row.appendChild(hitBtn);
       }
 
       if (img) {
-        const clear = Render.el('button', 'btn tiny', 'もどす');
-        clear.title = '自動生成にもどす';
+        const clear = Render.el('button', 'btn tiny', T('もどす'));
+        clear.title = T('自動生成にもどす');
         clear.addEventListener('click', () => {
           Model.act(() => {
             const list = shellImages();
@@ -710,7 +713,7 @@
 
     const body = Render.div('hit-editor');
     body.appendChild(Render.el('p', 'hint',
-      '絵の上をドラッグすると、四角の当たり判定を足せます。1 つも作らなければ、書き出すときに自動で付けます。'));
+      T('絵の上をドラッグすると、四角の当たり判定を足せます。1 つも作らなければ、書き出すときに自動で付けます。')));
 
     const stage = Render.div('hit-stage');
     const pic = Render.el('img');
@@ -836,34 +839,34 @@
         const choose = () => { if (selected !== k) { selected = k; drawShapes(); markRows(); } };
         cr.addEventListener('pointerdown', choose);
         cr.addEventListener('focusin', choose);
-        cr.appendChild(Render.el('span', 'anim-step', 'あたり'));
+        cr.appendChild(Render.el('span', 'anim-step', T('あたり')));
         // 名前は、触れたときのブロックの「どこ」と同じ言葉でえらぶ。ほかの名前は自分で書ける。
         const known = N.AREAS.some(([, v]) => v && v === c.name);
         const nameOpts = N.AREAS.filter(([, v]) => v).concat(
-          known ? [] : [[c.name, c.name]], [['その他（自分で書く）', '__custom__']]);
-        cr.appendChild(pick('名前', nameOpts, c.name, (v) => {
+          known ? [] : [[c.name, c.name]], [[T('その他（自分で書く）'), '__custom__']]);
+        cr.appendChild(pick(T('名前'), nameOpts, c.name, (v) => {
           if (v !== '__custom__') { c.name = v; return; }
-          const typed = prompt('当たり判定の名前は？（英数字がおすすめです）', known ? '' : c.name);
+          const typed = prompt(T('当たり判定の名前は？（英数字がおすすめです）'), known ? '' : c.name);
           // 空にすると、書き出しでも読みなおしでも消えてしまうので、前の名前のままにする
           if (typed != null && typed.trim()) c.name = typed.trim().replace(/,/g, ' ');
         }));
-        cr.appendChild(pick('かたち', ANIM_SHAPES, c.shape || 'rect', (v) => { c.shape = v; }));
+        cr.appendChild(pick(T('かたち'), ANIM_SHAPES, c.shape || 'rect', (v) => { c.shape = v; }));
         const int = (v) => Math.round(Number(v) || 0);
         if (c.shape === 'circle') {
-          cr.appendChild(mk('中心よこ', c.x1, (v) => { c.x1 = int(v); }));
-          cr.appendChild(mk('中心たて', c.y1, (v) => { c.y1 = int(v); }));
-          cr.appendChild(mk('半径', c.x2, (v) => { c.x2 = Math.max(0, int(v)); }, { min: 0 }));
+          cr.appendChild(mk(T('中心よこ'), c.x1, (v) => { c.x1 = int(v); }));
+          cr.appendChild(mk(T('中心たて'), c.y1, (v) => { c.y1 = int(v); }));
+          cr.appendChild(mk(T('半径'), c.x2, (v) => { c.x2 = Math.max(0, int(v)); }, { min: 0 }));
         } else if (c.shape === 'polygon') {
-          cr.appendChild(mk('かどの位置', c.points || '', (v) => { c.points = String(v); }, { type: 'text' }));
-          cr.appendChild(Render.el('span', 'hint', 'x,y を空白でならべます（3 つ以上）'));
+          cr.appendChild(mk(T('かどの位置'), c.points || '', (v) => { c.points = String(v); }, { type: 'text' }));
+          cr.appendChild(Render.el('span', 'hint', T('x,y を空白でならべます（3 つ以上）')));
         } else {
-          cr.appendChild(mk('左', c.x1, (v) => { c.x1 = int(v); }));
-          cr.appendChild(mk('上', c.y1, (v) => { c.y1 = int(v); }));
-          cr.appendChild(mk('右', c.x2, (v) => { c.x2 = int(v); }));
-          cr.appendChild(mk('下', c.y2, (v) => { c.y2 = int(v); }));
+          cr.appendChild(mk(T('左'), c.x1, (v) => { c.x1 = int(v); }));
+          cr.appendChild(mk(T('上'), c.y1, (v) => { c.y1 = int(v); }));
+          cr.appendChild(mk(T('右'), c.x2, (v) => { c.x2 = int(v); }));
+          cr.appendChild(mk(T('下'), c.y2, (v) => { c.y2 = int(v); }));
         }
         const rm = Render.el('button', 'btn tiny', '−');
-        rm.title = 'この当たり判定を消す';
+        rm.title = T('この当たり判定を消す');
         rm.addEventListener('click', () => {
           Model.act(() => { img.collisions.splice(k, 1); });
           if (selected >= img.collisions.length) selected = img.collisions.length - 1;
@@ -872,7 +875,7 @@
         cr.appendChild(rm);
         rows.appendChild(cr);
       });
-      const add = Render.el('button', 'btn tiny', '＋ 当たり判定を足す');
+      const add = Render.el('button', 'btn tiny', T('＋ 当たり判定を足す'));
       add.addEventListener('click', () => {
         const w = natW || 100, h = natH || 100;
         addCollision({ x1: Math.round(w * 0.25), y1: Math.round(h * 0.1),
@@ -980,7 +983,7 @@
     });
     pic.addEventListener('error', () => {
       // 立ち絵の行と同じ文と色で知らせる
-      const msg = Render.div('hint', 'ファイルが見つかりません');
+      const msg = Render.div('hint', T('ファイルが見つかりません'));
       msg.style.color = '#e2664a';
       stage.replaceChildren(msg);
     });
@@ -1003,7 +1006,7 @@
       if (pic.getAttribute('src') !== u) pic.src = u;
       // 重ねる絵が読めないときは、1 枚の絵のときと同じ文と色で知らせる
       if (composedMissing(surfaceId) && !composeWarn) {
-        composeWarn = Render.div('hint', 'ファイルが見つかりません');
+        composeWarn = Render.div('hint', T('ファイルが見つかりません'));
         composeWarn.style.color = '#e2664a';
         stage.after(composeWarn);
       }
@@ -1012,7 +1015,7 @@
 
     renderRows();
     drawShapes();
-    N.Dialog.modal(`${title}の当たり判定`, body, [{ label: '閉じる' }], {
+    N.Dialog.modal(T('{title}の当たり判定', { title }), body, [{ label: T('閉じる') }], {
       wide: true,
       // 閉じたら、ボタンの「（3）」などを描きなおす
       onClose: () => {
@@ -1028,12 +1031,11 @@
   // ------------------------------------------- 立ち絵を絵から重ねて作る（ダイアログ）
   function openComposeEditor(surfaceId, title) {
     const who = Number(surfaceId) >= 10 ? 1 : 0;
-    const whoName = who === 1 ? 'うにゅう' : 'さくら';
+    const whoName = who === 1 ? T('うにゅう') : T('さくら');
 
     const body = Render.div('compose-editor');
     body.appendChild(Render.el('p', 'hint',
-      `${whoName}の土台（すべての表情で共通）の手前に、この表情の絵を、奥から順に重ねます。` +
-      '土台を直すと、重ねて作ったすべての表情に効きます。この表情の絵が 1 枚もなければ、自動生成にもどります。'));
+      T('{who}の土台（すべての表情で共通）の手前に、この表情の絵を、奥から順に重ねます。土台を直すと、重ねて作ったすべての表情に効きます。この表情の絵が 1 枚もなければ、自動生成にもどります。', { who: whoName })));
     const stage = Render.div('hit-stage');
     const pic = Render.el('img');
     pic.alt = title;
@@ -1086,7 +1088,7 @@
       // 1 枚の絵の立ち絵を重ねて作るほうへ切りかえるときは、ファイルをえらぶ前に確かめる
       const cur = shellImageOf(surfaceId);
       if (!toBase && cur && cur.path &&
-          !confirm(`「${cur.name || cur.path}」の 1 枚の絵をやめて、絵を重ねて作りますか？`)) {
+          !confirm(T('「{name}」の 1 枚の絵をやめて、絵を重ねて作りますか？', { name: cur.name || cur.path }))) {
         return;
       }
       let r;
@@ -1104,7 +1106,7 @@
       });
       refreshShell();
       render();
-      App.toast(files.length > 1 ? `${files.length} 枚を割り当てました` : '画像を割り当てました');
+      App.toast(files.length > 1 ? T('{n} 枚を割り当てました', { n: files.length }) : T('画像を割り当てました'));
     }
 
     // うごきの欄と同じ作り（変えたら元にもどすに積む）
@@ -1127,7 +1129,7 @@
 
     function layerRows(list, isBase) {
       const box = Render.div('anim-pats');
-      box.appendChild(Render.el('p', 'hint', isBase ? `${whoName}の土台（すべての表情で共通）` : 'この表情で重ねる絵'));
+      box.appendChild(Render.el('p', 'hint', isBase ? T('{who}の土台（すべての表情で共通）', { who: whoName }) : T('この表情で重ねる絵')));
       (list || []).forEach((l, k) => {
         const r = Render.div('anim-pat');
         r.appendChild(Render.el('span', 'anim-step', `${k + 1}`));
@@ -1135,13 +1137,13 @@
         name.title = l.path;
         const probe = new Image();
         probe.addEventListener('error', () => {
-          name.textContent = 'ファイルが見つかりません';
+          name.textContent = T('ファイルが見つかりません');
           name.style.color = '#e2664a';
         });
         probe.src = layerUrl(l);
         r.appendChild(name);
-        r.appendChild(mk('よこ', l.x, (v) => { l.x = Math.round(Number(v) || 0); }));
-        r.appendChild(mk('たて', l.y, (v) => { l.y = Math.round(Number(v) || 0); }));
+        r.appendChild(mk(T('よこ'), l.x, (v) => { l.x = Math.round(Number(v) || 0); }));
+        r.appendChild(mk(T('たて'), l.y, (v) => { l.y = Math.round(Number(v) || 0); }));
         const move = (d, label, tip) => {
           const b = Render.el('button', 'btn tiny', label);
           b.title = tip;
@@ -1154,10 +1156,10 @@
           return b;
         };
         // 並びは奥の絵から順なので、ボタンは重なりの向きで書く（画面の上下とまちがえないように）
-        r.appendChild(move(-1, '奥へ', '1 つ奥へ'));
-        r.appendChild(move(1, '手前へ', '1 つ手前へ'));
+        r.appendChild(move(-1, T('奥へ'), T('1 つ奥へ')));
+        r.appendChild(move(1, T('手前へ'), T('1 つ手前へ')));
         const rm = Render.el('button', 'btn tiny', '−');
-        rm.title = 'この絵を消す';
+        rm.title = T('この絵を消す');
         rm.addEventListener('click', () => {
           Model.act(() => { list.splice(k, 1); if (!isBase) dropIfEmpty(); });
           refreshShell();
@@ -1166,7 +1168,7 @@
         r.appendChild(rm);
         box.appendChild(r);
       });
-      const add = Render.el('button', 'btn tiny', '＋ 絵を足す');
+      const add = Render.el('button', 'btn tiny', T('＋ 絵を足す'));
       add.addEventListener('click', () => addLayers(isBase));
       box.appendChild(add);
       return box;
@@ -1182,7 +1184,7 @@
       pic.src = layered ? shellUrl(surfaceId) : (base().length ? baseOnlyUrl(who) : shellUrl(surfaceId));
       // 読めない絵があれば、当たり判定の編集と同じように知らせる
       const missing = layered ? composedMissing(surfaceId) : (base().length ? composedMissing('base' + who) : 0);
-      warn.textContent = missing ? 'ファイルが見つかりません' : '';
+      warn.textContent = missing ? T('ファイルが見つかりません') : '';
       warn.style.display = missing ? '' : 'none';     // 何も無いときは、すきまも作らない
     }
 
@@ -1192,7 +1194,7 @@
     composeWatchers.add(onComposed);
     Model.onChange(onModel);
     render();
-    N.Dialog.modal(`${title}を重ねて作る`, body, [{ label: '閉じる' }], {
+    N.Dialog.modal(T('{title}を重ねて作る', { title }), body, [{ label: T('閉じる') }], {
       wide: true,
       onClose: () => {
         composeWatchers.delete(onComposed);
@@ -1206,7 +1208,7 @@
     // 重ねて作った立ち絵を 1 枚の絵にするときは、ファイルをえらぶ前に確かめる
     const cur = shellImageOf(surfaceId);
     if (cur && !cur.path && cur.layers && cur.layers.length &&
-        !confirm('重ねて作った絵をやめて、1 枚の絵にしますか？')) {
+        !confirm(T('重ねて作った絵をやめて、1 枚の絵にしますか？'))) {
       return;
     }
     let r;
@@ -1240,7 +1242,7 @@
       list.sort((a, b) => Number(a.id) - Number(b.id));
     });
     refreshShell();
-    App.toast(files.length > 1 ? `${files.length} 枚を割り当てました` : '画像を割り当てました');
+    App.toast(files.length > 1 ? T('{n} 枚を割り当てました', { n: files.length }) : T('画像を割り当てました'));
   }
 
   function resetStage() {
@@ -1249,8 +1251,8 @@
       b.querySelector('.balloon-text').textContent = '';
       b.classList.add('is-empty');
     }
-    $('#balloon-0 .balloon-name').textContent = Model.project.meta.sakuraName || 'さくら';
-    $('#balloon-1 .balloon-name').textContent = Model.project.meta.keroName || 'うにゅう';
+    $('#balloon-0 .balloon-name').textContent = Model.project.meta.sakuraName || T('さくら');
+    $('#balloon-1 .balloon-name').textContent = Model.project.meta.keroName || T('うにゅう');
     refreshShell();
   }
 
@@ -1365,8 +1367,8 @@
               ? s.kind === 'event' && s.event === op.id
               : (s.kind === 'function' || s.kind === 'talk') && s.name === op.id));
             if (fn) App.runScript(fn, isEvent && op.refs && op.refs.length ? op.refs : undefined);
-            else if (isEvent) App.toast(`「${op.id}」のブロックがありません`, true);
-            else App.toast(`「${op.id}」というトークが見つかりません`, true);
+            else if (isEvent) App.toast(T('「{id}」のブロックがありません', { id: op.id }), true);
+            else App.toast(T('「{id}」というトークが見つかりません', { id: op.id }), true);
           });
           target.querySelector('.balloon-text').appendChild(chip);
           break;
@@ -1395,8 +1397,8 @@
       if (Number.isFinite(op.min)) inp.min = String(op.min);
       if (Number.isFinite(op.max)) inp.max = String(op.max);
     }
-    inp.setAttribute('aria-label', `${Player.INPUT_KINDS[op.kind] || '文字'}を入れる`);
-    const ok = Render.el('button', 'btn tiny', '答える');
+    inp.setAttribute('aria-label', T('{kind}を入れる', { kind: Player.INPUT_KINDS[op.kind] || T('文字') }));
+    const ok = Render.el('button', 'btn tiny', T('答える'));
     ok.type = 'submit';
     form.appendChild(inp);
     form.appendChild(ok);
@@ -1414,8 +1416,8 @@
         if (!m) { inp.focus(); return; }
         answer = `${Number(m[1])},${Number(m[2])},${Number(m[3] || 0)}`;
       }
-      const shown = op.kind === 'passwordinput' ? '＊＊＊' : answer;    // パスワードは見せない
-      form.replaceWith(Render.el('span', 'balloon-note', `（「${shown}」と答えました）`));
+      const shown = op.kind === 'passwordinput' ? '＊＊＊' : answer;    // パスワードは見せない。i18n-ignore（伏せ字の記号）
+      form.replaceWith(Render.el('span', 'balloon-note', T('（「{answer}」と答えました）', { answer: shown })));
       App.answerInput(op.id, answer, shown);
     });
     setTimeout(() => inp.focus(), 0);

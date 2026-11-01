@@ -2,26 +2,56 @@
   {
     "file": "aisatsu.json",
     "title": "あいさつ ゴースト",
-    "desc": "起動・終了・ダブルクリックの基本。いちばん小さいお手本です。"
+    "desc": "起動・終了・ダブルクリックの基本。いちばん小さいお手本です。",
+    "i18n": {
+      "en": {
+        "title": "Greeting ghost",
+        "desc": "The basics of booting, closing and double-clicking. The smallest sample. (Its speech is in Japanese.)"
+      }
+    }
   },
   {
     "file": "kouknado.json",
     "title": "好感度が上がる",
-    "desc": "なでられると変数がふえて、しゃべる内容が変わります。"
+    "desc": "なでられると変数がふえて、しゃべる内容が変わります。",
+    "i18n": {
+      "en": {
+        "title": "Affection goes up",
+        "desc": "Stroking raises a variable, and what the ghost says changes with it. (Its speech is in Japanese.)"
+      }
+    }
   },
   {
     "file": "asa-hiru-ban.json",
     "title": "朝・昼・晩でしゃべり分ける",
-    "desc": "「いまごろ」で分けたトークのまとまりから、時間に合うものを出します。"
+    "desc": "「いまごろ」で分けたトークのまとまりから、時間に合うものを出します。",
+    "i18n": {
+      "en": {
+        "title": "Morning, noon and night",
+        "desc": "Picks a talk that fits the time of day from groups split by “time of day”. (Its speech is in Japanese.)"
+      }
+    }
   },
   {
     "file": "namae.json",
     "title": "名前をきいて呼ぶ",
-    "desc": "入力ボックスで名前をたずねて、覚えて呼びかけます。"
+    "desc": "入力ボックスで名前をたずねて、覚えて呼びかけます。",
+    "i18n": {
+      "en": {
+        "title": "Ask the name and use it",
+        "desc": "Asks for your name in an input box, remembers it and calls you by it. (Its speech is in Japanese.)"
+      }
+    }
   },
   {
     "file": "otagai.json",
     "title": "ほかのゴーストと話す",
-    "desc": "話しかけられたら返し、こちらからも話しかけます。"
+    "desc": "話しかけられたら返し、こちらからも話しかけます。",
+    "i18n": {
+      "en": {
+        "title": "Talk with other ghosts",
+        "desc": "Answers when talked to, and starts conversations too. (Its speech is in Japanese.)"
+      }
+    }
   }
 ]
