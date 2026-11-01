@@ -17,6 +17,7 @@
  *   ・SSP のイベントの読みかた（しゃべれるか・1時間ごと・切り替わって来たとき）
  *
  * 要求には、| のうしろに見出しを足せます（例: 'OnBoot|SecurityLevel:external'）。
+ * 頭に ~ を付けると NOTIFY で送ります（例: '~OnNotifyOSInfo:Windows'。起動のときの知らせのまね）。
  *
  * ふるまいを変えたら、ここの期待値も直してください。
  */
@@ -58,7 +59,65 @@ const daysAgo = (n) => {
 //   { valueOneOf: [...] } どれか 1 つに当たればよい（既定の反応がランダムなもの）
 //   { errors: ['warning 内容', ...] } 作者むけの知らせ（ErrorLevel / ErrorDescription）。書かなければ「何も出ない」
 //   null なら見ない
+const KO_MENU = ['왜?', '불렀어?', '무슨 일이야?'].map((h) => `\\0\\s[0]${h}\\n\\n\\q[뭔가 말해 줘,nashi.menu.talk]\\n`
+  + '\\q[말하는 빈도 바꾸기,nashi.menu.interval]\\n\\q[아무것도 아니야,nashi.menu.cancel]\\e');
+
 const scenarios = [
+  {
+    name: 'SSP の言語（OnLanguageChange）— 読みこみのまちがいも、知らせるときの言語で（英語）',
+    dir: BROKEN,
+    setup: (dir) => fs.copyFileSync(path.join(dir, 'ghost.broken.txt'), path.join(dir, 'ghost.json')),
+    steps: [
+      // 言語の知らせより先に来た NOTIFY では、まだ知らせを渡さない（日本語で出てしまうので）
+      ['~OnNotifyOSInfo:Windows', { status: '204 No Content' }],
+      // 言語の知らせより前（読みこみのとき）に起きたまちがいも、渡すこの応答で英語になる
+      ['~OnLanguageChange:English,1033', { status: '204 No Content', errors: [
+        'error ghost.json line 4, column 3: expected "," or "}" here (a missing ","?)'] }],
+      ['OnBoot:master', '\\0\\s[0]Could not load ghost.json.\\nghost.json line 4, column 3: expected "," or "}" here (a missing ","?)'
+        + '\\n(Please export it again from the editor.)\\e'],
+    ],
+  },
+  {
+    name: 'SSP の言語 — 書いていないダブルクリックのメニューも、その言語で（韓国語）',
+    dir: TALK,
+    steps: [
+      ['OnLanguageChange:Korean,1042', { status: '204 No Content' }],
+      ['OnMouseDoubleClick:0,0,0,0,Head', { valueOneOf: KO_MENU }],
+      ['OnChoiceSelect:nashi.menu.interval', '\\0\\s[0]얼마나 자주 말할까?\\n(지금은 대략 1초마다)\\n\\n'
+        + '\\q[많이 (1분마다),nashi.menu.iv.60]\\n\\q[평소대로 (1초마다),nashi.menu.iv.usual]\\n'
+        + '\\q[가끔 (10분마다),nashi.menu.iv.600]\\n\\q[당분간 조용히,nashi.menu.iv.0]\\e'],
+    ],
+  },
+  {
+    name: 'SSP の言語 — 繁体字・簡体字は言語 ID で分け、知らない言語は英語にする',
+    dir: EMPTY,
+    steps: [
+      ['OnLanguageChange:Chinese-Traditional,1028', { status: '204 No Content' }],
+      ['OnBoot:master', '\\0\\s[0]歡迎回來。\\e'],
+      ['OnLanguageChange:Chinese-Simplified,2052', { status: '204 No Content' }],
+      ['OnBoot:master', '\\0\\s[0]欢迎回来。\\e'],
+      ['OnLanguageChange:Russian,1049', { status: '204 No Content' }],
+      ['OnBoot:master', '\\0\\s[0]Welcome back.\\e'],
+      // 読めない言語 ID では変えない（知らない形で、勝手に英語などにしない）
+      ['OnLanguageChange:Japanese,abc', { status: '204 No Content' }],
+      ['OnBoot:master', '\\0\\s[0]Welcome back.\\e'],
+      // 16 進でも読める。日本語にもどる
+      ['OnLanguageChange:Japanese,0x0411', { status: '204 No Content' }],
+      ['OnBoot:master', '\\0\\s[0]おかえりなさい。\\e'],
+      // 香港は繁体字
+      ['OnLanguageChange:Chinese,3076', { status: '204 No Content' }],
+      ['OnBoot:master', '\\0\\s[0]歡迎回來。\\e'],
+    ],
+  },
+  {
+    name: 'SSP の言語 — 開発者ツールへの知らせは訳すが、書いた人のセリフとトーク名はそのまま',
+    dir: DIAG,
+    steps: [
+      ['OnLanguageChange:English,1033', { status: '204 No Content' }],
+      ['OnMissing', { value: '\\0つづき\\e',
+        errors: ['warning OnMissing: Tried to call "ないよ", but there is no talk with that name'] }],
+    ],
+  },
   {
     name: '作者むけの知らせ — まちがいは SSP の開発者ツールへ（イベントの名前つき・同じものは 1 つ・おさまったら出ない）',
     dir: DIAG,

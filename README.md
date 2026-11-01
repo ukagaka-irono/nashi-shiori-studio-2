@@ -301,6 +301,7 @@ nashi-shiori-studio-2/
 │   │   ├── program.cpp     ghost.json の読み込みと変数
 │   │   ├── json.cpp        小さな JSON パーサ（スタジオと共用）
 │   │   ├── util.cpp        文字コード・ファイル・乱数（スタジオと共用）
+│   │   ├── lang.cpp        栞が自分で言うことばの表（SSP の言語に合わせる。スタジオと共用）
 │   │   ├── tinycrt.cpp     小さなランタイム（Windows 2000 で動かすため）
 │   │   ├── msvcrt.def      Windows の msvcrt.dll から借りる関数の一覧
 │   │   └── nashi.def       DLL が公開する名前（load / unload / request）

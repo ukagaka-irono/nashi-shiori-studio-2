@@ -72,6 +72,8 @@ private:
     };
     std::vector<Timer> timers_;
     bool ready_ = false;
+    // SSP の言語（OnLanguageChange）を、もう受けとったか。受けとるまでは、NOTIFY で知らせを渡さない
+    bool langKnown_ = false;
     // ランダムトークまでの、しゃべれるあいだに数えた秒数と、つぎに話すまでの秒数
     // （設定の間隔に ±20% のゆらぎを付けて、毎回決めなおす。talkWaitBase_ はそのもとにした間隔）
     long secondsSinceTalk_ = 0;

@@ -152,7 +152,8 @@ $sources = @(
     (Join-Path $repo 'shiori\src\interp.cpp'),
     (Join-Path $repo 'shiori\src\program.cpp'),
     (Join-Path $repo 'shiori\src\json.cpp'),
-    (Join-Path $repo 'shiori\src\util.cpp')
+    (Join-Path $repo 'shiori\src\util.cpp'),
+    (Join-Path $repo 'shiori\src\lang.cpp')
 )
 
 $wv2 = Join-Path $root 'third_party\webview2'
@@ -181,7 +182,8 @@ if ($Test) {
             (Join-Path $src 'deflate.cpp'),
             (Join-Path $src 'fsutil.cpp'),
             (Join-Path $repo 'shiori\src\json.cpp'),
-            (Join-Path $repo 'shiori\src\util.cpp')
+            (Join-Path $repo 'shiori\src\util.cpp'),
+            (Join-Path $repo 'shiori\src\lang.cpp')
         ) `
         -Include @($src, "$repo\shiori\src") `
         -Lib ($libsCommon + @('gdi32.lib', 'comdlg32.lib', 'oleaut32.lib'))
@@ -194,7 +196,8 @@ if ($Test) {
             (Join-Path $repo 'shiori\src\interp.cpp'),
             (Join-Path $repo 'shiori\src\program.cpp'),
             (Join-Path $repo 'shiori\src\json.cpp'),
-            (Join-Path $repo 'shiori\src\util.cpp')
+            (Join-Path $repo 'shiori\src\util.cpp'),
+            (Join-Path $repo 'shiori\src\lang.cpp')
         ) `
         -Include @($src, "$repo\shiori\src") `
         -Lib $libsCommon

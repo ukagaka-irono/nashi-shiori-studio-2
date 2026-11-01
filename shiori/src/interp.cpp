@@ -1028,19 +1028,19 @@ static void RunBlock(const JValue& b, RunCtx& ctx) {
         const JValue* fn = ctx.prog->functionByName(name);
         if (!fn) fn = ctx.prog->scriptById(name);
         if (!fn) {
-            Report(kProblemWarning, name.empty() ? std::string("「よぶ」ブロックに、トークの名前が入っていません")
-                                                 : "「" + name + "」をよぼうとしましたが、その名前のトークがありません");
+            if (name.empty()) Report(kProblemWarning, Msg("「よぶ」ブロックに、トークの名前が入っていません"));
+            else Report(kProblemWarning, Msg("「{0}」をよぼうとしましたが、その名前のトークがありません").arg(name));
             return;
         }
         for (size_t i = 0; i < ctx.stack.size(); i++) {
             if (ctx.stack[i] == fn) {                   // already running: stop recursion
-                Report(kProblemWarning, "「" + name + "」は、いまよんでいる途中なので、もう一度はよびませんでした"
-                                        "（自分をよんだり、よび合いがひとまわりしたりしていませんか）");
+                Report(kProblemWarning, Msg("「{0}」は、いまよんでいる途中なので、もう一度はよびませんでした"
+                                            "（自分をよんだり、よび合いがひとまわりしたりしていませんか）").arg(name));
                 return;
             }
         }
         if (ctx.stack.size() > 16) {
-            Report(kProblemWarning, "よぶ・よばれるが 16 段より深くなったので、「" + name + "」はよびませんでした");
+            Report(kProblemWarning, Msg("よぶ・よばれるが 16 段より深くなったので、「{0}」はよびませんでした").arg(name));
             return;
         }
         ctx.stack.push_back(fn);

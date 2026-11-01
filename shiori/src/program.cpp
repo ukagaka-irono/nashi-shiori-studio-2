@@ -1,5 +1,8 @@
 #include "program.h"
 #include "util.h"
+#include "lang.h"
+
+#include <cstdio>
 
 namespace nashi {
 
@@ -80,14 +83,18 @@ JValue Vars::toJson() const {
 
 // ---------------------------------------------------------------- Program
 
+std::string Program::error() const {
+    return FormatMsg(error_, kLangJa);
+}
+
 bool Program::Load(const std::wstring& dir) {
     loaded_ = false;
-    error_.clear();
+    error_ = Msg();
     root_ = JValue();
 
     const wchar_t* names[] = { L"ghost.json", L"nashi.json" };
     std::string text;
-    // 読めなかったわけは、人が直せるように日本語で残す（起動のときにしゃべり、SSP のエラーログにも出る）
+    // 読めなかったわけは、人が直せるように残す（起動のときにしゃべり、SSP のエラーログにも出る。lang.cpp で訳す）
     const char* shown[] = { "ghost.json", "nashi.json" };
     int why = kReadMissing;
     int at = 0;
@@ -98,15 +105,19 @@ bool Program::Load(const std::wstring& dir) {
     }
     if (why != kReadOk) {
         std::string name = shown[at];
-        if (why == kReadMissing) error_ = "ghost.json が見つかりません";
-        else if (why == kReadTooBig) error_ = name + " が大きすぎます（16MB まで）";
-        else if (why == kReadLocked) error_ = name + " を、ほかのプログラムが使っていて開けません";
-        else error_ = name + " を開けません（読む権限が無い、などのわけで）";
+        if (why == kReadMissing) error_ = Msg("ghost.json が見つかりません");
+        else if (why == kReadTooBig) error_ = Msg("{0} が大きすぎます（16MB まで）").arg(name);
+        else if (why == kReadLocked) error_ = Msg("{0} を、ほかのプログラムが使っていて開けません").arg(name);
+        else error_ = Msg("{0} を開けません（読む権限が無い、などのわけで）").arg(name);
         return false;
     }
-    std::string err;
-    if (!JsonParse(text, root_, err)) {
-        error_ = std::string(shown[at]) + " の " + err;
+    std::string why2;
+    unsigned line = 0, col = 0;
+    if (!JsonParseAt(text, root_, why2, line, col)) {
+        char pos[2][16];
+        sprintf_s(pos[0], "%u", line);
+        sprintf_s(pos[1], "%u", col);
+        error_ = Msg("{0} の {1} 行目 {2} 文字目: {3}").arg(shown[at]).arg(pos[0]).arg(pos[1]).argTr(why2);
         return false;
     }
     return Adopt(root_);
@@ -114,10 +125,10 @@ bool Program::Load(const std::wstring& dir) {
 
 bool Program::Adopt(const JValue& root) {
     loaded_ = false;
-    error_.clear();
+    error_ = Msg();
     if (&root != &root_) root_ = root;
     if (!root_.isObj()) {
-        error_ = "ghost.json の中身が { … } のかたちではありません";
+        error_ = Msg("ghost.json の中身が { … } のかたちではありません");
         BuildIndex();
         return false;
     }

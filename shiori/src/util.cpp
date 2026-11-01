@@ -1,4 +1,5 @@
 #include "util.h"
+#include "lang.h"
 
 #include <cstdio>
 #include <cmath>
@@ -293,20 +294,24 @@ static std::vector<Problem> g_problems;       // まだ渡していない知ら�
 static std::vector<std::string> g_reported;   // この回に、もう知らせたもの
 static std::string g_place;
 
-void Report(int level, const std::string& text) {
-    std::string full = g_place.empty() ? text : g_place + ": " + text;
+void Report(int level, const Msg& msg) {
+    // 同じかどうかは、もとの日本語とはめる値で見る（言語が変わっても同じ知らせ）
+    // （はめた知らせ subs は、日本語の文にして見る）
+    std::string key = g_place + "\x01" + FormatMsg(msg, kLangJa);
     // 同じ知らせは 1 回だけ。覚えておく数にも、1 回に渡す数にも上限を付ける
     const size_t kMaxReported = 256;
     const size_t kMaxProblems = 8;
     for (size_t i = 0; i < g_reported.size(); i++) {
-        if (g_reported[i] == full) return;
+        if (g_reported[i] == key) return;
     }
-    Log(full);
-    if (g_reported.size() < kMaxReported) g_reported.push_back(full);
+    std::string text = FormatMsg(msg, UiLang());
+    Log(g_place.empty() ? text : g_place + ": " + text);
+    if (g_reported.size() < kMaxReported) g_reported.push_back(key);
     if (g_problems.size() >= kMaxProblems) return;
     Problem p;
     p.level = level;
-    p.text = full;
+    p.place = g_place;
+    p.msg = msg;
     g_problems.push_back(p);
 }
 

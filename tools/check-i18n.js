@@ -187,7 +187,8 @@ for (const f of jsFiles) {
     scanCpp(path.join('studio', 'src', f), /(?:JsonError\(\s*res\s*,\s*\d+\s*,|\.error\s*=)([^;]*?)\)?;/g);
   }
   scanCpp(path.join('shiori', 'src', 'json.cpp'), /\bfail\(("(?:[^"\\]|\\.)*")\)/g);
-  scanCpp(path.join('shiori', 'src', 'program.cpp'), /error_\s*=\s*("(?:[^"\\]|\\.)*");/g);
+  // program.cpp のうち、画面（ためす）に届くのは、ファイルを読まない Adopt の「ghost.json …」だけ
+  scanCpp(path.join('shiori', 'src', 'program.cpp'), /error_\s*=\s*Msg\(("ghost\.json(?:[^"\\]|\\.)*")\)/g);
   // 書式（sprintf）で作るもの。C++ の側をさがすのではなく、ここに書いておく
   found.set('{0} 行目 {1} 文字目: {2}', 'shiori\\src\\json.cpp（fail の sprintf）');
 
@@ -199,6 +200,76 @@ for (const f of jsFiles) {
   for (const tpl of nativeListed) {
     if (!found.has(tpl)) problems.push(`ui\\js\\i18n.js  NATIVE の「${tpl}」は、もう exe の側にありません（消してください）`);
   }
+}
+
+// ------------------------------------------------------------ 1c. 栞のことば（shiori/src/lang.cpp の表）
+// 栞が自分で言うこと（Say・QLabel・セリフの配列）と SSP への知らせ（Msg・Report）の日本語が、
+// lang.cpp の表に 5 つの言語でそろっているか。{0} の数がもとと同じか。使っていない行が無いか。
+const shioriProblems = [];
+{
+  const LIT = '"(?:[^"\\\\]|\\\\.)*"';
+  const LITS = `(${LIT}(?:\\s*${LIT})*)`;            // "…" "…" のように並べたものは 1 つ
+  const join = (s) => [...s.matchAll(new RegExp(LIT, 'g'))].map((x) => JSON.parse(x[0])).join('');
+  const used = new Map();
+  const labels = new Set();       // 選択肢の名前（QLabel）に使うもの。訳に , と ] を入れない
+  const srcDir = path.join(root, 'shiori', 'src');
+  // // のコメントを消す（文字列の中の // は残す: "http://" など）
+  const noComments = (src) => src.split('\n').map((line) => {
+    let inStr = false;
+    for (let k = 0; k < line.length; k++) {
+      const c = line[k];
+      if (c === '\\' && inStr) { k++; continue; }
+      if (c === '"') inStr = !inStr;
+      else if (!inStr && c === '/' && line[k + 1] === '/') return line.slice(0, k);
+    }
+    return line;
+  }).join('\n');
+  for (const f of fs.readdirSync(srcDir).filter((x) => x.endsWith('.cpp') && x !== 'lang.cpp')) {
+    const src = noComments(fs.readFileSync(path.join(srcDir, f), 'utf8'));
+    const pats = [
+      new RegExp(`\\b(?:Say|QLabel|Msg|fail|Tr|argTr)\\(\\s*${LITS}`, 'g'),
+      new RegExp(`\\bReport\\(\\s*kProblem\\w+\\s*,\\s*${LITS}`, 'g'),
+      // セリフの配列は、名前を lines（…Lines）にする決まり（句読点の表などは見ない）
+      new RegExp(`static const char\\* \\w*[lL]ines\\[\\] = \\{([^}]*)\\}`, 'g'),
+    ];
+    for (const re of pats) {
+      for (const m of src.matchAll(re)) {
+        const texts = re.source.startsWith('static') ? [...m[1].matchAll(new RegExp(LIT, 'g'))].map((x) => JSON.parse(x[0])) : [join(m[1])];
+        for (const t of texts) {
+          if (!JA.test(t)) continue;
+          if (!used.has(t)) used.set(t, `shiori\\src\\${f}:${lineOf(src, m.index)}`);
+          if (/^QLabel\(/.test(m[0])) labels.add(t);
+        }
+      }
+    }
+  }
+  const langSrc = fs.readFileSync(path.join(srcDir, 'lang.cpp'), 'utf8');
+  const rows = new Map();
+  for (const m of langSrc.matchAll(new RegExp(`\\{\\s*\\{\\s*(${LIT}(?:\\s*,\\s*${LIT}){4})\\s*\\}\\s*\\}`, 'g'))) {
+    const cols = [...m[1].matchAll(new RegExp(LIT, 'g'))].map((x) => JSON.parse(x[0]));
+    const at = `shiori\\src\\lang.cpp:${lineOf(langSrc, m.index)}`;
+    if (rows.has(cols[0])) shioriProblems.push(`${at}  同じ日本語の行が 2 つあります（先のものしか使われません）: ${cols[0].slice(0, 40)}`);
+    else rows.set(cols[0], { cols, at });
+  }
+  for (const t of labels) {
+    const row = rows.get(t);
+    if (row && row.cols.some((c) => /[,\]]/.test(c))) {
+      shioriProblems.push(`${row.at}  選択肢の名前の訳に , か ] があります（\\q[名前,ID] がこわれるので、はずされます）: ${t}`);
+    }
+  }
+  const names = ['日本語', 'English', '简体中文', '繁體中文', '한국어'];
+  const nums = (s) => [...s.matchAll(/\{(\d)\}/g)].map((x) => x[0]).sort().join(' ');
+  for (const [t, at] of used) {
+    if (!rows.has(t)) shioriProblems.push(`${at}  栞のことばが shiori\\src\\lang.cpp の表にありません: ${t.slice(0, 50)}`);
+  }
+  for (const [t, row] of rows) {
+    if (!used.has(t)) shioriProblems.push(`${row.at}  もう使っていない行です（消してください）: ${t.slice(0, 50)}`);
+    row.cols.forEach((c, k) => {
+      if (!c.trim()) shioriProblems.push(`${row.at}  ${names[k]} が空です: ${t.slice(0, 40)}`);
+      else if (nums(c) !== nums(t)) shioriProblems.push(`${row.at}  ${names[k]} のはめこむ所（{0} など）がちがいます: ${t.slice(0, 40)}`);
+    });
+  }
+  problems.push(...shioriProblems);
 }
 
 // ------------------------------------------------------------ 2. index.html のことば

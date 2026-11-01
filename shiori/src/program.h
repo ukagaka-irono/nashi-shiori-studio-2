@@ -2,6 +2,7 @@
 #pragma once
 
 #include "json.h"
+#include "util.h"     // Msg
 
 #include <string>
 #include <vector>
@@ -60,7 +61,9 @@ public:
     // （スタジオのプレビューが、ファイルを介さずに渡してきます）
     bool Adopt(const JValue& root);
     bool loaded() const { return loaded_; }
-    const std::string& error() const { return error_; }
+    // 読めなかったわけ。error() は日本語の文（スタジオの画面が訳す）、errorMsg() はあとで SSP の言語にするもの
+    std::string error() const;
+    const Msg& errorMsg() const { return error_; }
 
     const JValue& root() const { return root_; }
     const JValue& meta() const { return root_["meta"]; }
@@ -82,7 +85,7 @@ private:
 
     JValue root_;
     bool loaded_ = false;
-    std::string error_;
+    Msg error_;
 
     // 読みこんだときに一度だけ作る索引（scripts の何番目か）。
     // SSP は OnMouseMove を 1 秒に何十回も送ってくるので、そのたびに全部を

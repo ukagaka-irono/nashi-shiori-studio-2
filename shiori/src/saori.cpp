@@ -117,11 +117,11 @@ void CoreRelease(Saori::Core* c) {
 }
 
 // 呼び出しに使う DLL を用意する（execCs を持っている人だけが呼ぶこと）
-Module* GetModule(Saori::Core* c, const std::string& file, std::string& err) {
+Module* GetModule(Saori::Core* c, const std::string& file, Msg& err) {
     std::string key = LowerAscii2(file);
     std::map<std::string, Module>::iterator it = c->mods.find(key);
     if (it != c->mods.end()) {
-        if (!it->second.ready) { err = "読み込めなかった SAORI です: " + file; return NULL; }
+        if (!it->second.ready) { err = Msg("読み込めなかった SAORI です: {0}").arg(file); return NULL; }
         return &it->second;
     }
 
@@ -129,27 +129,27 @@ Module* GetModule(Saori::Core* c, const std::string& file, std::string& err) {
     Module* slot = &c->mods[key];
 
     if (!SafeRelative(file)) {
-        err = "SAORI のファイル名が使えません（ゴーストのフォルダの中だけ）: " + file;
+        err = Msg("SAORI のファイル名が使えません（ゴーストのフォルダの中だけ）: {0}").arg(file);
         return NULL;
     }
 
     std::wstring path = c->dir + Utf8ToWide(file);
     if (c->dir.empty()) {
-        err = "ゴーストのフォルダが分からないので、SAORI を読みません: " + file;
+        err = Msg("ゴーストのフォルダが分からないので、SAORI を読みません: {0}").arg(file);
         return NULL;
     }
     // SAORI がさらに使う DLL も、SSP のフォルダやカレントではなく SAORI のとなりから探す
     HMODULE dll = LoadLibraryExW(path.c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (dll && dll == SelfModule()) {
         FreeLibrary(dll);
-        err = "栞（SHIORI）を SAORI として読むことはできません: " + file;
+        err = Msg("栞（SHIORI）を SAORI として読むことはできません: {0}").arg(file);
         return NULL;
     }
     if (!dll) {
         char buf[32];
         sprintf_s(buf, "%lu", GetLastError());
-        err = "SAORI を読み込めません（" + file + " / エラー " + buf + "）。"
-              "栞と同じ 32bit の DLL かどうか確かめてください。";
+        err = Msg("SAORI を読み込めません（{0} / エラー {1}）。栞と同じ 32bit の DLL かどうか確かめてください。")
+                  .arg(file).arg(buf);
         return NULL;
     }
 
@@ -158,7 +158,7 @@ Module* GetModule(Saori::Core* c, const std::string& file, std::string& err) {
     SaoriUnloadFn fnUnload = (SaoriUnloadFn)GetProcAddress(dll, "unload");
     if (!fnLoad || !fnReq || !fnUnload) {
         FreeLibrary(dll);
-        err = "SAORI の形をしていません（load / request / unload がありません）: " + file;
+        err = Msg("SAORI の形をしていません（load / request / unload がありません）: {0}").arg(file);
         return NULL;
     }
 
@@ -170,7 +170,7 @@ Module* GetModule(Saori::Core* c, const std::string& file, std::string& err) {
     HGLOBAL arg = DupGlobal(WideToMb(folder, CP_ACP), &len);
     if (!fnLoad(arg, len)) {
         FreeLibrary(dll);
-        err = "SAORI の load が失敗しました: " + file;
+        err = Msg("SAORI の load が失敗しました: {0}").arg(file);
         return NULL;
     }
 
@@ -234,7 +234,7 @@ static SaoriResult ExecuteOn(Saori::Core* core, const std::string& file,
     } unlock = { &core->execCs };
 
     SaoriResult r;
-    std::string err;
+    Msg err;
     Module* m = GetModule(core, file, err);
     if (!m) { r.error = err; return r; }
 
@@ -260,7 +260,7 @@ static SaoriResult ExecuteOn(Saori::Core* core, const std::string& file,
     try {
         out = ((SaoriRequestFn)m->request)(in, &len);
     } catch (...) {
-        r.error = "SAORI の中で例外が起きました: " + file;
+        r.error = Msg("SAORI の中で例外が起きました: {0}").arg(file);
         return r;
     }
     if (out && len > 0) {
@@ -271,7 +271,7 @@ static SaoriResult ExecuteOn(Saori::Core* core, const std::string& file,
     }
     if (!out || len <= 0) {
         if (out) GlobalFree(out);
-        r.error = "SAORI が何も返しませんでした: " + file;
+        r.error = Msg("SAORI が何も返しませんでした: {0}").arg(file);
         return r;
     }
 
@@ -400,7 +400,7 @@ bool Saori::ExecuteAsync(const std::string& file, const std::vector<std::string>
     LeaveCriticalSection(&core_->doneCs);
 
     if (tooMany) {
-        Report(kProblemWarning, "SAORI を、答えを待たずに同時に呼びすぎたので、呼びませんでした: " + file);
+        Report(kProblemWarning, Msg("SAORI を、答えを待たずに同時に呼びすぎたので、呼びませんでした: {0}").arg(file));
         return false;
     }
 
@@ -424,7 +424,7 @@ bool Saori::ExecuteAsync(const std::string& file, const std::vector<std::string>
         EnterCriticalSection(&core_->doneCs);
         core_->running--;
         LeaveCriticalSection(&core_->doneCs);
-        Report(kProblemWarning, "SAORI を呼ぶスレッドを作れなかったので、呼びませんでした: " + file);
+        Report(kProblemWarning, Msg("SAORI を呼ぶスレッドを作れなかったので、呼びませんでした: {0}").arg(file));
         return false;
     }
 
