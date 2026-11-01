@@ -72,7 +72,7 @@ if ($LASTEXITCODE -ne 0) { throw 'msvcrt.lib を作れませんでした。' }
 
 # ---- compile ---------------------------------------------------------------
 $sources = @('dllmain.cpp', 'shiori.cpp', 'program.cpp', 'interp.cpp', 'saori.cpp',
-             'json.cpp', 'util.cpp', 'tinycrt.cpp') |
+             'json.cpp', 'util.cpp', 'lang.cpp', 'tinycrt.cpp') |
            ForEach-Object { Join-Path $src $_ }
 $dllOut = Join-Path $dist 'nashi.dll'
 

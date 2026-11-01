@@ -4,6 +4,7 @@
 (function (N) {
 
   const Model = N.Model;
+  const T = N.I18n.T;
   const INPUT_FONT = '600 12.5px "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif';
 
   function el(tag, cls, text) {
@@ -75,7 +76,7 @@
       // トークの名前を変えたら、よんでいるブロックも付けかえる（元にもどすと、いっしょにもどる）
       if (argName === 'name' && (owner.kind === 'talk' || owner.kind === 'function')) {
         const n = Model.renameTalkRefs(before, owner.name, owner);
-        if (n && N.App) N.App.toast(`よんでいるブロック ${n} か所も「${owner.name}」に付けかえました`);
+        if (n && N.App) N.App.toast(T('よんでいるブロック {n} か所も「{name}」に付けかえました', { n, name: owner.name }));
       }
       endEdit(true);
     });
@@ -101,12 +102,12 @@
       if (typeof value === 'string' && value.includes('\n')) {
         input.readOnly = true;
         input.value = value.replace(/\r?\n/g, ' ↵ ');
-        input.title = '何行かあるセリフです。クリック（または Enter）で、広げて書けます';
+        input.title = T('何行かあるセリフです。クリック（または Enter）で、広げて書けます');
         fitInput(input);
         input.addEventListener('click', open);
       }
       const btn = el('button', 'blk-btn blk-expand', '⤢');
-      btn.title = '広げて書く (Shift+Enter)';
+      btn.title = T('広げて書く (Shift+Enter)');
       btn.tabIndex = -1;          // Tab は欄から欄へ（キーボードでは Shift+Enter で開く）
       btn.addEventListener('pointerdown', (e) => e.stopPropagation());
       btn.addEventListener('click', open);
@@ -118,7 +119,7 @@
       const known = choicesFor(argDef.choices, owner).find(([, v]) => String(v) === String(value));
       if (known && !input.title) input.title = known[0];
       const btn = el('button', 'blk-btn blk-expand', '▾');
-      btn.title = '一覧からえらぶ (Alt+↓)';
+      btn.title = T('一覧からえらぶ (Alt+↓)');
       btn.tabIndex = -1;          // Tab は欄から欄へ（キーボードでは Alt+↓ で開く）
       btn.addEventListener('pointerdown', (e) => e.stopPropagation());
       btn.addEventListener('click', (e) => {
@@ -140,7 +141,7 @@
       return N.Shell ? N.Shell.surfaceChoices(owner && owner.who) : [];
     }
     if (kind === 'anims') {
-      return (p.animations || []).map((a) => [`うごき ${a.id}（表情 ${a.base} から）`, a.id]);
+      return (p.animations || []).map((a) => [T('うごき {id}（表情 {base} から）', { id: a.id, base: a.base }), a.id]);
     }
     if (kind === 'groups') {
       const groups = p.scripts.filter((s) => s.kind === 'talk').map((s) => String(s.group || '').trim());
@@ -151,20 +152,20 @@
       const names = p.scripts.filter((s) => s.kind === 'event' && s.event).map((s) => s.event);
       return [...new Set(names)].map((ev) => {
         const known = N.EVENTS.find(([, v]) => v === ev);
-        return [known ? `${known[0]}（${ev}）` : ev, ev];
+        return [known ? T('{label}（{event}）', { label: known[0], event: ev }) : ev, ev];
       });
     }
     return [];
   }
   const NO_CHOICES = {
-    anims: 'まだうごきがありません。「ゴースト」タブの「うごき」で作れます',
-    groups: 'まとまりを付けたランダムトークがありません',
-    events: 'イベントのかたまりがありません。「イベント」から置いてください',
+    anims: T('まだうごきがありません。「ゴースト」タブの「うごき」で作れます'),
+    groups: T('まとまりを付けたランダムトークがありません'),
+    events: T('イベントのかたまりがありません。「イベント」から置いてください'),
   };
   // fromKeyboard … Alt+↓ で開いたとき。いちばん上の項目へ移り、Esc で欄にもどる
   function openChoices(anchor, owner, argName, kind, fromKeyboard) {
     const list = choicesFor(kind, owner);
-    if (!list.length) { N.App.toast(NO_CHOICES[kind] || 'えらべるものがありません', true); return; }
+    if (!list.length) { N.App.toast(NO_CHOICES[kind] || T('えらべるものがありません'), true); return; }
     const r = anchor.getBoundingClientRect();
     N.App.openMenu(r.left, r.bottom + 2, list.map(([label, v]) => ({
       label, run: () => Model.act(() => { owner[argName] = v; }),
@@ -179,7 +180,7 @@
     const snap = Model.snapshot();
     const body = div('');
     const label = el('label', 'field');
-    label.appendChild(el('span', null, 'セリフ'));
+    label.appendChild(el('span', null, T('セリフ')));
     const area = el('textarea');
     area.rows = 8;
     area.value = owner[argName] == null ? '' : String(owner[argName]);
@@ -189,8 +190,8 @@
     });
     label.appendChild(area);
     body.appendChild(label);
-    body.appendChild(div('hint', '改行は、そのままバルーンの改行になります。'));
-    N.Dialog.modal('セリフを広げて書く', body, [{ label: '閉じる' }], {
+    body.appendChild(div('hint', T('改行は、そのままバルーンの改行になります。')));
+    N.Dialog.modal(T('セリフを広げて書く'), body, [{ label: T('閉じる') }], {
       onClose: () => Model.pushUndo(snap),
       noUndo: true,
     });
@@ -227,7 +228,7 @@
         let options = argDef.options;
         // 「イベントの情報 N番目」は、そのかたまりのイベントでの意味を添える（ダブルクリックなら X座標 など）
         const refs = owner.type === 'ref' && name === 'index' && buildingEvent && N.EVENT_REFS[buildingEvent];
-        if (refs) options = options.map(([label, v]) => [refs[v] ? `${label}：${refs[v]}` : label, v]);
+        if (refs) options = options.map(([label, v]) => [refs[v] ? T('{label}：{info}', { label, info: refs[v] }) : label, v]);
         return buildSelect(options, owner[name], (v) => {
           Model.act(() => { owner[name] = v; });
         });
@@ -273,14 +274,14 @@
           for (const c of (im.collisions || [])) {
             if (!c.name || seen[c.name]) continue;
             seen[c.name] = 1;
-            opts.push([c.name + '（立ち絵 ' + im.id + '）', c.name]);
+            opts.push([T('{name}（立ち絵 {id}）', { name: c.name, id: im.id }), c.name]);
           }
         }
         for (const a of (Model.project.animations || [])) {
           for (const c of (a.collisions || [])) {
             if (!c.name || seen[c.name]) continue;
             seen[c.name] = 1;
-            opts.push([c.name + '（うごき ' + a.id + '）', c.name]);
+            opts.push([T('{name}（うごき {id}）', { name: c.name, id: a.id }), c.name]);
           }
         }
         if (owner[name] && !seen[owner[name]]) opts.push([owner[name], owner[name]]);
@@ -291,16 +292,17 @@
 
       // 着せ替えの部品。「ゴースト」タブで作ったものからえらぶ。キャラ・カテゴリ・名前をまとめて入れる。
       case 'dresspart': {
-        const whoName = (w) => (w === 1 ? 'うにゅう' : 'さくら');
+        const whoName = (w) => (w === 1 ? T('うにゅう') : T('さくら'));
+        const partLabel = (who, category, part) => T('{who}：{category}／{part}', { who: whoName(who), category, part });
         const parts = ((Model.project.dressup || {}).parts || []).filter((p) => p.category && p.name);
-        const opts = parts.map((p) => [`${whoName(p.who)}：${p.category}／${p.name}`, String(p.id)]);
+        const opts = parts.map((p) => [partLabel(p.who, p.category, p.name), String(p.id)]);
         const cur = parts.find((p) => p.who === (owner.who === 1 ? 1 : 0)
           && p.category === owner.category && p.name === owner[name]);
         // 名前を変えたり消したりして見つからなくなった部品も、そのまま見せておく（チェックタブが知らせる）
         if (!cur && owner[name]) {
-          opts.unshift([`${whoName(owner.who)}：${owner.category || ''}／${owner[name]}`, '__missing__']);
+          opts.unshift([partLabel(owner.who, owner.category || '', owner[name]), '__missing__']);
         }
-        if (!opts.length) opts.push(['（部品がありません）', '']);
+        if (!opts.length) opts.push([T('（部品がありません）'), '']);
         return buildSelect(opts, cur ? String(cur.id) : (owner[name] ? '__missing__' : ''), (v) => {
           const p = parts.find((x) => String(x.id) === v);
           if (!p) return;
@@ -310,8 +312,8 @@
 
       case 'varname': {
         const opts = Model.variableNames().map((n) => [n, n]);
-        if (!opts.length) opts.push(['（変数がありません）', '']);
-        opts.push(['＋ あたらしい変数…', '__new__']);
+        if (!opts.length) opts.push([T('（変数がありません）'), '']);
+        opts.push([T('＋ あたらしい変数…'), '__new__']);
         return buildSelect(opts, owner[name], (v, sel) => {
           if (v === '__new__') {
             const created = N.App.promptNewVariable();
@@ -325,8 +327,8 @@
 
       case 'funcname': {
         const opts = Model.functionNames().map((n) => [n, n]);
-        if (!opts.length) opts.push(['（トークがありません）', '']);
-        opts.push(['＋ あたらしいトーク…', '__new__']);
+        if (!opts.length) opts.push([T('（トークがありません）'), '']);
+        opts.push([T('＋ あたらしいトーク…'), '__new__']);
         return buildSelect(opts, owner[name], (v, sel) => {
           if (v === '__new__') {
             const created = N.App.promptNewFunction();
@@ -362,7 +364,7 @@
     const def = N.getDef(block);
     if (!def) {
       const unknown = div('blk cat-control');
-      const row = div('row sh-stack', '？ 不明なブロック: ' + (block && block.type));
+      const row = div('row sh-stack', T('？ 不明なブロック: {type}', { type: block && block.type }));
       unknown.appendChild(row);
       unknown._blk = block;
       return unknown;
@@ -390,7 +392,7 @@
       if (def.dynamic) {
         if (!Array.isArray(block[def.dynamic])) block[def.dynamic] = [[], []];
         block[def.dynamic].forEach((arr, i) => {
-          subs.push({ arr, label: i === 0 ? null : 'または' });
+          subs.push({ arr, label: i === 0 ? null : T('または') });
         });
       } else {
         for (const s of def.subs || []) {
@@ -413,7 +415,7 @@
       const bottom = div('row sh-cbottom');
       if (def.dynamic) {
         const minus = el('button', 'blk-btn', '−');
-        minus.title = 'えらび先をへらす';
+        minus.title = T('えらび先をへらす');
         minus.addEventListener('pointerdown', (e) => e.stopPropagation());
         minus.addEventListener('click', () => {
           const branches = block[def.dynamic];
@@ -421,11 +423,11 @@
           // いちばん下のえらび先に、ブロックが入っていれば、いっしょに消えることを確かめる
           const last = branches[branches.length - 1];
           if (Array.isArray(last) && last.length &&
-              !confirm('いちばん下のえらび先に入っているブロックも、いっしょに消えます。消しますか？')) return;
+              !confirm(T('いちばん下のえらび先に入っているブロックも、いっしょに消えます。消しますか？'))) return;
           Model.act(() => { branches.pop(); });
         });
-        const plus = el('button', 'blk-btn', '＋');
-        plus.title = 'えらび先をふやす';
+        const plus = el('button', 'blk-btn', T('＋'));
+        plus.title = T('えらび先をふやす');
         plus.addEventListener('pointerdown', (e) => e.stopPropagation());
         plus.addEventListener('click', () => {
           Model.act(() => { block[def.dynamic].push([]); });
@@ -481,9 +483,9 @@
         b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
         return b;
       };
-      if (script.kind !== 'note') tools.appendChild(mk('▶', 'このかたまりを実行してみる', () => N.App.runScript(script)));
-      tools.appendChild(mk('⧉', '複製する', () => N.App.duplicateScript(script)));
-      tools.appendChild(mk('✕', '削除する', () => N.App.deleteScript(script)));
+      if (script.kind !== 'note') tools.appendChild(mk('▶', T('このかたまりを実行してみる'), () => N.App.runScript(script)));
+      tools.appendChild(mk('⧉', T('複製する'), () => N.App.duplicateScript(script)));
+      tools.appendChild(mk('✕', T('削除する'), () => N.App.deleteScript(script)));
       wrap.appendChild(tools);
     }
 
@@ -520,17 +522,17 @@
    */
   function buildNote(wrap, script) {
     wrap.classList.add('note');
-    const head = div('blk note-head', 'メモ');
+    const head = div('blk note-head', T('メモ'));
     head._script = script;
     head._isHat = true;
-    head.title = 'ドラッグで動かせます。ゴーストの動きには入りません';
+    head.title = T('ドラッグで動かせます。ゴーストの動きには入りません');
     wrap.appendChild(head);
 
     const area = el('textarea', 'note-text');
     area.value = script.text || '';
-    area.placeholder = 'ここにメモを書く';
+    area.placeholder = T('ここにメモを書く');
     area.spellcheck = false;
-    area.setAttribute('aria-label', 'メモ');
+    area.setAttribute('aria-label', T('メモ'));
     const fit = () => { area.rows = Math.max(3, Math.min(20, area.value.split('\n').length + 1)); };
     fit();
     area.addEventListener('focus', beginEdit);
@@ -566,7 +568,7 @@
       const found = [];
       for (const entry of N.PALETTE[cat.id] || []) {
         if (entry === '@vars') {
-          if (Model.variableNames().some(hit) || hit('変数')) found.push(entry);
+          if (Model.variableNames().some(hit) || hit(T('変数'))) found.push(entry);
           continue;
         }
         if (typeof entry !== 'string') continue;
@@ -578,7 +580,7 @@
       }
       if (found.length) out.push({ heading: cat.name }, ...found);
     }
-    if (!out.length) out.push({ note: `「${query.trim()}」をふくむブロックは見つかりません。` });
+    if (!out.length) out.push({ note: T('「{query}」をふくむブロックは見つかりません。', { query: query.trim() }) });
     return out;
   }
 
@@ -606,7 +608,7 @@
       if (entry === '@vars') {
         const names = Model.variableNames();
         if (!names.length) {
-          container.appendChild(div('palette-note', 'まだ変数がありません。上のボタンで作ってみましょう。'));
+          container.appendChild(div('palette-note', T('まだ変数がありません。上のボタンで作ってみましょう。')));
         }
         for (const name of names) {
           const block = { type: 'var', name };
@@ -626,7 +628,7 @@
       if (def.hat) {
         const fake = {
           id: 'palette', kind: def.kind, blocks: [],
-          event: 'OnBoot', name: def.kind === 'talk' ? 'トーク' : 'あたらしいトーク', weight: 1,
+          event: 'OnBoot', name: def.kind === 'talk' ? T('トーク') : T('あたらしいトーク'), weight: 1,
           area: '', who: -1,
         };
         // 帽子ブロックの既定値（なでなでブロックなど）を反映する

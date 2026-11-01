@@ -74,6 +74,12 @@ Actions のほうは、実行ページをいちばん下まで送ると **Artifa
 * ウィンドウを閉じればアプリも終わります。保存していない変更があれば確認します。
 * ウィンドウの位置と大きさは次回起動時に復元します。
 * 二重起動しても増えません（すでに開いているウィンドウが前に出ます）。
+* 画面は **日本語・英語・简体中文・繁體中文・한국어** で使えます。Windows の表示言語に合わせて始まり、
+  「ヘルプ」タブのいちばん上で切りかえられます
+  （The editor also works in English, Chinese and Korean: it follows the Windows display language,
+  and you can switch it at the top of the Help tab）。
+  切りかえても、作っているゴーストのセリフは変わりません。
+  中国語と韓国語の訳は、その言語を話す人にまだ見てもらっていません。直したいところがあれば教えてください。
 
 **ポートは開きません。** 画面からの要求は WebView2 の中で受け取って、そのまま exe の中で処理しています。
 外に出る通信もしません（SSP と話すときだけ `127.0.0.1:9801` へ接続します）。
@@ -295,6 +301,7 @@ nashi-shiori-studio-2/
 │   │   ├── program.cpp     ghost.json の読み込みと変数
 │   │   ├── json.cpp        小さな JSON パーサ（スタジオと共用）
 │   │   ├── util.cpp        文字コード・ファイル・乱数（スタジオと共用）
+│   │   ├── lang.cpp        栞が自分で言うことばの表（SSP の言語に合わせる。スタジオと共用）
 │   │   ├── tinycrt.cpp     小さなランタイム（Windows 2000 で動かすため）
 │   │   ├── msvcrt.def      Windows の msvcrt.dll から借りる関数の一覧
 │   │   └── nashi.def       DLL が公開する名前（load / unload / request）
@@ -331,7 +338,9 @@ nashi-shiori-studio-2/
 │   ├── test/               画面を出さずに動かすテスト
 │   │                         editor.js  … 整形とチェックタブ
 │   │                         modules.js … 読みこみと呼び先のそろい
+│   ├── i18n/               画面のことばの表（en.js … 日本語 → 英語）
 │   └── js/
+│       ├── i18n.js         画面のことばの切りかえ（T()・言語の決めかた）
 │       ├── blocks.js       ブロック定義（ここを増やすとブロックが増える）
 │       ├── model.js        プロジェクトのデータと Undo
 │       ├── render.js       ブロックの描画
@@ -345,6 +354,8 @@ nashi-shiori-studio-2/
 │       └── ssp.js          動いている SSP との連携
 ├── tools/
 │   ├── check-blocks.js     ブロックが全部のファイルにそろっているか見る（ビルド不要）
+│   ├── check-i18n.js       画面のことばに訳し忘れ・書き忘れがないか見る（ビルド不要）
+│   ├── make-i18n-table.js  訳の JSON から ui/i18n/<言語>.js を作る
 │   └── check-imports.js    栞が Windows 2000 から読みこめるか見る
 └── docs/
     ├── blocks.md           ブロック一覧

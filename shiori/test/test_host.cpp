@@ -26,7 +26,10 @@ static HGLOBAL Dup(const std::string& s, long* len) {
 // spec の形:  ID  /  ID:ref0,ref1  /  ID:ref0|Age:3|SecurityLevel:external
 // （コマンドラインで渡すので、空白は入れません。値の前後の空白は栞が落とします）
 // | のうしろは、そのまま見出しとして足します（同じ名前なら、あとのものが勝ちます）。
-static std::string BuildRequest(const std::string& fullSpec) {
+// 頭に ~ を付けると NOTIFY で送ります（~OnNotifyOSInfo:Windows など。起動のときの知らせのまね）。
+static std::string BuildRequest(const std::string& rawSpec) {
+    bool notify = !rawSpec.empty() && rawSpec[0] == '~';
+    std::string fullSpec = notify ? rawSpec.substr(1) : rawSpec;
     std::string spec = fullSpec, extra;
     size_t bar = fullSpec.find('|');
     if (bar != std::string::npos) {
@@ -45,7 +48,8 @@ static std::string BuildRequest(const std::string& fullSpec) {
     size_t c = spec.find(':');
     if (c != std::string::npos) { id = spec.substr(0, c); refspec = spec.substr(c + 1); }
 
-    std::string req = "GET SHIORI/3.0\r\nCharset: UTF-8\r\nSender: TestHost\r\nSecurityLevel: local\r\n";
+    std::string req = std::string(notify ? "NOTIFY" : "GET") +
+                      " SHIORI/3.0\r\nCharset: UTF-8\r\nSender: TestHost\r\nSecurityLevel: local\r\n";
     req += extra;
     req += "ID: " + id + "\r\n";
     int n = 0;

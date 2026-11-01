@@ -85,12 +85,44 @@ static void FinishClose(HWND hwnd) {
     DestroyWindow(hwnd);
 }
 
+// 確かめのことば。画面の言語に合わせたものを、閉じるときに画面（App.nativeTexts）からもらう。
+// もらえなかったときは日本語のまま。
+static std::wstring g_txTitle = L"なしスタジオ 2";
+static std::wstring g_txAsk = L"保存していない変更があります。\n保存して終了しますか？";
+static std::wstring g_txNotFinished = L"保存が終わりませんでした。";
+static std::wstring g_txFailed = L"保存できませんでした。";
+static std::wstring g_txDiscard = L"保存せずに終了しますか？（変更は消えます）";
+
+// 画面が出る前のまちがい（ウィンドウが作れない・WebView2 が無い）は、Windows の表示言語で。
+// 日本語の Windows なら日本語、それ以外は英語
+static bool OsIsJapanese() {
+    return PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_JAPANESE;
+}
+
+// ExecuteScript の結果（JSON にした値）から、App.nativeTexts() の中身を読む。dirty を返す
+static bool TakeNativeTexts(const std::wstring& result) {
+    std::string err;
+    JValue outer, v;
+    // 返ってくるのは「JSON の文字列」を JSON にしたもの（JSON.stringify の結果を、もう一度 JSON に）
+    if (!JsonParse(WideToUtf8(result), outer, err) || outer.type != JType::Str) return false;
+    if (!JsonParse(outer.asStr(), v, err) || !v.isObj()) return false;
+    struct { const char* key; std::wstring* to; } fields[] = {
+        { "title", &g_txTitle }, { "ask", &g_txAsk }, { "notFinished", &g_txNotFinished },
+        { "failed", &g_txFailed }, { "discard", &g_txDiscard },
+    };
+    for (size_t i = 0; i < sizeof(fields) / sizeof(fields[0]); i++) {
+        std::string s = v[fields[i].key].asStr();
+        if (!s.empty()) *fields[i].to = Utf8ToWide(s);
+    }
+    return v["dirty"].asBool(false);
+}
+
 // 保存できなかった（または返事が来なかった）とき。黙って閉じると変更が消えるので確かめる。
-static void SaveFailed(HWND hwnd, const wchar_t* why) {
+static void SaveFailed(HWND hwnd, const std::wstring& why) {
     g_waitingSave = false;
     KillTimer(hwnd, kSaveTimeoutTimer);
-    std::wstring text = std::wstring(why) + L"\n保存せずに終了しますか？（変更は消えます）";
-    int answer = MessageBoxW(hwnd, text.c_str(), L"なしスタジオ 2",
+    std::wstring text = why + L"\n" + g_txDiscard;
+    int answer = MessageBoxW(hwnd, text.c_str(), g_txTitle.c_str(),
                              MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
     if (answer == IDYES) FinishClose(hwnd);
 }
@@ -99,14 +131,12 @@ static void AskThenClose(HWND hwnd) {
     if (g_closing || !g_web.ready()) { FinishClose(hwnd); return; }
 
     g_web.ExecuteScript(
-        L"(function(){try{return NASHI.Model.dirty?1:0}catch(e){return 0}})()",
+        L"(function(){try{return JSON.stringify(NASHI.App.nativeTexts())}catch(e){return ''}})()",
         [hwnd](const std::wstring& result) {
-            bool dirty = result.find(L'1') != std::wstring::npos;
+            bool dirty = TakeNativeTexts(result);
             if (!dirty) { FinishClose(hwnd); return; }
 
-            int answer = MessageBoxW(hwnd,
-                                     L"保存していない変更があります。\n保存して終了しますか？",
-                                     L"なしスタジオ 2",
+            int answer = MessageBoxW(hwnd, g_txAsk.c_str(), g_txTitle.c_str(),
                                      MB_YESNOCANCEL | MB_ICONWARNING | MB_DEFBUTTON1);
             if (answer == IDCANCEL) return;
             if (answer == IDNO) { FinishClose(hwnd); return; }
@@ -138,7 +168,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_TIMER:
             if (wp == kSaveTimeoutTimer && g_waitingSave) {
-                SaveFailed(hwnd, L"保存が終わりませんでした。");
+                SaveFailed(hwnd, g_txNotFinished);
             }
             return 0;
 
@@ -197,14 +227,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
                              CW_USEDEFAULT, CW_USEDEFAULT, 1440, 920,
                              NULL, NULL, hInstance, NULL);
     if (!g_hwnd) {
-        MessageBoxW(NULL, L"ウィンドウを作れませんでした。", L"なしスタジオ 2", MB_ICONERROR);
+        MessageBoxW(NULL, OsIsJapanese() ? L"ウィンドウを作れませんでした。" : L"Could not create the window.",
+                    OsIsJapanese() ? L"なしスタジオ 2" : L"Nashi Studio 2", MB_ICONERROR);
         return 1;
     }
     RestorePlacement(g_hwnd);
 
     g_web.onMessage = [](const std::wstring& message) {
         if (message == L"saved" && g_waitingSave) FinishClose(g_hwnd);
-        if (message == L"save-failed" && g_waitingSave) SaveFailed(g_hwnd, L"保存できませんでした。");
+        if (message == L"save-failed" && g_waitingSave) SaveFailed(g_hwnd, g_txFailed);
     };
 
     // API は別のスレッドで処理する（SSP を探す・書き出す・保存するあいだも、画面が固まらない）。
@@ -225,10 +256,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
                 g_web.Focus();
                 return;
             }
-            std::wstring text = message +
-                L"\n\nこのアプリは Microsoft Edge WebView2 ランタイムを使います。\n"
-                L"「OK」を押すと配布ページを開きます。";
-            if (MessageBoxW(g_hwnd, text.c_str(), L"なしスタジオ 2", MB_OKCANCEL | MB_ICONERROR) == IDOK) {
+            std::wstring text = message + (OsIsJapanese()
+                ? L"\n\nこのアプリは Microsoft Edge WebView2 ランタイムを使います。\n"
+                  L"「OK」を押すと配布ページを開きます。"
+                : L"\n\nThis app needs the Microsoft Edge WebView2 Runtime.\n"
+                  L"Press OK to open its download page.");
+            if (MessageBoxW(g_hwnd, text.c_str(), OsIsJapanese() ? L"なしスタジオ 2" : L"Nashi Studio 2",
+                            MB_OKCANCEL | MB_ICONERROR) == IDOK) {
                 ShellExecuteW(NULL, L"open",
                               L"https://developer.microsoft.com/microsoft-edge/webview2/",
                               NULL, NULL, SW_SHOWNORMAL);

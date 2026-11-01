@@ -4,6 +4,8 @@
 // 引数を渡して結果を受け取ります。栞と同じ 32bit である必要があります。
 #pragma once
 
+#include "util.h"     // Msg
+
 #include <string>
 #include <vector>
 
@@ -17,7 +19,7 @@ struct SaoriResult {
     int status = 0;                     // 200 / 204 / 400 など
     std::string result;                 // Result: の中身
     std::vector<std::string> values;    // Value0: 以降
-    std::string error;                  // 読み込めなかったときの説明
+    Msg error;                          // 読み込めなかったときの説明（SSP に渡すときに、その言語にする）
 };
 
 // 答えを待たない呼び出しの結果。主スレッドが TakeDone で受け取ります。
@@ -25,7 +27,7 @@ struct SaoriDone {
     std::string file;     // よんだファイル
     std::string into;     // 答えを入れる変数の名前（空なら入れない）
     std::string value;    // 答え（呼べなかったときは空）
-    std::string error;    // 呼べなかったわけ（呼べたときは空）
+    Msg error;            // 呼べなかったわけ（呼べたときは空）
 };
 
 // ブロックを動かすところ（interp.cpp）から見た「SAORI の呼び出し口」。

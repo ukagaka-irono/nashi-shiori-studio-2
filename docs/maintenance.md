@@ -80,7 +80,7 @@ node tools\check-blocks.js     # 1 秒。ビルド不要。ブロックがそろ
 
 ---
 
-## テスト 7 本と、それぞれが守っているもの
+## テスト 8 本と、それぞれが守っているもの
 
 | 走らせかた | 守っているもの |
 |---|---|
@@ -91,11 +91,12 @@ node tools\check-blocks.js     # 1 秒。ビルド不要。ブロックがそろ
 | `node ui\test\editor.js` | 読みこみの整形（`model.js`）とチェックタブ（`lint.js`） |
 | `node ui\test\modules.js` | `ui\js\*.js` が読みこめて、`N.Xxx.yyy()` の呼び先がそろっているか |
 | `node tools\check-imports.js` | `nashi.dll` が Windows 2000 から読みこめるか（輸入表を直に読む） |
+| `node tools\check-i18n.js` | 画面のことばに訳し忘れ・書き忘れがないか（下の「画面のことば」） |
 
 `parity` と `behavior` は `shiori\dist\test_host.exe` を、`parity` はさらに
 `studio\test\preview_host.exe` を使うので、**先にビルドが要ります**（`.\build.ps1 -Test`）。
 `check-imports` も出来あがった `nashi.dll` を見るので、ビルドが要ります。
-`check-blocks` と `editor` と `modules` はビルド無しで走ります。
+`check-blocks` と `editor` と `modules` と `check-i18n` はビルド無しで走ります。
 
 書き出しかたをわざと変えたときは、出てきたものを**目で確かめてから**
 `node studio\test\export.js --update` で期待値を作りなおします。
@@ -138,7 +139,7 @@ Actions の実行ページをいちばん下まで送ると **Artifacts** があ
 自分のぶんを載せます。**読みこみ順が、そのまま依存の向き**です。
 
 ```
-blocks → model → player → lint → render → drag → app → shell / search / dialog / ssp
+（ことばの表 i18n/*.js）→ i18n → blocks → model → player → lint → render → drag → app → shell / search / dialog / ssp
 ```
 
 * **先に読まれるものは、載せてある名前をそのまま受け取れます**
@@ -150,6 +151,74 @@ blocks → model → player → lint → render → drag → app → shell / sea
 
 `node ui\test\modules.js` が、この決まりを守れているかを見ます
 （`N.Xxx.yyy()` の呼び先が無ければ、ファイルと行を名指しします）。
+
+### 画面のことば（日本語と、ほかの言語）
+
+画面のことばは**日本語がもと**です。コードには日本語のまま書き、画面に出すところで `T()` に通します。
+ほかの言語は `ui/i18n/<言語>.js` の表（**日本語 → その言語**）で引きます。表に無いものは日本語のまま出ます。
+
+```js
+const T = N.I18n.T;                                   // ファイルの先頭で
+App.toast(T('保存しました'));
+App.toast(T('「{name}」を削除しました', { name }));     // 値は {名前} ではめる
+spec: T('%name をよぶ'),                               // ブロックの欄 %名前 は、訳でも同じ名前を残す
+```
+
+* **文は 1 つの `T()` に。** `T('あと ') + n + T(' 件')` のように切ると、語順の違う言語で訳せません。
+  `T('あと {n} 件', { n })` にします。`T()` の中で文字列を `+` でつながない、テンプレート文字列（`` ` ``）に
+  日本語を入れない、も同じ理由です。
+* **画面に出さない日本語**（「、」を見分ける正規表現・保存データに入る名前・SSP に送るさくらスクリプトなど）は、
+  その行に `// i18n-ignore（わけ）` と書きます。訳すと動きが変わるものだけにしてください。
+* **`index.html` のことば**は、起動のはじめに `N.I18n.applyDom()` が表で置きかえます（文字・`title`・
+  `placeholder`・`aria-label`）。`<b>` などをはさんだ 1 つの文は、要素に `data-i18n="html"` を付けて、
+  中身をまとめて 1 つとして訳します（中は属性の無い `<b> <i> <code> <kbd> <br>` と文字だけ）。
+* **exe（C++）の側のことば**（保存・書き出し・SSP とのやりとりの失敗）は日本語のまま届くので、
+  `ui/js/i18n.js` の `NATIVE` に同じ形（値の所は `{0}`）を書いておくと、画面が訳します。
+  C++ の側でことばを足したら、ここにも足します。
+* 言語は**画面を読みこむときに 1 回だけ**決まります（ほかのファイルは、読みこむときに `T()` を呼んでよい）。
+  切りかえは、えらんだ言語をおぼえて画面を読みなおします（保存していない中身は持ちこします）。
+
+`node tools\check-i18n.js` が、`T()` を通していない日本語・表に足りないことば・使っていないことば・
+`{名前}` や `%名前` や HTML タグの食いちがい・`NATIVE` と C++ の食いちがいを見ます。
+
+**ことばを足したら**、英語の表にも足します。
+
+```powershell
+node tools\check-i18n.js --missing en > en-new.json   # 足りないものを JSON で出す
+# en-new.json に英語を書いて、
+node tools\make-i18n-table.js en English ui\i18n\en.js en-new.json   # いまの表に足して、もとの順に並べなおす
+```
+
+（表は直接 `ui\i18n\en.js` を直してもかまいません。）
+
+**言語を足すときは**、`ui/i18n/<言語>.js` を作り、`index.html` で `js/i18n.js` より先に読みこみ、
+`ui/js/i18n.js` の `LANGS` と `detect()` に足します。表のある言語だけが、えらべるようになります。
+お手本の名前と説明は `ui/samples/index.json` の `i18n.<言語>` に書きます（無いと `check-i18n.js` が止めます）。
+
+### 栞のことば（SSP の言語に合わせる）
+
+栞が**自分で**言うこと（ブロックが無いときのあいさつ・ダブルクリックのメニュー・更新の知らせ）と、
+SSP の開発者ツールへの知らせ（`Report`）は、SSP の言語（`OnLanguageChange`）に合わせます。
+表は `shiori/src/lang.cpp` の 1 か所で、1 行が「日本語, English, 简体中文, 繁體中文, 한국어」です。
+
+```cpp
+return "\\0\\s[0]" + Say("おかえりなさい。");                      // 栞のセリフ（改行は "\n" のまま書く）
+menu += "\\q[" + QLabel("なにか話して") + ",nashi.menu.talk]";      // 選択肢の名前（, と ] ははずれる）
+Report(kProblemWarning, Msg("「{0}」をよぼうとしましたが…").arg(name)); // 知らせ（訳すのは SSP に渡すとき）
+```
+
+* **知らせは `Msg`（日本語の形と、はめる値）のまま持ち、SSP に渡すときに訳します。** 言語の知らせより前
+  （読みこみのとき）に起きたまちがいも、その時点の言語で出るようにするためです。
+  はめる値がトーク名などなら `.arg()`、栞のことば（JSON のわけ など）なら `.argTr()` で、後者だけ訳します。
+* **書いた人のセリフ・名前は訳しません。** 栞が自分で言うことだけです。
+* `Program::error()` は日本語のまま（スタジオの画面が `NATIVE` で訳します）。栞は `errorMsg()` を使います。
+
+`node tools\check-i18n.js` が、`Say` `QLabel` `Msg` `Report` `fail` `Tr` `argTr` と、セリフの配列
+（名前を `lines`・`…Lines` にする決まり）の日本語が表にあるか、5 つの言語がそろっているか、`{0}` の数が同じか、
+使っていない行・同じ行が無いか、選択肢の名前の訳に `,` `]` が無いかも見ます。
+
+**SSP の言語の知らせ（`OnLanguageChange`）より先に来る NOTIFY では、開発者ツールへの知らせを渡しません**
+（読みこみのときのまちがいが日本語で出てしまうため）。言語が分かってから、かふつうのイベントで渡します。
 
 ---
 

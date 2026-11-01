@@ -42,6 +42,9 @@ jobs:
       - name: 画面のファイル（読みこみと呼び先）
         run: node ui\test\modules.js
 
+      - name: 画面のことば（訳し忘れ・書き忘れ）
+        run: node tools\check-i18n.js
+
   # 栞（32bit DLL）とスタジオ（64bit EXE）を作って、テストを通し、配る形にまとめる。
   build:
     name: ビルドとテスト

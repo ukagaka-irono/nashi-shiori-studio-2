@@ -2,26 +2,116 @@
   {
     "file": "aisatsu.json",
     "title": "あいさつ ゴースト",
-    "desc": "起動・終了・ダブルクリックの基本。いちばん小さいお手本です。"
+    "desc": "起動・終了・ダブルクリックの基本。いちばん小さいお手本です。",
+    "i18n": {
+      "en": {
+        "title": "Greeting ghost",
+        "desc": "The basics of booting, closing and double-clicking. The smallest sample. (Its speech is in Japanese.)"
+      },
+      "zh-CN": {
+        "title": "打招呼人格",
+        "desc": "启动、关闭、双击的基础。最小的示例。（台词是日语。）"
+      },
+      "zh-TW": {
+        "title": "打招呼人格",
+        "desc": "啟動、關閉、雙擊的基礎。最小的範例。（台詞為日文。）"
+      },
+      "ko": {
+        "title": "인사하는 고스트",
+        "desc": "시작·종료·더블클릭의 기본. 가장 작은 예제입니다. (대사는 일본어입니다.)"
+      }
+    }
   },
   {
     "file": "kouknado.json",
     "title": "好感度が上がる",
-    "desc": "なでられると変数がふえて、しゃべる内容が変わります。"
+    "desc": "なでられると変数がふえて、しゃべる内容が変わります。",
+    "i18n": {
+      "en": {
+        "title": "Affection goes up",
+        "desc": "Stroking raises a variable, and what the ghost says changes with it. (Its speech is in Japanese.)"
+      },
+      "zh-CN": {
+        "title": "好感度上升",
+        "desc": "被抚摸时变量会增加，说的话也随之变化。（台词是日语。）"
+      },
+      "zh-TW": {
+        "title": "好感度上升",
+        "desc": "被撫摸時變數會增加，說的話也隨之改變。（台詞為日文。）"
+      },
+      "ko": {
+        "title": "호감도가 올라간다",
+        "desc": "쓰다듬으면 변수가 늘어나고, 하는 말이 바뀝니다. (대사는 일본어입니다.)"
+      }
+    }
   },
   {
     "file": "asa-hiru-ban.json",
     "title": "朝・昼・晩でしゃべり分ける",
-    "desc": "「いまごろ」で分けたトークのまとまりから、時間に合うものを出します。"
+    "desc": "「いまごろ」で分けたトークのまとまりから、時間に合うものを出します。",
+    "i18n": {
+      "en": {
+        "title": "Morning, noon and night",
+        "desc": "Picks a talk that fits the time of day from groups split by “time of day”. (Its speech is in Japanese.)"
+      },
+      "zh-CN": {
+        "title": "早中晚说不同的话",
+        "desc": "从按“时段”分组的对话中，选出符合当前时间的。（台词是日语。）"
+      },
+      "zh-TW": {
+        "title": "早中晚說不同的話",
+        "desc": "從依「時段」分組的對話中，選出符合目前時間的。（台詞為日文。）"
+      },
+      "ko": {
+        "title": "아침·점심·저녁에 다르게 말하기",
+        "desc": "'시간대'로 나눈 토크 묶음에서 지금 시간에 맞는 것을 꺼냅니다. (대사는 일본어입니다.)"
+      }
+    }
   },
   {
     "file": "namae.json",
     "title": "名前をきいて呼ぶ",
-    "desc": "入力ボックスで名前をたずねて、覚えて呼びかけます。"
+    "desc": "入力ボックスで名前をたずねて、覚えて呼びかけます。",
+    "i18n": {
+      "en": {
+        "title": "Ask the name and use it",
+        "desc": "Asks for your name in an input box, remembers it and calls you by it. (Its speech is in Japanese.)"
+      },
+      "zh-CN": {
+        "title": "询问名字并称呼",
+        "desc": "用输入框询问名字，记住后用它来称呼你。（台词是日语。）"
+      },
+      "zh-TW": {
+        "title": "詢問名字並稱呼",
+        "desc": "用輸入框詢問名字，記住後用它來稱呼你。（台詞為日文。）"
+      },
+      "ko": {
+        "title": "이름을 묻고 불러 주기",
+        "desc": "입력 상자로 이름을 묻고, 기억해서 불러 줍니다. (대사는 일본어입니다.)"
+      }
+    }
   },
   {
     "file": "otagai.json",
     "title": "ほかのゴーストと話す",
-    "desc": "話しかけられたら返し、こちらからも話しかけます。"
+    "desc": "話しかけられたら返し、こちらからも話しかけます。",
+    "i18n": {
+      "en": {
+        "title": "Talk with other ghosts",
+        "desc": "Answers when talked to, and starts conversations too. (Its speech is in Japanese.)"
+      },
+      "zh-CN": {
+        "title": "和其他人格聊天",
+        "desc": "被搭话时会回应，也会主动搭话。（台词是日语。）"
+      },
+      "zh-TW": {
+        "title": "和其他人格聊天",
+        "desc": "被搭話時會回應，也會主動搭話。（台詞為日文。）"
+      },
+      "ko": {
+        "title": "다른 고스트와 대화하기",
+        "desc": "말을 걸면 대답하고, 이쪽에서도 말을 겁니다. (대사는 일본어입니다.)"
+      }
+    }
   }
 ]

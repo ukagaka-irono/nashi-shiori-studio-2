@@ -48,5 +48,7 @@ public:
 
 // returns false and fills err on syntax error
 bool JsonParse(const std::string& utf8, JValue& out, std::string& err);
+// JsonParse と同じだが、まちがいの場所（行と、行の中の文字の位置）と、わけ（日本語）を分けて返す
+bool JsonParseAt(const std::string& utf8, JValue& out, std::string& why, unsigned& line, unsigned& col);
 
 } // namespace nashi

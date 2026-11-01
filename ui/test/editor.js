@@ -21,8 +21,8 @@ const COLOR = { red: '\x1b[31m', green: '\x1b[32m', dim: '\x1b[2m', off: '\x1b[0
 const { red, green, dim, off } = COLOR;
 
 // 画面のスクリプトをそのまま読みこむ（window があるつもりで動きます）
-global.window = {};
-for (const f of ['blocks.js', 'model.js', 'lint.js', 'player.js']) {
+global.window = { NASHI_LANG: 'ja' };   // ことばは日本語のまま確かめる
+for (const f of ['i18n.js', 'blocks.js', 'model.js', 'lint.js', 'player.js']) {
   (0, eval)(fs.readFileSync(path.join(root, 'ui', 'js', f), 'utf8'));
 }
 const N = global.window.NASHI;

@@ -5,6 +5,7 @@
 
   const Model = N.Model;
   const Render = N.Render;
+  const T = N.I18n.T;
 
   const SNAP_STACK = 46;   // スタック接続の吸着距離(px)
   const SNAP_SLOT = 34;    // スロット吸着距離(px)
@@ -75,7 +76,7 @@
         const script = Object.assign({
           kind: paletteBlk._paletteHat,
           event: 'OnBoot',
-          name: paletteBlk._paletteHat === 'talk' ? 'トーク' : 'あたらしいトーク',
+          name: paletteBlk._paletteHat === 'talk' ? T('トーク') : T('あたらしいトーク'),
           weight: 1,
         }, Model.clone(paletteBlk._paletteScript || {}), { blocks: [] });
         delete script.id;
@@ -367,7 +368,7 @@
       // それ以外はすでにモデルから外れているので、置かなければ消える
       Model.pushUndo(d.snapshot);
       Model.emit();
-      N.App.toast('ブロックを削除しました');
+      N.App.toast(T('ブロックを削除しました'));
       return;
     }
 

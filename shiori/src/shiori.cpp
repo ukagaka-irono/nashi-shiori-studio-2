@@ -1,4 +1,5 @@
 #include "shiori.h"
+#include "lang.h"
 #include "util.h"
 #include "version_gen.h"   // NASHI_VERSION（shiori\build.ps1 が VERSION から作る）
 
@@ -141,7 +142,8 @@ static std::string BuildResponse(const std::string& value,
             int lv = (p.level >= kProblemInfo && p.level <= kProblemError) ? p.level : kProblemWarning;
             if (i) { levels += '\x01'; texts += '\x01'; }
             levels += kLevels[lv];
-            texts += HeaderSafe(p.text);
+            // ここで、いまの SSP の言語にする（言語の知らせより前に起きた知らせも、渡すときの言語で）
+            texts += HeaderSafe((p.place.empty() ? std::string() : p.place + ": ") + FormatMsg(p.msg, UiLang()));
         }
         body += "ErrorLevel: " + levels + "\r\n";
         body += "ErrorDescription: " + texts + "\r\n";
@@ -187,7 +189,7 @@ bool Shiori::Load(const std::wstring& moduleDir) {
     lastSaveSec_ = 0;
     ready_ = true;
     if (prog_.loaded()) Log("loaded");
-    else Report(kProblemError, prog_.error());      // つぎの応答で SSP に渡る（起動のセリフでも言う）
+    else Report(kProblemError, prog_.errorMsg());      // つぎの応答で SSP に渡る（起動のセリフでも言う）
     return true;
 }
 
@@ -223,7 +225,8 @@ void Shiori::LoadSave() {
             saveBlocked_ = true;
             Report(kProblemNotice, "nashi_save.json が読めず、よけることもできませんでした。この回は保存しません");
         } else {
-            Report(kProblemNotice, std::string("nashi_save.json が読めなかったので、nashi_save.broken-") + stamp + ".json によけました");
+            Report(kProblemNotice, Msg("nashi_save.json が読めなかったので、{0} によけました")
+                                       .arg(std::string("nashi_save.broken-") + stamp + ".json"));
         }
     }
     // 本体が無い・読めなかったときは、ひとつ前の控えから
@@ -312,7 +315,8 @@ void Shiori::MaybeReload() {
     Program fresh;
     if (!fresh.Load(dir_)) {
         // 書きかえたのに動きが変わらない、と迷わないように知らせる（同じ中身のあいだは、1 回だけ）
-        Report(kProblemWarning, "書きかえた ghost.json を読めなかったので、前の中身のまま動いています。" + fresh.error());
+        Report(kProblemWarning, Msg("書きかえた ghost.json を読めなかったので、前の中身のまま動いています。{0}")
+                                    .argMsg(fresh.errorMsg()));
         return;
     }
     prog_ = fresh;
@@ -619,10 +623,26 @@ static std::string WithoutCloseTag(const std::string& script) {
     return out;
 }
 
+// 栞が自分で言うことば（lang.cpp の表）を、SSP の言語で、さくらスクリプトの文にする（改行は \n タグに）
+static std::string Say(const Msg& m) {
+    return EscapeText(FormatMsg(m, UiLang()));
+}
+
+// 選択肢の名前（\q[名前,ID] の名前）。区切りに使う , と ] は入れない（訳でまぎれこんでも、こわさない）
+static std::string QLabel(const Msg& m) {
+    std::string s = FormatMsg(m, UiLang());
+    std::string out;
+    for (size_t i = 0; i < s.size(); i++) {
+        if (s[i] == ',' || s[i] == ']' || s[i] == '\\' || s[i] == '\r' || s[i] == '\n') continue;
+        out += s[i];
+    }
+    return out;
+}
+
 // 「N 分ごと」「N 秒ごと」の言いかた
 static std::string IntervalWords(long sec) {
-    if (sec % 60 == 0) return NumToStr((double)(sec / 60)) + " 分ごと";
-    return NumToStr((double)sec) + " 秒ごと";
+    if (sec % 60 == 0) return FormatMsg(Msg("{0} 分ごと").arg(NumToStr((double)(sec / 60))), UiLang());
+    return FormatMsg(Msg("{0} 秒ごと").arg(NumToStr((double)sec)), UiLang());
 }
 
 // 書いていないときのダブルクリックのメニュー（BuiltinDefault の OnMouseDoubleClick）から選ばれたもの。
@@ -630,7 +650,7 @@ static std::string IntervalWords(long sec) {
 std::string Shiori::BuiltinMenu(const std::string& target, const ShioriRequest& req) {
     if (target == "nashi.menu.talk") {
         std::string out = PlayRandomTalk(req);
-        if (out.empty()) return "\\0\\s[0]……いまは、話すことを思いつかないや。";
+        if (out.empty()) return "\\0\\s[0]" + Say("……いまは、話すことを思いつかないや。");
         talkWait_ = 0;
         return out;
     }
@@ -638,12 +658,12 @@ std::string Shiori::BuiltinMenu(const std::string& target, const ShioriRequest& 
         long now = TalkInterval();
         long usual = prog_.settings()["randomTalkInterval"].asInt(180);
         if (usual <= 0) usual = 180;
-        std::string out = "\\0\\s[0]どれくらい話そうか？\\n";
-        out += now > 0 ? "（いまは、だいたい " + IntervalWords(now) + "）" : std::string("（いまは、静かにしてるよ）");
-        out += "\\n\\n\\q[たくさん（1 分ごと）,nashi.menu.iv.60]\\n";
-        out += "\\q[いつもどおり（" + IntervalWords(usual) + "）,nashi.menu.iv.usual]\\n";
-        out += "\\q[ときどき（10 分ごと）,nashi.menu.iv.600]\\n";
-        out += "\\q[しばらく静かに,nashi.menu.iv.0]";
+        std::string out = "\\0\\s[0]" + Say("どれくらい話そうか？") + "\\n";
+        out += now > 0 ? Say(Msg("（いまは、だいたい {0}）").arg(IntervalWords(now))) : Say("（いまは、静かにしてるよ）");
+        out += "\\n\\n\\q[" + QLabel("たくさん（1 分ごと）") + ",nashi.menu.iv.60]\\n";
+        out += "\\q[" + QLabel(Msg("いつもどおり（{0}）").arg(IntervalWords(usual))) + ",nashi.menu.iv.usual]\\n";
+        out += "\\q[" + QLabel("ときどき（10 分ごと）") + ",nashi.menu.iv.600]\\n";
+        out += "\\q[" + QLabel("しばらく静かに") + ",nashi.menu.iv.0]";
         return out;
     }
     if (target == "nashi.menu.iv.usual") {
@@ -651,7 +671,7 @@ std::string Shiori::BuiltinMenu(const std::string& target, const ShioriRequest& 
         vars_.set("@talkInterval", Value::Num(-1));
         dirty_ = true;
         talkWait_ = 0;
-        return "\\0\\s[0]わかった。いつもどおりに話すね。";
+        return "\\0\\s[0]" + Say("わかった。いつもどおりに話すね。");
     }
     if (target.compare(0, 14, "nashi.menu.iv.") == 0) {
         long sec = (long)atoi(target.c_str() + 14);
@@ -660,55 +680,58 @@ std::string Shiori::BuiltinMenu(const std::string& target, const ShioriRequest& 
         vars_.set("@talkInterval", Value::Num((double)sec));
         dirty_ = true;
         talkWait_ = 0;                                       // つぎの間隔は、新しい多さで決めなおす
-        if (sec == 0) return "\\0\\s[0]わかった。しばらく静かにしてるね。\\n（ダブルクリックで、また変えられるよ）";
-        return "\\0\\s[0]わかった。だいたい " + IntervalWords(sec) + "に話すね。";
+        if (sec == 0) return "\\0\\s[0]" + Say("わかった。しばらく静かにしてるね。\n（ダブルクリックで、また変えられるよ）");
+        return "\\0\\s[0]" + Say(Msg("わかった。だいたい {0}に話すね。").arg(IntervalWords(sec)));
     }
-    return "\\0\\s[0]そう？";                                 // nashi.menu.cancel
+    return "\\0\\s[0]" + Say("そう？");                       // nashi.menu.cancel
 }
 
 std::string Shiori::BuiltinDefault(const std::string& id, const ShioriRequest& req) {
     const JValue& meta = prog_.meta();
     std::string name = meta["name"].asStr("ゴースト");
-    std::string sakura = meta["sakuraName"].asStr("さくら");
+    std::string sakura = meta["sakuraName"].asStr("");
+    if (sakura.empty()) sakura = FormatMsg(Msg("さくら"), UiLang());
 
     if (!prog_.loaded()) {
         if (id == "OnBoot" || id == "OnFirstBoot") {
-            return "\\0\\s[0]ghost.json が読み込めませんでした。\\n" +
-                   EscapeText(prog_.error()) + "\\n（エディタから書き出し直してください）";
+            return "\\0\\s[0]" + Say("ghost.json が読み込めませんでした。") + "\\n" +
+                   Say(prog_.errorMsg()) + "\\n" + Say("（エディタから書き出し直してください）");
         }
-        if (id == "OnClose" || id == "OnCloseAll") return "\\0\\s[0]またね。\\-";
+        if (id == "OnClose" || id == "OnCloseAll") return "\\0\\s[0]" + Say("またね。") + "\\-";
         return std::string();
     }
 
     if (id == "OnFirstBoot") {
-        return "\\0\\s[0]はじめまして。\\n" + EscapeText(sakura) + "です。\\nよろしくね。";
+        return "\\0\\s[0]" + Say(Msg("はじめまして。\n{0}です。\nよろしくね。").arg(sakura));
     }
     if (id == "OnBoot") {
-        return "\\0\\s[0]おかえりなさい。";
+        return "\\0\\s[0]" + Say("おかえりなさい。");
     }
     if (id == "OnClose" || id == "OnCloseAll") {
-        return "\\0\\s[0]またね。\\-";
+        return "\\0\\s[0]" + Say("またね。") + "\\-";
     }
     if (id == "OnMouseDoubleClick") {
         static const char* lines[] = { "なに？", "呼んだ？", "どうしたの？" };
-        std::string head = std::string("\\0\\s[0]") + lines[RandInt(0, 2)];
+        std::string head = "\\0\\s[0]" + Say(lines[RandInt(0, 2)]);
         // ランダムトークがあるゴーストなら、メニューを出す（使う人が、話してもらう・話す多さを変える）。
         // 行き先の ID は nashi.menu.〜（Dispatch の BuiltinMenu で受ける。出した選択肢だけを受け付ける）
         if (prog_.talkScripts().empty()) return head;
-        std::string menu = head + "\\n\\n\\q[なにか話して,nashi.menu.talk]\\n";
-        if (prog_.settings()["randomTalkEnabled"].asBool(true)) menu += "\\q[話す多さを変える,nashi.menu.interval]\\n";
-        return menu + "\\q[なんでもない,nashi.menu.cancel]";
+        std::string menu = head + "\\n\\n\\q[" + QLabel("なにか話して") + ",nashi.menu.talk]\\n";
+        if (prog_.settings()["randomTalkEnabled"].asBool(true)) {
+            menu += "\\q[" + QLabel("話す多さを変える") + ",nashi.menu.interval]\\n";
+        }
+        return menu + "\\q[" + QLabel("なんでもない") + ",nashi.menu.cancel]";
     }
     if (id == "OnNadeNade") {
         std::string area = req.refs.size() > 4 ? req.refs[4] : std::string();
         std::string low = LowerAscii(area);
         if (low == "head") {
             static const char* lines[] = { "えへへ。", "くすぐったいよ。", "なでなでされちゃった。" };
-            return std::string("\\0\\s[1]") + lines[RandInt(0, 2)];
+            return "\\0\\s[1]" + Say(lines[RandInt(0, 2)]);
         }
         // むねは、いやがる。それ以外（手や服など）は、書いた人が決めていなければ何も言わない
         // （どこをなでても「触らないで」と言われると、さわってみる気がなくなる）
-        if (low == "bust") return "\\0\\s[2]……あんまり触らないで。";
+        if (low == "bust") return "\\0\\s[2]" + Say("……あんまり触らないで。");
         return std::string();
     }
     // ネットワーク更新。ブロックを書いていなくても、結果だけは知らせる。
@@ -718,13 +741,13 @@ std::string Shiori::BuiltinDefault(const std::string& id, const ShioriRequest& r
         std::string how = req.refs.empty() ? std::string() : req.refs[0];
         // "none" = 新しいものは無かった。黙っておく（起動のたびに言うとうるさい）
         if (how != "changed") return std::string();
-        return "\\0\\s[0]更新できたよ。\\n新しくなったところは、つぎに起動したときからだよ。";
+        return "\\0\\s[0]" + Say("更新できたよ。\n新しくなったところは、つぎに起動したときからだよ。");
     }
     if (id == "OnUpdateFailure") {
         std::string why = req.refs.empty() ? std::string() : req.refs[0];
         if (why == "artificial") return std::string();      // 自分でやめたときは黙る
-        std::string out = "\\0\\s[0]更新できなかったみたい。";
-        if (!why.empty()) out += "\\n（" + EscapeText(why) + "）";
+        std::string out = "\\0\\s[0]" + Say("更新できなかったみたい。");
+        if (!why.empty()) out += "\\n" + Say(Msg("（{0}）").arg(why));
         return out;
     }
 
@@ -875,6 +898,13 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
     if (id == "OnGhostChanged" || id == "OnGhostCalled") NoteBoot(req, RefAt(req, 7));
     if (id == "OnShellChanged") sys_.shellName = RefAt(req, 0);
 
+    // SSP の言語。起動のとき（NOTIFY）と、使う人が切りかえたときに来る（Reference1 が言語 ID）。
+    // 栞が自分で言うことばと、SSP の開発者ツールへの知らせを、この言語にする（書いた人のセリフは変えない）
+    if (id == "OnLanguageChange") {
+        SetUiLang(UiLangFromLangId(RefAt(req, 1)));
+        langKnown_ = true;
+    }
+
     // SSP が起動のとき（と、変わったとき）に知らせてくるもの。情報ブロックで読める。
     if (id == "OnNotifyUserInfo") {
         sys_.userName = RefAt(req, 0);
@@ -933,7 +963,7 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
             const JValue* fn = prog_.functionByName(name);
             if (!fn) fn = prog_.scriptById(name);
             if (!fn) {
-                Report(kProblemWarning, "「◯秒後によぶ」の「" + name + "」が、その名前のトークがないので動きませんでした");
+                Report(kProblemWarning, Msg("「◯秒後によぶ」の「{0}」が、その名前のトークがないので動きませんでした").arg(name));
                 break;
             }
             std::string out = RunOne(*fn, req);
@@ -1101,7 +1131,7 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
     // ただし \-（ゴーストを終了する）ははずす（終了ではなく、SSP が切りかえるので）。
     if (!found && id == "OnGhostChanging") {
         out = RunHandlers("OnClose", req, &found);
-        if (!found) out = "\\0\\s[0]またね。";
+        if (!found) out = "\\0\\s[0]" + Say("またね。");
         out = WithoutCloseTag(out);
         found = true;
     }
@@ -1109,7 +1139,7 @@ std::string Shiori::Dispatch(const ShioriRequest& req) {
     if (!out.empty()) secondsSinceTalk_ = 0;
 
     if (id == "OnClose" || id == "OnCloseAll") {
-        if (out.empty()) out = "\\0\\s[0]またね。";
+        if (out.empty()) out = "\\0\\s[0]" + Say("またね。");
         out = CloseScript(out, true);
         SaveSave();
     }
@@ -1173,8 +1203,10 @@ std::string Shiori::Request(const std::string& rawRequest) {
     value = CloseScript(value, req.id == "OnClose" || req.id == "OnCloseAll");
 
     SetProblemPlace(std::string());
+    // 起動のときの NOTIFY（OnNotifyOSInfo など）は、SSP の言語の知らせより先に来ることがある。
+    // そのあいだは知らせを持っておき、言語が分かってから（か、ふつうのイベントで）渡す
     std::vector<Problem> problems;
-    TakeProblems(problems);
+    if (langKnown_ || req.method != "NOTIFY") TakeProblems(problems);
 
     if (req.method == "NOTIFY") return BuildResponse("", std::string(), 0, &problems);
     RememberOffered(value);

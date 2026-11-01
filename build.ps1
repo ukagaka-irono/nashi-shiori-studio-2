@@ -63,6 +63,7 @@ Invoke-Sub (Join-Path $root 'studio\build.ps1') $studioArgs
 #   export   … 書き出したファイル（surfaces.txt など）の中身が期待どおりか
 #   editor   … エディタのデータ整形とチェックタブが期待どおりか
 #   modules  … 画面のファイルが読みこめて、呼び先がそろっているか（分けたときの移し忘れ）
+#   i18n     … 画面のことばに訳し忘れ・書き忘れがないか（ui/i18n/ の表と、T() を通していない日本語）
 #   imports  … 栞が Windows 2000 以降で読みこめるか（新しい API が混ざっていないか）
 if ($Test) {
     Write-Host ''
@@ -72,7 +73,8 @@ if ($Test) {
     } else {
         foreach ($t in @('tools\check-imports.js',
                          'shiori\test\parity\parity.js', 'shiori\test\behavior\behavior.js',
-                         'studio\test\export.js', 'ui\test\editor.js', 'ui\test\modules.js')) {
+                         'studio\test\export.js', 'ui\test\editor.js', 'ui\test\modules.js',
+                         'tools\check-i18n.js')) {
             & node (Join-Path $root $t)
             if ($LASTEXITCODE -ne 0) { throw "$([System.IO.Path]::GetFileName($t)) が失敗しました。" }
         }

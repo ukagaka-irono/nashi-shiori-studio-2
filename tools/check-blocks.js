@@ -63,7 +63,8 @@ function read(rel) {
 
 const src = { cpp: read(CPP), doc: read(DOC) };
 
-global.window = {};
+global.window = { NASHI_LANG: 'ja' };   // ブロックのことばは日本語のまま見る
+(0, eval)(read('ui\\js\\i18n.js'));
 (0, eval)(read(DEFS));
 const N = global.window.NASHI;
 if (!N || !N.BLOCKS) {

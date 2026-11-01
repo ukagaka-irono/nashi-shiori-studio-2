@@ -157,6 +157,9 @@ struct Parser {
     const std::string& s;
     size_t i;
     std::string err;
+    std::string errWhy;      // わけだけ（日本語。栞が SSP の言語にするときに使う）
+    unsigned errLine = 0;
+    unsigned errCol = 0;
 
     explicit Parser(const std::string& src) : s(src), i(0) {}
 
@@ -195,6 +198,9 @@ struct Parser {
             char buf[64];
             sprintf_s(buf, "%u 行目 %u 文字目: ", line, col);
             err = std::string(buf) + msg;
+            errLine = line;
+            errCol = col;
+            errWhy = msg;
         }
         return false;
     }
@@ -343,6 +349,14 @@ bool JsonParse(const std::string& utf8, JValue& out, std::string& err) {
     Parser p(utf8);
     out = JValue();
     if (!p.parseValue(out, 0)) { err = p.err; return false; }
+    p.skipWs();
+    return true;
+}
+
+bool JsonParseAt(const std::string& utf8, JValue& out, std::string& why, unsigned& line, unsigned& col) {
+    Parser p(utf8);
+    out = JValue();
+    if (!p.parseValue(out, 0)) { why = p.errWhy; line = p.errLine; col = p.errCol; return false; }
     p.skipWs();
     return true;
 }

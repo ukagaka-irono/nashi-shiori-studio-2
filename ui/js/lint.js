@@ -8,6 +8,7 @@
 (function (N) {
 
   const Lint = {};
+  const T = N.I18n.T;
 
   // fix … チェックタブからその場で直せるとき（{ add: 'var' | 'talk', name } / { remove: 'var', name }）
   function issue(list, level, message, hint, script, block, fix) {
@@ -57,7 +58,9 @@
   /** メッセージ用のかたまり名。すでに「」が付いているものは足さない */
   function nameOf(script) {
     const t = N.Model.scriptTitle(script);
-    return t.charAt(0) === '「' ? t : '「' + t + '」';
+    // かっこは言語ごとにちがう（「」・“”・『』…）ので、いまの言語のかっこで見る
+    const open = T('「{name}」', { name: '' }).charAt(0);
+    return open && t.charAt(0) === open ? t : T('「{name}」', { name: t });
   }
 
   function isEmptyText(v) {
@@ -85,8 +88,8 @@
       if (s.kind !== 'function' && s.kind !== 'talk') continue;
       const name = s.name || '';
       if (seen[name]) {
-        issue(out, 'error', `「${name}」という名前が 2 つあります`,
-          'よぶときにどちらか一方しか使われません。名前を変えてください。', s);
+        issue(out, 'error', T('「{name}」という名前が 2 つあります', { name }),
+          T('よぶときにどちらか一方しか使われません。名前を変えてください。'), s);
       }
       seen[name] = true;
     }
@@ -98,24 +101,24 @@
       const blocks = Array.isArray(s.blocks) ? s.blocks : [];
 
       if (s.kind !== 'event' && s.kind !== 'talk' && s.kind !== 'function') {
-        issue(out, 'warn', 'どこにもつながっていないブロックがあります',
-          '帽子ブロック（◯◯のとき など）につなげないと動きません。', s);
+        issue(out, 'warn', T('どこにもつながっていないブロックがあります'),
+          T('帽子ブロック（◯◯のとき など）につなげないと動きません。'), s);
       } else if (!blocks.length) {
-        issue(out, 'warn', `${title}の中身がからっぽです`,
-          'ブロックをつなげるか、いらなければ削除してください。', s);
+        issue(out, 'warn', T('{title}の中身がからっぽです', { title }),
+          T('ブロックをつなげるか、いらなければ削除してください。'), s);
       }
 
       if (s.kind === 'event' && !String(s.event || '').trim()) {
-        issue(out, 'error', 'イベント名が空のかたまりがあります',
-          'イベントをえらぶか、名前を直接入力してください。', s);
+        issue(out, 'error', T('イベント名が空のかたまりがあります'),
+          T('イベントをえらぶか、名前を直接入力してください。'), s);
       }
       if ((s.kind === 'talk' || s.kind === 'function') && !String(s.name || '').trim()) {
-        issue(out, 'error', '名前のないトークがあります',
-          '名前をつけないと、よび出せません。', s);
+        issue(out, 'error', T('名前のないトークがあります'),
+          T('名前をつけないと、よび出せません。'), s);
       }
       if (s.kind === 'talk' && Number(s.weight) < 0) {
-        issue(out, 'warn', `${title}のえらばれやすさがマイナスです`,
-          '0 として扱われるので、このトークは出ません。', s);
+        issue(out, 'warn', T('{title}のえらばれやすさがマイナスです', { title }),
+          T('0 として扱われるので、このトークは出ません。'), s);
       }
 
       // ---- 定常ループ（ずっとくりかえす）の重さ
@@ -132,11 +135,11 @@
           (b) => b && (b.type === 'say' || b.type === 'raw' || b.type === 'call' || b.type === 'choice')
         );
         if (every <= 1 && speaksAlways) {
-          issue(out, 'warn', `${title}は毎秒しゃべることになります`,
-            '帽子ブロックの「◯秒ごと」を大きくするか、「もし」で条件をつけてください。', s);
+          issue(out, 'warn', T('{title}は毎秒しゃべることになります', { title }),
+            T('帽子ブロックの「◯秒ごと」を大きくするか、「もし」で条件をつけてください。'), s);
         } else if (every <= 1 && (hasLoop || count >= 10)) {
-          issue(out, 'warn', `${title}は毎秒これだけ動くので、重くなりがちです`,
-            '「◯秒ごと」を 5 秒くらいにすると、体感は変わらずに軽くなります。', s);
+          issue(out, 'warn', T('{title}は毎秒これだけ動くので、重くなりがちです', { title }),
+            T('「◯秒ごと」を 5 秒くらいにすると、体感は変わらずに軽くなります。'), s);
         }
       }
 
@@ -150,13 +153,13 @@
             }
           });
           if (tiny) {
-            issue(out, 'warn', `${title}の「くりかえし」の中で、${tiny.ms} ミリ秒だけ待っています`,
-              '待ちの数だけスクリプトが長くなります。回数を減らすか、待ちを長くしてください。', s, tiny);
+            issue(out, 'warn', T('{title}の「くりかえし」の中で、{ms} ミリ秒だけ待っています', { title, ms: tiny.ms }),
+              T('待ちの数だけスクリプトが長くなります。回数を減らすか、待ちを長くしてください。'), s, tiny);
           }
         }
         if (!N.getDef(b)) {
-          issue(out, 'error', `${title}に、知らないブロック（${b.type}）が入っています`,
-            '新しい版のなしスタジオ 2 で作られたファイルかもしれません。', s, b);
+          issue(out, 'error', T('{title}に、知らないブロック（{type}）が入っています', { title, type: b.type }),
+            T('新しい版のなしスタジオ 2 で作られたファイルかもしれません。'), s, b);
           return;
         }
         // 数の欄に、数でない文字が書いてある（栞はそこを決まった値として動かすので、気づきにくい）
@@ -164,201 +167,198 @@
         for (const arg in def.args || {}) {
           const v = b[arg];
           if (def.args[arg].mode === 'number' && typeof v === 'string' && v.trim() !== '' && isNaN(Number(v))) {
-            issue(out, 'warn', `${title}の数の欄に「${v}」と書いてあります`,
-              '数でないと、ちがう値として動きます。数だけを書くか、変数のブロックをはめこんでください。', s, b);
+            issue(out, 'warn', T('{title}の数の欄に「{value}」と書いてあります', { title, value: v }),
+              T('数でないと、ちがう値として動きます。数だけを書くか、変数のブロックをはめこんでください。'), s, b);
           }
         }
         switch (b.type) {
           case 'say':
             if (isEmptyText(b.text)) {
-              issue(out, 'warn', `${title}に、なにも言わないセリフがあります`,
-                '文章を入れるか、ブロックを削除してください。', s, b);
+              issue(out, 'warn', T('{title}に、なにも言わないセリフがあります', { title }),
+                T('文章を入れるか、ブロックを削除してください。'), s, b);
             }
             break;
           case 'raw':
             if (isEmptyText(b.text)) {
-              issue(out, 'warn', `${title}に、からっぽのさくらスクリプトがあります`, '', s, b);
+              issue(out, 'warn', T('{title}に、からっぽのさくらスクリプトがあります', { title }), '', s, b);
             }
             break;
           case 'communicate':
             if (isEmptyText(b.to)) {
-              issue(out, 'error', `${title}に、話しかける相手が空のブロックがあります`,
-                '相手のゴースト名（本体の名前）を入れてください。'
-                + '「話しかけてきた相手」ブロックを入れると、言われた相手に返せます。', s, b);
+              issue(out, 'error', T('{title}に、話しかける相手が空のブロックがあります', { title }),
+                T('相手のゴースト名（本体の名前）を入れてください。「話しかけてきた相手」ブロックを入れると、言われた相手に返せます。'), s, b);
             }
             if (isEmptyText(b.text)) {
-              issue(out, 'warn', `${title}に、なにも言わずに話しかけるブロックがあります`,
-                '文章がないと、相手には届きません。', s, b);
+              issue(out, 'warn', T('{title}に、なにも言わずに話しかけるブロックがあります', { title }),
+                T('文章がないと、相手には届きません。'), s, b);
             }
             break;
           case 'ask':
             if (isEmptyText(b.into)) {
-              issue(out, 'error', `${title}に、答えの入れ先が空の「たずねる」ブロックがあります`,
-                '入れる変数を決めてください。決めないと、たずねても答えを使えません。', s, b);
+              issue(out, 'error', T('{title}に、答えの入れ先が空の「たずねる」ブロックがあります', { title }),
+                T('入れる変数を決めてください。決めないと、たずねても答えを使えません。'), s, b);
             } else if (varNames.indexOf(b.into) < 0) {
-              issue(out, 'error', `変数「${b.into}」がありません（${title}）`,
-                '下のボタンで作るか、別の変数にえらび直してください。', s, b, { add: 'var', name: b.into });
+              issue(out, 'error', T('変数「{name}」がありません（{title}）', { name: b.into, title }),
+                T('下のボタンで作るか、別の変数にえらび直してください。'), s, b, { add: 'var', name: b.into });
             } else if (/[,[\]]/.test(b.into)) {
-              issue(out, 'error', `変数「${b.into}」の名前は「たずねる」には使えません`,
-                'カンマや角かっこが入っていると、SSP への命令が壊れます。名前を変えてください。', s, b);
+              issue(out, 'error', T('変数「{name}」の名前は「たずねる」には使えません', { name: b.into }),
+                T('カンマや角かっこが入っていると、SSP への命令が壊れます。名前を変えてください。'), s, b);
             }
             break;
           case 'ask_kind':
             if (isEmptyText(b.into)) {
-              issue(out, 'error', `${title}に、答えの入れ先が空の「たずねる」ブロックがあります`,
-                '入れる変数を決めてください。決めないと、たずねても答えを使えません。', s, b);
+              issue(out, 'error', T('{title}に、答えの入れ先が空の「たずねる」ブロックがあります', { title }),
+                T('入れる変数を決めてください。決めないと、たずねても答えを使えません。'), s, b);
             } else if (varNames.indexOf(b.into) < 0) {
-              issue(out, 'error', `変数「${b.into}」がありません（${title}）`,
-                '下のボタンで作るか、別の変数にえらび直してください。', s, b, { add: 'var', name: b.into });
+              issue(out, 'error', T('変数「{name}」がありません（{title}）', { name: b.into, title }),
+                T('下のボタンで作るか、別の変数にえらび直してください。'), s, b, { add: 'var', name: b.into });
             }
             break;
           case 'dressup': {
             const parts = ((project.dressup || {}).parts || []);
             if (isEmptyText(b.part)) {
-              issue(out, 'error', `${title}の「着せ替え」で、部品がえらばれていません`,
-                '「ゴースト」タブの「着せ替え」で部品を作ってから、えらんでください。', s, b);
+              issue(out, 'error', T('{title}の「着せ替え」で、部品がえらばれていません', { title }),
+                T('「ゴースト」タブの「着せ替え」で部品を作ってから、えらんでください。'), s, b);
             } else if (!parts.some((p) => p.who === (b.who === 1 ? 1 : 0) && p.category === b.category && p.name === b.part)) {
-              issue(out, 'error', `着せ替えの部品「${b.category || ''}／${b.part}」がありません（${title}）`,
-                '部品の名前やカテゴリを変えたときは、ブロックでもえらび直してください。', s, b);
+              issue(out, 'error', T('着せ替えの部品「{category}／{part}」がありません（{title}）', { category: b.category || '', part: b.part, title }),
+                T('部品の名前やカテゴリを変えたときは、ブロックでもえらび直してください。'), s, b);
             }
             break;
           }
           case 'property_get':
             if (isEmptyText(b.prop)) {
-              issue(out, 'error', `${title}に、たずねる中身が空の「SSP にたずねる」ブロックがあります`,
-                '一覧からえらぶか、プロパティの名前を書いてください。', s, b);
+              issue(out, 'error', T('{title}に、たずねる中身が空の「SSP にたずねる」ブロックがあります', { title }),
+                T('一覧からえらぶか、プロパティの名前を書いてください。'), s, b);
             }
             if (isEmptyText(b.into)) {
-              issue(out, 'error', `${title}に、答えの入れ先が空の「SSP にたずねる」ブロックがあります`,
-                '入れる変数を決めてください。決めないと、たずねても答えを使えません。', s, b);
+              issue(out, 'error', T('{title}に、答えの入れ先が空の「SSP にたずねる」ブロックがあります', { title }),
+                T('入れる変数を決めてください。決めないと、たずねても答えを使えません。'), s, b);
             } else if (varNames.indexOf(b.into) < 0) {
-              issue(out, 'error', `変数「${b.into}」がありません（${title}）`,
-                '下のボタンで作るか、別の変数にえらび直してください。', s, b, { add: 'var', name: b.into });
+              issue(out, 'error', T('変数「{name}」がありません（{title}）', { name: b.into, title }),
+                T('下のボタンで作るか、別の変数にえらび直してください。'), s, b, { add: 'var', name: b.into });
             }
             break;
           case 'choice_event':
             if (isEmptyText(b.event)) {
-              issue(out, 'error', `${title}の選択肢に、起こすイベントがありません`,
-                'えらんでも何も起きません。OnAnswer のようなイベント名を入れてください。', s, b);
+              issue(out, 'error', T('{title}の選択肢に、起こすイベントがありません', { title }),
+                T('えらんでも何も起きません。OnAnswer のようなイベント名を入れてください。'), s, b);
             } else if (typeof b.event === 'string' && !project.scripts.some((x) => x.kind === 'event'
               && x.event === (/^On/.test(b.event.trim()) ? b.event.trim() : 'On' + b.event.trim()))) {
-              issue(out, 'warn', `選択肢で起こす「${b.event}」のブロックがありません（${title}）`,
-                '「その他（自分で書く）」で、同じ名前のイベントのブロックを作ってください。', s, b);
+              issue(out, 'warn', T('選択肢で起こす「{event}」のブロックがありません（{title}）', { event: b.event, title }),
+                T('「その他（自分で書く）」で、同じ名前のイベントのブロックを作ってください。'), s, b);
             }
             if (isEmptyText(b.label)) {
-              issue(out, 'warn', `${title}に、文字のない選択肢があります`, '', s, b);
+              issue(out, 'warn', T('{title}に、文字のない選択肢があります', { title }), '', s, b);
             }
             break;
           case 'anim': {
             // 番号をそのまま書いたときだけ見る（変数などをはめこんだときは、動かすまでわからない）
             const id = typeof b.id === 'number' ? b.id : (typeof b.id === 'string' && b.id.trim() !== '' ? Number(b.id) : NaN);
             if (Number.isFinite(id) && !(project.animations || []).some((a) => Number(a.id) === id)) {
-              issue(out, 'warn', `「うごき ${id}」がありません（${title}）`,
-                'ゴーストタブの「うごき」で作るか、▾ でえらび直してください。手で直したシェルにあるうごきなら、そのままで動きます。', s, b);
+              issue(out, 'warn', T('「うごき {id}」がありません（{title}）', { id, title }),
+                T('ゴーストタブの「うごき」で作るか、▾ でえらび直してください。手で直したシェルにあるうごきなら、そのままで動きます。'), s, b);
             }
             break;
           }
           case 'sound':
           case 'bgm':
             if (isEmptyText(b.file)) {
-              issue(out, 'warn', `${title}に、ファイル名が空の「音を鳴らす」ブロックがあります`,
-                'ゴーストのフォルダに置いた音のファイル名を入れてください。', s, b);
+              issue(out, 'warn', T('{title}に、ファイル名が空の「音を鳴らす」ブロックがあります', { title }),
+                T('ゴーストのフォルダに置いた音のファイル名を入れてください。'), s, b);
             }
             break;
           case 'call_group':
             if (isEmptyText(b.group)) {
-              issue(out, 'error', `${title}の「どれかよぶ」で、まとまりの名前が空です`,
-                'ランダムトークの帽子ブロックで付けた「まとまり」の名前を入れてください。', s, b);
+              issue(out, 'error', T('{title}の「どれかよぶ」で、まとまりの名前が空です', { title }),
+                T('ランダムトークの帽子ブロックで付けた「まとまり」の名前を入れてください。'), s, b);
             } else if (typeof b.group === 'string' && groups.indexOf(b.group.trim()) < 0) {
-              issue(out, 'error', `「${b.group}」というまとまりのトークがありません（${title}）`,
-                'ランダムトークの帽子ブロックの「まとまり」に、同じ名前を入れてください。', s, b);
+              issue(out, 'error', T('「{group}」というまとまりのトークがありません（{title}）', { group: b.group, title }),
+                T('ランダムトークの帽子ブロックの「まとまり」に、同じ名前を入れてください。'), s, b);
             }
             break;
           case 'later':
             if (isEmptyText(b.name)) {
-              issue(out, 'error', `${title}の「◯秒後によぶ」で、行き先がえらばれていません`, '', s, b);
+              issue(out, 'error', T('{title}の「◯秒後によぶ」で、行き先がえらばれていません', { title }), '', s, b);
             } else if (typeof b.name === 'string' && callable.indexOf(b.name) < 0) {
-              issue(out, 'error', `「${b.name}」というトークがありません（${title}）`,
-                '下のボタンでトークを作るか、行き先をえらび直してください。', s, b, { add: 'talk', name: b.name });
+              issue(out, 'error', T('「{name}」というトークがありません（{title}）', { name: b.name, title }),
+                T('下のボタンでトークを作るか、行き先をえらび直してください。'), s, b, { add: 'talk', name: b.name });
             }
             break;
           case 'raise':
             if (isEmptyText(b.event)) {
-              issue(out, 'warn', `${title}に、イベント名が空の「自分で起こす」ブロックがあります`,
-                'OnBoot のようなイベント名を入れてください。', s, b);
+              issue(out, 'warn', T('{title}に、イベント名が空の「自分で起こす」ブロックがあります', { title }),
+                T('OnBoot のようなイベント名を入れてください。'), s, b);
             }
             break;
           case 'open_browser':
             if (isEmptyText(b.url)) {
-              issue(out, 'warn', `${title}に、ひらく先が空のブロックがあります`, '', s, b);
+              issue(out, 'warn', T('{title}に、ひらく先が空のブロックがあります', { title }), '', s, b);
             }
             break;
           case 'change_ghost':
             if (isEmptyText(b.name)) {
-              issue(out, 'warn', `${title}に、交代する相手が空のブロックがあります`,
-                'ゴースト名か random を入れてください。', s, b);
+              issue(out, 'warn', T('{title}に、交代する相手が空のブロックがあります', { title }),
+                T('ゴースト名か random を入れてください。'), s, b);
             }
             break;
           case 'saori_call':
             if (isEmptyText(b.file)) {
-              issue(out, 'error', `${title}に、よぶファイルが空の SAORI ブロックがあります`,
-                'ゴーストのフォルダに置いた DLL の名前を入れてください。', s, b);
+              issue(out, 'error', T('{title}に、よぶファイルが空の SAORI ブロックがあります', { title }),
+                T('ゴーストのフォルダに置いた DLL の名前を入れてください。'), s, b);
             }
             if (isEmptyText(b.into)) {
-              issue(out, 'warn', `${title}に、答えの入れ先が空の SAORI ブロックがあります`,
-                '答えを入れる変数を決めておかないと、届いた答えを使えません。'
-                + '（「SAORI の答えがとどいたとき」でも受け取れます）', s, b);
+              issue(out, 'warn', T('{title}に、答えの入れ先が空の SAORI ブロックがあります', { title }),
+                T('答えを入れる変数を決めておかないと、届いた答えを使えません。（「SAORI の答えがとどいたとき」でも受け取れます）'), s, b);
             } else if (varNames.indexOf(b.into) < 0) {
-              issue(out, 'error', `変数「${b.into}」がありません（${title}）`,
-                '下のボタンで作るか、別の変数にえらび直してください。', s, b, { add: 'var', name: b.into });
+              issue(out, 'error', T('変数「{name}」がありません（{title}）', { name: b.into, title }),
+                T('下のボタンで作るか、別の変数にえらび直してください。'), s, b, { add: 'var', name: b.into });
             }
             break;
           case 'update':
             // 「更新のありか」が無いと、SSP は更新しようがない
             if (isEmptyText((project.meta || {}).homeUrl)) {
-              issue(out, 'warn', `${title}に、ネットワーク更新のブロックがあります`,
-                'ゴーストの設定の「更新のありか」が空です。'
-                + '入れておかないと、SSP は更新できません。', s, b);
+              issue(out, 'warn', T('{title}に、ネットワーク更新のブロックがあります', { title }),
+                T('ゴーストの設定の「更新のありか」が空です。入れておかないと、SSP は更新できません。'), s, b);
             }
             break;
           case 'var': case 'set': case 'change':
             if (isEmptyText(b.name)) {
-              issue(out, 'error', `${title}に、変数をえらんでいないブロックがあります`,
-                '変数タブで変数を作ってから、えらんでください。', s, b);
+              issue(out, 'error', T('{title}に、変数をえらんでいないブロックがあります', { title }),
+                T('変数タブで変数を作ってから、えらんでください。'), s, b);
             } else if (varNames.indexOf(b.name) < 0) {
-              issue(out, 'error', `変数「${b.name}」がありません（${title}）`,
-                '下のボタンで作るか、別の変数にえらび直してください。', s, b, { add: 'var', name: b.name });
+              issue(out, 'error', T('変数「{name}」がありません（{title}）', { name: b.name, title }),
+                T('下のボタンで作るか、別の変数にえらび直してください。'), s, b, { add: 'var', name: b.name });
             }
             break;
           case 'call':
             if (isEmptyText(b.name)) {
-              issue(out, 'error', `${title}の「よぶ」ブロックで、行き先がえらばれていません`, '', s, b);
+              issue(out, 'error', T('{title}の「よぶ」ブロックで、行き先がえらばれていません', { title }), '', s, b);
             } else if (callable.indexOf(b.name) < 0) {
-              issue(out, 'error', `「${b.name}」というトークがありません（${title}）`,
-                '下のボタンでトークを作るか、行き先をえらび直してください。', s, b, { add: 'talk', name: b.name });
+              issue(out, 'error', T('「{name}」というトークがありません（{title}）', { name: b.name, title }),
+                T('下のボタンでトークを作るか、行き先をえらび直してください。'), s, b, { add: 'talk', name: b.name });
             }
             break;
           case 'choice':
             if (isEmptyText(b.target)) {
-              issue(out, 'error', `${title}の選択肢に、行き先がありません`,
-                'えらんでも何も起きません。行き先のトークをえらんでください。', s, b);
+              issue(out, 'error', T('{title}の選択肢に、行き先がありません', { title }),
+                T('えらんでも何も起きません。行き先のトークをえらんでください。'), s, b);
             } else if (callable.indexOf(b.target) < 0) {
-              issue(out, 'error', `選択肢の行き先「${b.target}」がありません（${title}）`,
-                '下のボタンでトークを作るか、行き先をえらび直してください。', s, b, { add: 'talk', name: b.target });
+              issue(out, 'error', T('選択肢の行き先「{name}」がありません（{title}）', { name: b.target, title }),
+                T('下のボタンでトークを作るか、行き先をえらび直してください。'), s, b, { add: 'talk', name: b.target });
             }
             if (isEmptyText(b.label)) {
-              issue(out, 'warn', `${title}に、文字のない選択肢があります`, '', s, b);
+              issue(out, 'warn', T('{title}に、文字のない選択肢があります', { title }), '', s, b);
             }
             break;
           case 'link':
             if (isEmptyText(b.url) || String(b.url).trim() === 'https://') {
-              issue(out, 'warn', `${title}のリンクに、URL が入っていません`, '', s, b);
+              issue(out, 'warn', T('{title}のリンクに、URL が入っていません', { title }), '', s, b);
             }
             break;
           case 'wait':
             if (Number(b.ms) > 60000) {
-              issue(out, 'warn', `${title}に、1 分より長く待つブロックがあります`,
-                '長すぎるとゴーストが固まったように見えます。', s, b);
+              issue(out, 'warn', T('{title}に、1 分より長く待つブロックがあります', { title }),
+                T('長すぎるとゴーストが固まったように見えます。'), s, b);
             }
             break;
           default:
@@ -386,8 +386,8 @@
       const asArg = new RegExp('[\\[,]' + String(s.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\],]');
       if (s.kind === 'function' && !s.disabled && String(s.name || '').trim() && !called[s.name] &&
           !asArg.test(rawText)) {
-        issue(out, 'warn', `${nameOf(s)}は、どこからもよばれていません`,
-          '「◯ をよぶ」「◯ 秒後に ◯ をよぶ」ブロックや、選択肢の行き先にするか、いらなければ削除してください。', s);
+        issue(out, 'warn', T('{title}は、どこからもよばれていません', { title: nameOf(s) }),
+          T('「◯ をよぶ」「◯ 秒後に ◯ をよぶ」ブロックや、選択肢の行き先にするか、いらなければ削除してください。'), s);
       }
     }
 
@@ -395,11 +395,11 @@
     const st = project.settings || {};
     if (st.randomTalkEnabled !== false) {
       if (!talkCount) {
-        issue(out, 'warn', '自動でしゃべる設定なのに、ランダムトークが 1 つもありません',
-          'イベントの「ランダムトーク」をキャンバスに置いてください。');
+        issue(out, 'warn', T('自動でしゃべる設定なのに、ランダムトークが 1 つもありません'),
+          T('イベントの「ランダムトーク」をキャンバスに置いてください。'));
       } else if (Number(st.randomTalkInterval) <= 0) {
-        issue(out, 'warn', 'しゃべる間隔が 0 秒なので、自動ではしゃべりません',
-          'ゴーストタブで秒数を入れてください。');
+        issue(out, 'warn', T('しゃべる間隔が 0 秒なので、自動ではしゃべりません'),
+          T('ゴーストタブで秒数を入れてください。'));
       }
     }
 
@@ -416,8 +416,8 @@
     }
     for (const name of varNames) {
       if (!used[name]) {
-        issue(out, 'warn', `変数「${name}」はどこでも使われていません`,
-          'いらなければ、下のボタンか変数タブで削除できます。', null, null, { remove: 'var', name });
+        issue(out, 'warn', T('変数「{name}」はどこでも使われていません', { name }),
+          T('いらなければ、下のボタンか変数タブで削除できます。'), null, null, { remove: 'var', name });
       }
     }
 

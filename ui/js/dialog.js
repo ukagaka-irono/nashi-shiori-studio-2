@@ -16,19 +16,20 @@
   const api = App.api;
   const escapeHtml = App.escapeHtml;
   const updateTitle = App.updateTitle;
+  const T = N.I18n.T;
 
   // ---------------------------------------------------------- 保存 / 読込
   async function saveProject(silent) {
     // 開いたファイルがあればそこへ。新しいものは、ゴーストの名前で作る
     // （同じ名前の別のプロジェクトがあれば、exe が「名前 (2)」のように空いた名前にする）。
     const create = !App.projectName;
-    const name = App.projectName || Model.project.meta.name || 'ゴースト';
+    const name = App.projectName || Model.project.meta.name || T('ゴースト');
     try {
       const r = await api('/api/project', { method: 'POST', body: { name, create, project: Model.project } });
       App.projectName = r.saved;
       Model.dirty = false;
       updateTitle();
-      if (!silent) App.toast(`「${r.saved}」を保存しました`);
+      if (!silent) App.toast(T('「{name}」を保存しました', { name: r.saved }));
       return true;
     } catch (e) {
       App.toast(e.message, true);
@@ -82,16 +83,16 @@
     let state;
     try { state = await api('/api/state'); } catch (e) { App.toast(e.message, true); return; }
     const list = Render.div('');
-    if (!state.projects.length) list.appendChild(Render.div('hint', 'まだ保存したプロジェクトがありません。'));
+    if (!state.projects.length) list.appendChild(Render.div('hint', T('まだ保存したプロジェクトがありません。')));
     for (const p of state.projects) {
       const row = Render.div('proj-row');
       row.appendChild(Render.div('t', p.title));
-      row.appendChild(Render.div('d', new Date(p.updated).toLocaleString('ja-JP')));
+      row.appendChild(Render.div('d', new Date(p.updated).toLocaleString(N.I18n.lang)));
       const x = Render.el('button', 'x', '✕');
-      x.title = '削除';
+      x.title = T('削除');
       x.addEventListener('click', async (e) => {
         e.stopPropagation();
-        if (!confirm(`「${p.title}」を削除しますか？`)) return;
+        if (!confirm(T('「{name}」を削除しますか？', { name: p.title }))) return;
         try {
           await api('/api/project/delete', { method: 'POST', body: { name: p.file } });
         } catch (err) { App.toast(err.message, true); return; }
@@ -101,21 +102,21 @@
       });
       row.appendChild(x);
       row.addEventListener('click', async () => {
-        if (Model.dirty && !confirm('保存していない変更があります。開きますか？')) return;
+        if (Model.dirty && !confirm(T('保存していない変更があります。開きますか？'))) return;
         try {
           const data = await api('/api/project?name=' + encodeURIComponent(p.file));
           Model.init(data);
           App.projectName = p.file;
           App.sessionVars = {};
           closeModal();
-          App.toast(`「${p.title}」を開きました`);
+          App.toast(T('「{name}」を開きました', { name: p.title }));
         } catch (e) { App.toast(e.message, true); }
       });
       list.appendChild(row);
     }
-    modal('プロジェクトを開く', list, [
-      { label: 'あたらしく作る', run: () => setTimeout(openSampleDialog, 0) },
-      { label: '閉じる' },
+    modal(T('プロジェクトを開く'), list, [
+      { label: T('あたらしく作る'), run: () => setTimeout(openSampleDialog, 0) },
+      { label: T('閉じる') },
     ]);
   }
 
@@ -128,47 +129,49 @@
     try {
       index = await (await fetch('samples/index.json')).json();
     } catch (e) {
-      App.toast('お手本を読めませんでした', true);
+      App.toast(T('お手本を読めませんでした'), true);
     }
     const list = Render.div('');
     list.appendChild(Render.div('hint', first
-      ? 'なしスタジオ 2 へようこそ。お手本をえらぶと、動くゴーストを見ながら、まねて作れます。'
-      : 'えらぶと、いまのプロジェクトを置きかえて開きます（保存していないものは消えます）。'));
+      ? T('なしスタジオ 2 へようこそ。お手本をえらぶと、動くゴーストを見ながら、まねて作れます。')
+      : T('えらぶと、いまのプロジェクトを置きかえて開きます（保存していないものは消えます）。')));
 
     const empty = Render.div('proj-row');
-    empty.appendChild(Render.div('t', '空からはじめる'));
-    empty.appendChild(Render.div('d', '何もないキャンバスから、自分で組みます。'));
+    empty.appendChild(Render.div('t', T('空からはじめる')));
+    empty.appendChild(Render.div('d', T('何もないキャンバスから、自分で組みます。')));
     empty.addEventListener('click', () => {
-      if (Model.dirty && !confirm('保存していない変更があります。新しく作りますか？')) return;
+      if (Model.dirty && !confirm(T('保存していない変更があります。新しく作りますか？'))) return;
       Model.init(Model.newProject());
       App.projectName = '';
       App.sessionVars = {};
       closeModal();
-      App.toast('新しいゴーストを作りました');
+      App.toast(T('新しいゴーストを作りました'));
     });
     list.appendChild(empty);
 
     for (const s of index) {
+      // 名前と説明は、いまの言語のものがあればそれを（samples/index.json の i18n。中のセリフは日本語のまま）
+      const loc = (s.i18n && s.i18n[N.I18n.lang]) || s;
       const row = Render.div('proj-row');
-      row.appendChild(Render.div('t', s.title));
-      row.appendChild(Render.div('d', s.desc));
+      row.appendChild(Render.div('t', loc.title || s.title));
+      row.appendChild(Render.div('d', loc.desc || s.desc));
       row.addEventListener('click', async () => {
-        if (Model.dirty && !confirm('保存していない変更があります。お手本を開きますか？')) return;
+        if (Model.dirty && !confirm(T('保存していない変更があります。お手本を開きますか？'))) return;
         try {
           const data = await (await fetch('samples/' + s.file)).json();
           Model.init(data);
           App.projectName = '';          // 上書き保存ではなく、名前を付けて保存させる
           App.sessionVars = {};
           closeModal();
-          App.toast(`お手本「${s.title}」を開きました。保存すると自分のものになります`);
-        } catch (e) { App.toast('お手本を読めませんでした', true); }
+          App.toast(T('お手本「{name}」を開きました。保存すると自分のものになります', { name: loc.title || s.title }));
+        } catch (e) { App.toast(T('お手本を読めませんでした'), true); }
       });
       list.appendChild(row);
     }
     const buttons = first
-      ? [{ label: 'プロジェクトを開く', run: () => setTimeout(openProjectDialog, 0) }, { label: '閉じる' }]
-      : [{ label: '閉じる' }];
-    modal('あたらしく作る', list, buttons);
+      ? [{ label: T('プロジェクトを開く'), run: () => setTimeout(openProjectDialog, 0) }, { label: T('閉じる') }]
+      : [{ label: T('閉じる') }];
+    modal(T('あたらしく作る'), list, buttons);
   }
 
   // ------------------------------------------------------------- 書き出し
@@ -181,9 +184,7 @@
       return await send(false);
     } catch (e) {
       if (!(e.data && e.data.foreign)) throw e;
-      const ok = confirm(`${e.message}\n\n上書きすると、そのゴーストの会話と栞が、` +
-        'このプロジェクトのものに置きかわります（もとには戻せません）。\n' +
-        'ゴーストの名前（フォルダ名）を変えるのがおすすめです。それでも上書きしますか？');
+      const ok = confirm(e.message + '\n\n' + T('上書きすると、そのゴーストの会話と栞が、このプロジェクトのものに置きかわります（もとには戻せません）。\nゴーストの名前（フォルダ名）を変えるのがおすすめです。それでも上書きしますか？'));
       if (!ok) return null;
       return await send(true);
     }
@@ -208,8 +209,7 @@
     if (!list || !list.length) return null;
     const box = Render.div('status-line status-ng');
     const head = Render.div('');
-    head.innerHTML = `ファイルが見つからない絵が ${list.length} 枚あり、その絵は入れていません。` +
-      '<b>ゴースト</b>タブで、えらび直してください。';
+    head.innerHTML = T('ファイルが見つからない絵が {n} 枚あり、その絵は入れていません。<b>ゴースト</b>タブで、えらび直してください。', { n: list.length });
     box.appendChild(head);
     for (const path of list) {
       const row = Render.div('');
@@ -228,8 +228,7 @@
   function skippedNote(list) {
     if (!list || !list.length) return null;
     const box = Render.div('hint result-note');
-    box.appendChild(Render.div('', `すでにあったシェルのファイル ${list.length} 個は、そのまま残しました。` +
-      '書き直すときは「すでにあるシェルの絵も上書き」に印を付けてください。'));
+    box.appendChild(Render.div('', T('すでにあったシェルのファイル {n} 個は、そのまま残しました。書き直すときは「すでにあるシェルの絵も上書き」に印を付けてください。', { n: list.length })));
     for (const name of list) {
       const row = Render.div('');
       row.appendChild(Render.el('code', null, name));
@@ -246,10 +245,10 @@
   function confirmIfErrors(question) {
     const errors = N.Lint.run(Model.project).filter((i) => i.level === 'error');
     if (!errors.length) return true;
-    const shown = errors.slice(0, 3).map((i) => '・' + i.message);
-    if (errors.length > 3) shown.push(`（ほかに ${errors.length - 3} つ）`);
-    const ok = confirm(`チェックタブに ⛔ が ${errors.length} つあります。\n${shown.join('\n')}\n\n` +
-      'このままだと、そこはうまく動きません。' + question);
+    const shown = errors.slice(0, 3).map((i) => T('・{text}', { text: i.message }));
+    if (errors.length > 3) shown.push(T('（ほかに {n} つ）', { n: errors.length - 3 }));
+    const ok = confirm(T('チェックタブに ⛔ が {n} つあります。', { n: errors.length }) + '\n' + shown.join('\n') + '\n\n' +
+      T('このままだと、そこはうまく動きません。') + question);
     if (!ok) App.switchTab('check');
     return ok;
   }
@@ -257,11 +256,11 @@
   async function doExport(mode) {
     const outDir = $('#export-dir').value.trim();
     const box = $('#export-result');
-    if (!confirmIfErrors(mode === 'nar' ? 'それでも .nar を作りますか？' : 'それでも書き出しますか？')) {
-      box.textContent = 'やめました。';
+    if (!confirmIfErrors(mode === 'nar' ? T('それでも .nar を作りますか？') : T('それでも書き出しますか？'))) {
+      box.textContent = T('やめました。');
       return;
     }
-    box.textContent = '書き出し中…';
+    box.textContent = T('書き出し中…');
     try {
       const r = await withForeignCheck((overwriteForeign) => api('/api/export', {
         method: 'POST',
@@ -274,34 +273,32 @@
           overwriteForeign,
         },
       }));
-      if (!r) { box.textContent = 'やめました。'; return; }
+      if (!r) { box.textContent = T('やめました。'); return; }
       rememberFolder(r.folder);
       box.textContent = '';
       const p = Render.div('');
       if (mode === 'nar') {
-        p.innerHTML = `<b>.nar を作りました</b><br><code>${escapeHtml(r.path)}</code><br>` +
-          'SSP のウィンドウにドラッグ＆ドロップするとインストールできます。';
+        p.innerHTML = T('<b>.nar を作りました</b><br><code>{path}</code><br>SSP のウィンドウにドラッグ＆ドロップするとインストールできます。', { path: escapeHtml(r.path) });
       } else {
-        p.innerHTML = `<b>書き出しました</b><br><code>${escapeHtml(r.root)}</code><br>` +
-          `ファイル ${r.written.length} 個`;
+        p.innerHTML = T('<b>書き出しました</b><br><code>{path}</code><br>ファイル {n} 個', { path: escapeHtml(r.root), n: r.written.length });
         const kept = skippedNote(r.skipped);
         if (kept) p.appendChild(kept);
       }
       if (!r.dll) {
         p.appendChild(Render.div('status-line status-ng',
-          'nashi.dll が見つかりません。shiori\\build.ps1 を実行してから書き出し直してください。'));
+          T('nashi.dll が見つかりません。shiori\\build.ps1 を実行してから書き出し直してください。')));
       }
       const lost = missingNote(r.missing);
       if (lost) p.appendChild(lost);
-      const open = Render.el('button', 'btn small', 'フォルダを開く');
+      const open = Render.el('button', 'btn small', T('フォルダを開く'));
       open.style.marginTop = '8px';
       open.addEventListener('click', () => api('/api/reveal', {
         method: 'POST', body: { path: r.root || r.path },
       }).catch(() => {}));
       p.appendChild(open);
       box.appendChild(p);
-      if (lost) App.toast(`書き出しました。見つからない絵が ${r.missing.length} 枚あります`, true);
-      else App.toast('書き出しました');
+      if (lost) App.toast(T('書き出しました。見つからない絵が {n} 枚あります', { n: r.missing.length }), true);
+      else App.toast(T('書き出しました'));
     } catch (e) {
       box.textContent = '';
       box.appendChild(Render.div('status-line status-ng', e.message));
